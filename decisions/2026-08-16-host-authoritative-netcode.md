@@ -1,7 +1,7 @@
 # Host-authoritative networking, built in Phase 0
 
 - **Date:** 2026-08-16
-- **Status:** Accepted
+- **Status:** Accepted — except the character-prediction clause, superseded by [client-authoritative-character](2026-08-16-client-authoritative-character.md). Host authority over rigid bodies, held items, Steam P2P and the Phase 0 gate all stand.
 - **Deciders:** NJ
 
 ## Context

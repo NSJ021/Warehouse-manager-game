@@ -1,4 +1,4 @@
-# Warehouse Manager
+# Nice Little Earner
 
 **1–4 players run a leased warehouse. Take goods in, store them, get them back out on time and undamaged. You will fail at the third one — and then you have to decide whether to tell the customer.**
 
@@ -52,25 +52,34 @@ Variety comes from **constraints**, not assets: cold storage bleeds money on ref
 ## Repo layout
 
 ```
-docs/GDD.md          Design document — pitch, systems, scope, build order
-decisions/           Architecture Decision Records (append-only)
-  decision-log.md    Index — start here
+docs/GDD.md                Design document — pitch, systems, scope, build order
+docs/art-pipeline.md       Art production — build vs generate, tooling, asset register
+docs/conversation-log.md   Session-by-session record of decisions and progress
+decisions/                 Architecture Decision Records (append-only)
+  decision-log.md          Index — start here
+warehouse-manager/         The Godot project
 ```
 
 **`decisions/` is the source of truth.** ADRs win over the GDD and over this README until superseded. Changing course means writing a *new* ADR, not editing an old one.
 
 ## Status
 
-**Design phase — no code yet.**
+**Phase 0 in progress — the netcode spine connects.**
 
-Next milestone is **Phase 0: the netcode spine** — four players, an empty room, one physics crate, pick up / drop / hand off / two-player carry. Nothing else. This is a project gate: if it isn't rock solid, the project stops there rather than building on a broken foundation.
+Godot 4.6, Forward+, Jolt physics backend. The multiplayer spine is built and verified: two processes connect, agree on the roster, and spawn matching player bodies at distinct points with a clean teardown.
 
-See [§12 of the GDD](docs/GDD.md) for the full build order.
+Transport sits behind a `NetTransport` abstraction with two implementations. Development runs on **ENet**, because four instances on one machine is the only way to test four players — Steam permits one client per PC. **Steam P2P** via GodotSteam is written and vendored, pending a two-machine validation run.
+
+Still ahead in Phase 0: the physics crate, pick up / drop / hand off, and two-player carry. This remains a project gate — if it isn't rock solid, the project stops here rather than building on a broken foundation.
+
+See [§13 of the GDD](docs/GDD.md) for the full build order.
 
 ## v1 scope
 
-**In:** goods in → grid-snapped storage → goods out · physics carry, two-player carry, drag · drop and collision damage · condition tiers · tape gun and the dilemma · client trust and suspicion · rent clock and eviction · one map · 10 and 30-day terms · 1–4 co-op · solo playable.
+**In:** goods in → grid-snapped storage → goods out · physics carry, two-player carry, drag · drop and collision damage · condition tiers · tape gun and the dilemma · client trust and suspicion · rent clock and eviction · one map · 10 and 30-day terms · 1–4 co-op · proximity voice chat · solo playable.
 
-**Parked:** forklift · layout build mode · cleaning and mess · blackouts and police raids · price bartering · 90-day term · extra maps · upgrade trees · proximity voice chat.
+**Parked:** forklift · layout build mode · cleaning and mess · blackouts and police raids · price bartering · 90-day term · extra maps · upgrade trees.
+
+**Price:** £9.99 / $11.99 at launch, with a launch-week discount.
 
 Anything moving from *parked* to *in* requires a superseding ADR — see [`decisions/2026-08-16-lean-v1-scope.md`](decisions/2026-08-16-lean-v1-scope.md).

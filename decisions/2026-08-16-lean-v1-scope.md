@@ -1,7 +1,7 @@
 # Lean v1 scope; co-op-first with solo playable
 
 - **Date:** 2026-08-16
-- **Status:** Accepted
+- **Status:** Accepted — except proximity voice chat, moved from Out to In by [proximity-voice-in-v1](2026-08-16-proximity-voice-in-v1.md). Every other parked feature, the solo posture and the superseding-ADR guardrail all stand.
 - **Deciders:** NJ
 
 ## Context
