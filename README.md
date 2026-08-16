@@ -53,6 +53,7 @@ Variety comes from **constraints**, not assets: cold storage bleeds money on ref
 
 ```
 docs/GDD.md                Design document — pitch, systems, scope, build order
+docs/art-pipeline.md       Art production — build vs generate, tooling, asset register
 docs/conversation-log.md   Session-by-session record of decisions and progress
 decisions/                 Architecture Decision Records (append-only)
   decision-log.md          Index — start here
