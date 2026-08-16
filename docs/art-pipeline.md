@@ -93,7 +93,58 @@ Never four separate models — four times the work and four times the drift.
 
 ---
 
-## 5. Generated-asset register
+## 5. Character generation prompts
+
+Tool-agnostic. Tuned to the GDD's derpy-humanoid brief, and deliberately shaped so the generator's known weak spots — faces, fingers, proportions — have nothing to grip.
+
+### Third-person body (what other players see)
+
+```
+Low-poly stylised warehouse worker, full body, T-pose, symmetrical, game-ready
+character. Chunky exaggerated cartoon proportions: broad blocky torso, short
+stubby legs, oversized mitten hands with no separate fingers, simplified rounded
+head with minimal facial detail and no visible mouth. Wearing an open
+high-visibility safety vest over a plain t-shirt, loose work trousers, and heavy
+steel-toe work boots. Flat-shaded solid colour surfaces, no texture detail, no
+logos, no text, no patterns. Strong readable silhouette. Muted grey and beige
+clothing with the safety vest as the only saturated colour. Even neutral
+lighting, no baked shadows, no ground plane or base, plain background.
+```
+
+### First-person arms (what you see)
+
+A separate asset — first-person games almost never reuse the body mesh for the viewmodel.
+
+```
+Low-poly stylised first-person viewmodel arms only, from mid-forearm to hand,
+pair of arms, palms forward. Oversized mitten hands with no separate fingers,
+thick rounded forms. Rolled-up sleeve at the forearm cuff. Flat-shaded solid
+colours, no texture detail. Even neutral lighting, no baked shadows, plain
+background, no body, no head.
+```
+
+### Negative prompt
+
+```
+realistic, photorealistic, high detail, detailed face, individual fingers,
+skin pores, fabric weave, dramatic lighting, baked shadows, ambient occlusion,
+base, plinth, pedestal, weapon, text, logo
+```
+
+### Acceptance checklist
+
+Reject and regenerate rather than fixing by hand — it is faster:
+
+- [ ] T-pose or A-pose, symmetrical
+- [ ] Hands are **mittens**, no separate fingers *(the most common failure)*
+- [ ] No baked shadows or ambient occlusion in the texture
+- [ ] Hi-vis vest on its **own material slot** for runtime tinting
+- [ ] Decimates to ~3–6k quads with hard edges preserved
+- [ ] Silhouette still readable at 400px wide
+
+---
+
+## 6. Generated-asset register
 
 The Steam store page will carry an AI-content disclosure at launch. That is already decided and is not in question.
 
