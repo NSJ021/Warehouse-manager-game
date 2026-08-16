@@ -4,6 +4,7 @@ Append-only. Newest at the top. To change course, write a **new** ADR and mark t
 
 | Date | Decision | Status | ADR |
 |---|---|---|---|
+| 2026-08-16 | The game is called Nice Little Earner | Accepted | [game-name](2026-08-16-game-name.md) |
 | 2026-08-16 | Launch price £9.99 / $11.99 with a launch-week discount | Accepted | [launch-price](2026-08-16-launch-price.md) |
 | 2026-08-16 | Proximity voice chat is in v1 | Accepted | [proximity-voice-in-v1](2026-08-16-proximity-voice-in-v1.md) |
 | 2026-08-16 | ENet for development, Steam P2P for shipping | Accepted | [enet-development-transport](2026-08-16-enet-development-transport.md) |

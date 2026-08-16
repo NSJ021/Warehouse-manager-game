@@ -1,6 +1,8 @@
-# Warehouse Manager — Game Design Document
+# Nice Little Earner — Game Design Document
 
-- **Version:** 0.2 — adds positioning & price (§11), voice chat into scope, netcode model corrected to match ADR 7
+*(working title until 2026-08-16: "Warehouse Manager" — see ADR 11)*
+
+- **Version:** 0.3 — game renamed; adds positioning & price (§11), voice chat into scope, netcode model corrected to match ADR 7
 - **Date:** 2026-08-16
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
@@ -48,6 +50,7 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 8 | ENet for development, Steam P2P for shipping | `decisions/2026-08-16-enet-development-transport.md` |
 | 9 | Proximity voice chat is in v1 | `decisions/2026-08-16-proximity-voice-in-v1.md` |
 | 10 | Launch price £9.99 / $11.99 | `decisions/2026-08-16-launch-price.md` |
+| 11 | The game is called Nice Little Earner | `decisions/2026-08-16-game-name.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -224,6 +227,12 @@ Forklift · layout build mode · cleaning & mess system · blackout and police-r
 **The warehouse is not the hook.** As of August 2026 three warehouse titles exist on Steam — one dead on arrival, one single-player, and one (*Pack and Ship*, 2026) a co-op physics logistics sim with forklifts, contracts and layout optimisation. The setting is being colonised, and it was always the weakest claim available.
 
 Every one of those competitors is an **earnest optimisation sim**. Not one has a moral dilemma, and not one is trying to be funny. That gap is the position.
+
+### The name does the first half of the job
+
+**Nice Little Earner** (ADR 11) states the crew's motive before a single mechanic is explained: *we are here for the money and we are not fussy how*. It commits the game to a **character-led** identity rather than the deadpan-institutional register the genre defaults to — the joke is who you are, not what the paperwork says.
+
+That raises the floor on tone. A game with this name has to actually be funny, and it will be judged against that promise. Flat, earnest execution reads worse under this title than under a neutral one.
 
 ### The line
 
