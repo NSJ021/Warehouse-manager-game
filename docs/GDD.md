@@ -1,6 +1,6 @@
 # Warehouse Manager — Game Design Document
 
-- **Version:** 0.1 (initial)
+- **Version:** 0.2 — adds positioning & price (§11), voice chat into scope, netcode model corrected to match ADR 7
 - **Date:** 2026-08-16
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
@@ -44,6 +44,12 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 4 | Grid-snapped storage, physics transport | `decisions/2026-08-16-grid-storage-physics-transport.md` |
 | 5 | Host-authoritative networking, built first | `decisions/2026-08-16-host-authoritative-netcode.md` |
 | 6 | Lean v1 scope; co-op-first, solo hard | `decisions/2026-08-16-lean-v1-scope.md` |
+| 7 | Client owns its capsule, host owns everything else | `decisions/2026-08-16-client-authoritative-character.md` |
+| 8 | ENet for development, Steam P2P for shipping | `decisions/2026-08-16-enet-development-transport.md` |
+| 9 | Proximity voice chat is in v1 | `decisions/2026-08-16-proximity-voice-in-v1.md` |
+| 10 | Launch price £9.99 / $11.99 | `decisions/2026-08-16-launch-price.md` |
+
+ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively. Check `decisions/decision-log.md` for current status before relying on any of them.
 
 ---
 
@@ -166,10 +172,13 @@ Reputation gates contract quality and volume — that's the whole loop in v1. Th
 
 ## 7. Multiplayer model
 
-- **Host-authoritative.** The host simulates every rigid body. Clients send input and predict only their own character, reconciled against the host.
+- **Host-authoritative over everything that isn't a player.** The host simulates every rigid body, owns every held-item state, and decides every pick up, drop and hand off.
+- **Each client owns its own capsule.** It simulates its own movement locally — no prediction, no reconciliation — and replicates the result for other peers to ease toward. Movement is zero-latency for everyone; anything you *touch* costs one round trip. (ADR 7 — this replaces the earlier input-prediction plan.)
 - **Held items** parent to the holder on the host; transform replicates to clients.
-- **Steam P2P lobbies** via GodotSteam — no servers to run, no infrastructure cost.
+- **Steam P2P lobbies** via GodotSteam — no servers to run, no infrastructure cost. Development runs on ENet so four instances can be tested on one machine; Steam allows only one client per PC (ADR 8).
+- **Proximity voice chat**, 3D-positioned and distance-attenuated, via Steam Voice (ADR 9).
 - **Late join:** v1 allows joining between days only. Mid-day drop-in is a post-launch problem.
+- **No host migration.** If the host drops, the run ends.
 - 1–4 players.
 
 **This is built first.** Retrofitting multiplayer onto a finished physics game is where projects like this die.
@@ -188,32 +197,78 @@ Playable, punishing, clearly not the intended experience — the Lethal Company 
 
 **Audio does the heavy lifting.** Cardboard scrape on concrete. The groan of a loaded rack. Tape screech. Forklift beep. And the glass tinkle — the sound that turns a small mistake into a decision.
 
+**Lighting is a gameplay system, not a mood.** Hard fluorescent strips overhead, aisles lit as bright lanes separated by shadow. This is cheap to build and it serves P2 directly: you navigate by pools of light, which is the mental map the memory game wants you to form.
+
+**Voice is part of the mix, not on top of it.** Proximity chat ships in v1 (ADR 9) and the bus is designed around it — voice ducks against crate and rack sounds rather than drowning them, because both are carrying the comedy. The pillar depends on it: a lie is only dramatic if the others can hear it being told, or hear the pause where the truth should have been.
+
 ---
 
 ## 10. v1 scope
 
 ### In
-Goods in → grid-snapped storage → goods out · physics carry, two-player carry, drag · drop and collision damage · condition tiers · tape gun, patch / confess / comp · client trust & suspicion · rent clock, eviction fail state · one map · 10 and 30-day lease terms · 1–4 co-op over Steam P2P · solo playable.
+Goods in → grid-snapped storage → goods out · physics carry, two-player carry, drag · drop and collision damage · condition tiers · tape gun, patch / confess / comp · client trust & suspicion · rent clock, eviction fail state · one map · 10 and 30-day lease terms · 1–4 co-op over Steam P2P · **proximity voice chat** · solo playable.
 
 ### Out (parked, not cancelled)
-Forklift · layout build mode · cleaning & mess system · blackout and police-raid events · price bartering at the door · 90-day term · additional maps · upgrade trees · proximity voice chat.
+Forklift · layout build mode · cleaning & mess system · blackout and police-raid events · price bartering at the door · 90-day term · additional maps · upgrade trees.
 
-> **First thing back in:** proximity voice chat. It is the highest-ROI feature available to this game — every breakout in the genre has it, and it is what turns a decent co-op game into a clip factory. Design the audio bus for it now even though it's cut.
+> **Proximity voice chat moved from Out to In** — see ADR 9. It was already flagged as the first feature back, and two things settled it: the acquisition channel for this game is short-form video, and a physics-comedy clip with no voices in it is not a clip; and the Steam Voice API turned out to already be in the GodotSteam build the project now carries, so it costs integration time rather than a new dependency.
+>
+> **This is the exception, not the precedent.** Everything remaining on the Out list still needs its own superseding ADR. The guardrail is now more important, not less — one door opening is the moment the others start being pushed.
 
 ---
 
-## 11. Risks
+## 11. Positioning & price
+
+### What this game is not sold on
+
+**The warehouse is not the hook.** As of August 2026 three warehouse titles exist on Steam — one dead on arrival, one single-player, and one (*Pack and Ship*, 2026) a co-op physics logistics sim with forklifts, contracts and layout optimisation. The setting is being colonised, and it was always the weakest claim available.
+
+Every one of those competitors is an **earnest optimisation sim**. Not one has a moral dilemma, and not one is trying to be funny. That gap is the position.
+
+### The line
+
+> **A co-op game where the person holding the broken thing decides whether to lie about it.**
+
+That is the pitch, and it leads everywhere: store page, trailer, capsule text, and the first thirty seconds of play. P1 was already the pillar; this section commits to it being the *marketing* too. A player should hit their first patch-or-confess fork inside the first session, not in hour two.
+
+### Price
+
+**£9.99 / $11.99, with a 10% launch-week discount** (ADR 10). Deliberately in the cheap co-op cluster rather than the £16.75 sim shelf, because a four-player game's real price is four times its listed one, and because sim-lane pricing is underwritten by solo depth this game has openly chosen not to build.
+
+### Comparable set
+
+| Game | Price | Reviews | Why it matters |
+|---|---|---|---|
+| R.E.P.O. | £7.99 | 418k | The build target. Physics cargo, first person, proximity voice. |
+| Lethal Company | £8.50 | 510k | Cheapest art on the shelf, best-selling game on it. Darkness does the work of detail. |
+| PEAK | £3.19 | 352k | Flat-shaded low-poly reads as style, not budget, when the palette is disciplined. |
+| Schedule I | £16.75 | 313k | The sim lane's one breakout — and it went viral on the same streamer mechanics. |
+| Supermarket Simulator | £16.75 | 84k | The subject-matter reference: shelving, stock, aisles, labels. |
+| **Moving Out 2** | £6.24 | **616** | **The warning.** Co-op physics, carrying awkward objects with friends — and it failed. |
+
+*Review counts are lifetime and a proxy for sales, not a measure of them.*
+
+### The Moving Out 2 lesson
+
+The closest mechanical relative this game has sold almost nothing. The differences are instructive, and four of the five are already locked in our favour: it was top-down where we are first person, level-based where we are run-based, score-resetting where we have persistent rent, and silent where we now have voice. **A top-down camera lets you watch the chaos. A first-person camera puts you inside it.** ADR 1 is independently confirmed by every breakout in this genre.
+
+---
+
+## 12. Risks
 
 | Risk | Severity | Mitigation |
 |---|---|---|
 | Networked physics eats the schedule | **Critical** | Host-authoritative by design. Build it in Phase 0 and stop the project if it isn't solid. |
+| Falling between the two price/design lanes | **High** | Present as chaos-first, sim-underneath. Price in the cheap cluster. The dilemma must be legible in the first session. |
 | Physics jitter ruins precise storage | High | Grid-snap on insert. Physics only in transit. |
-| Scope creep from the parked fun list | High | ADR 6 is the guardrail. Anything from the Out list needs a superseding ADR. |
+| Scope creep from the parked fun list | High | ADR 6 is the guardrail. Anything from the Out list needs a superseding ADR — ADR 9 is the exception, not the precedent. |
+| Genre saturation — "another Lethal Company clone" | High | Saturation is measurably above the Steam average. The 2025–26 breakouts all cleared it by pushing somewhere unexpected. The dilemma is that direction; spooky scavenging is not. |
+| A competitor ships the warehouse first | Medium | *Pack and Ship* is due 2026. It is an optimisation sim with no comedy and no dilemma — different game, same shelf. Avoid its realistic art direction so the two don't get filed together. |
 | Solo play is boring | Medium | Accepted and stated up front. Co-op-first is the honest position. |
 
 ---
 
-## 12. Build order
+## 13. Build order
 
 | Phase | Goal | Gate |
 |---|---|---|
@@ -223,7 +278,7 @@ Forklift · layout build mode · cleaning & mess system · blackout and police-r
 | 3 | Damage, condition tiers, tape gun, patch / confess / comp | **The pillar works or the game doesn't** |
 | 4 | Clients, trust, suspicion, economy, rent, eviction | A run can be lost |
 | 5 | Lease Run wrapper, scoring, unlocks | A run can be won |
-| 6 | Art pass, audio, juice | It's a game, not a prototype |
+| 6 | Art pass, audio, **proximity voice chat**, juice | It's a game, not a prototype — and it can clip itself |
 | 7 | Solo tuning, balance, playtest | Shippable |
 
 Phases 0 and 3 are the two that decide whether this game exists. Everything else is execution.
