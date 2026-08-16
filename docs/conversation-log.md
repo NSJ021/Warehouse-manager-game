@@ -4,6 +4,58 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 2 — 2026-08-16
+
+**The netcode spine connects, the market gets checked, and the game gets its real name.**
+
+### What was built
+
+**GodotSteam 4.21 GDExtension vendored** (win64 only — 8.3MB, against 99MB for the upstream six-platform archive). It ships `SteamMultiplayerPeer` inside the same binary, so no second addon is needed. The full Steam Voice API turned out to be in there too, which changed a scope decision later the same session.
+
+**Phase 0 netcode spine**, transport-agnostic behind a `NetTransport` abstraction:
+
+- `ENetTransport` — development. Four instances on one machine.
+- `SteamTransport` — shipping. `host_with_lobby` / `connect_to_lobby`.
+- `Net` autoload owning session lifecycle, roster, and the spawn handshake.
+- First-person `Player` with client-authoritative movement and puppet smoothing.
+- `TestRoom` greybox with host-driven spawning via `MultiplayerSpawner`.
+
+**Verified, not assumed.** Two headless processes connected over real networking, agreed on both peer IDs, spawned matching bodies at distinct spawn points, and exited clean with zero errors or warnings. Testing found a genuine teardown bug — player bodies querying authority for a frame after the peer was gone — which was fixed and re-verified.
+
+### Decisions made
+
+Five ADRs (see `decisions/decision-log.md`):
+
+| Decision | Short reasoning |
+|---|---|
+| Client-authoritative capsule | Input prediction with reconciliation is weeks of work whose payoff is cheat resistance. Four friends in PvE have nothing to cheat for, and building it would have made the reconciliation layer the Phase 0 gate instead of the handoff feel. Partly supersedes ADR 5. |
+| ENet for dev, Steam for ship | Steam allows one client per machine, so a Steam-only test caps at two players and could never exercise the four-player races the gate exists to catch. |
+| Proximity voice chat into v1 | Partly supersedes ADR 6. The acquisition channel is short-form video and a physics-comedy clip with no voices is not a clip. Cost collapsed once the Steam Voice API was found in the build already vendored. Lands in Phase 6. |
+| Launch price £9.99 / $11.99 | Comparable data splits the field into a cheap chaos cluster and a £16.75 sim shelf with almost nothing between. A four-player game's real price is 4×, and sim pricing is underwritten by solo depth this game has chosen not to build. |
+| **Renamed to `Nice Little Earner`** | "Warehouse Manager" collided with an existing Steam title, promised the sim shelf the price ADR rejected, and named the setting rather than the tone. |
+
+### Research
+
+Steam storefront and review data pulled for 26 comparable titles. Full report published as an artifact with the reference art board.
+
+- **"The lane is open" is no longer true.** Three warehouse titles now exist; `Pack and Ship` ships in 2026 with co-op and physics. But all of them are earnest optimisation sims — none has a dilemma, none is trying to be funny. The setting was never the moat.
+- **Moving Out 2 is the cautionary tale.** The closest mechanical relative that has ever shipped — co-op, physics, carrying awkward objects with friends — has 616 lifetime reviews at 75%, against R.E.P.O.'s 417,685 at 96%. Of the five dimensions separating them, four already match the winner: first-person, run-based, persistent stakes, cheap art. The fifth was voice chat, now fixed.
+- **Naming.** Roughly sixty candidates collision-checked across four registers. Runners-up: `Sold As Is`, `Chancers`, `No Warranty`. `No Questions Asked` was the best conceptual match and is already taken.
+
+### Open questions
+
+- **Sales counter** — proposal to let players sell the cargo they are meant to be storing, and short-change depositors at intake. Strong idea that converges with the new name, but half of it (bartering at the door) is on the parked list and the other half is new scope. Recommended framing is *borrowing, not stealing*: cash now, certain reckoning on collection day, so it manufactures more damage dilemmas rather than replacing them. Needs an ADR before anything is built.
+- **Early Access or 1.0** — leaning EA, undecided. Needs settling before a store page, not before Phase 1.
+- **Detection and patch-quality maths** — still the thinnest part of the design. The dilemma only works if the right answer changes with your situation; if patching dominates on average, the pillar collapses into a button. Solvable as a spreadsheet before Phase 3.
+- **Trademark search** on the new name, outstanding.
+- **Folder and remote renames** — the game is renamed but `warehouse-manager/`, the outer project folder and the GitHub remote still carry the old name. Renaming the Godot folder requires updating `.git/info/exclude` in the same move, or the MCP addon silently becomes trackable in a public repo.
+
+### Next steps
+
+Finish Phase 0: the physics crate, pick up / drop / hand off, two-player carry. Then a **physics budget stress test** — how many rigid bodies survive across four networked clients — because that number silently constrains floor clutter, rack shedding and how many items a day can involve. Then the two-machine Steam validation run, which is the first test of the shipping transport.
+
+---
+
 ## Session 1 — 2026-08-16
 
 **From a loose concept to a merged design foundation and a scaffolded project.**
