@@ -50,6 +50,19 @@ Steam storefront and review data pulled for 26 comparable titles. Full report pu
 - **Trademark search** on the new name, outstanding.
 - **Folder and remote renames** — the game is renamed but `warehouse-manager/`, the outer project folder and the GitHub remote still carry the old name. Renaming the Godot folder requires updating `.git/info/exclude` in the same move, or the MCP addon silently becomes trackable in a public repo.
 
+### Foundations raised
+
+Four engineering foundations identified as prerequisites for a project of this size. Detail lives in the local development notes; each becomes a skill, ADR or tracked doc as it is worked through.
+
+1. **A test harness that is bombproof.** The risky parts here — networked physics, handoff, authority — are the parts unit tests are worst at, so the integration layer matters more than the unit layer. The paired headless run used to verify the spine is the seed of it; it needs to become one command, deterministic, wired into the pre-push path. A flaky netcode test is worse than none.
+2. **Get GSD running.** Blocked on one decision first: this project already has a roadmap (GDD §13, Phases 0–7) and eleven ADRs as its source of truth. Decide whether GSD wraps that or replaces it — two competing roadmaps would be worse than neither.
+3. **Naming conventions and structure, agreed once and enforced.** Code style is covered by the GDScript standards skill. The *folder layout* was invented during Phase 0 and never ratified. **This has a deadline:** moving files rewrites `.tscn` paths and UIDs, which is cheap at six files and expensive once Phase 1 adds racks and zones. Settle it before Phase 1.
+4. **Accuracy — check, never assume.** Verify with tools rather than recall; state what was actually checked; distinguish verified from inferred; treat `decisions/` as the source of truth and check `decision-log.md` for supersessions first.
+
+### Housekeeping
+
+Git hooks installed to enforce the publishing rules automatically — `pre-commit` blocks staged filenames, text contents and stray editor temp files; `commit-msg` blocks the message, which `pre-commit` cannot see. Verified against seven cases including binaries. They live in `.git/`, so they are machine-local by design and need reinstalling on a fresh clone: a tracked file listing the blocked terms would itself be the leak it prevents.
+
 ### Next steps
 
 Finish Phase 0: the physics crate, pick up / drop / hand off, two-player carry. Then a **physics budget stress test** — how many rigid bodies survive across four networked clients — because that number silently constrains floor clutter, rack shedding and how many items a day can involve. Then the two-machine Steam validation run, which is the first test of the shipping transport.
