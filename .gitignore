@@ -1,0 +1,53 @@
+# --- Godot 4 ---
+.godot/
+.import/
+*.translation
+
+# Android / iOS build templates
+/android/
+/ios/
+
+# --- Exports & builds ---
+build/
+builds/
+export/
+exports/
+*.pck
+*.exe
+*.x86_64
+*.dmg
+*.app
+*.apk
+*.aab
+*.zip
+
+# export_presets.cfg can contain keystore passwords and Steam credentials.
+# Keep it local; commit a sanitised export_presets.cfg.example instead.
+export_presets.cfg
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+.mcp.json
+credentials/
+secrets/
+*.pem
+*.key
+*.keystore
+*.jks
+
+# --- Editors & OS ---
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# --- Misc ---
+*.log
+*.tmp
+logs/
