@@ -1,0 +1,71 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/main/main.gd" id="1_main"]
+
+[node name="Main" type="Node"]
+script = ExtResource("1_main")
+
+[node name="WorldRoot" type="Node3D" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="HUD" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Info" type="Label" parent="UI/HUD"]
+layout_mode = 1
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 460.0
+offset_bottom = 130.0
+
+[node name="Menu" type="CenterContainer" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="UI/Menu"]
+layout_mode = 2
+
+[node name="Layout" type="VBoxContainer" parent="UI/Menu/Panel"]
+custom_minimum_size = Vector2(340, 0)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="UI/Menu/Panel/Layout"]
+layout_mode = 2
+text = "Warehouse Manager - Phase 0"
+horizontal_alignment = 1
+
+[node name="HostENet" type="Button" parent="UI/Menu/Panel/Layout"]
+layout_mode = 2
+text = "Host (ENet - local testing)"
+
+[node name="JoinENet" type="Button" parent="UI/Menu/Panel/Layout"]
+layout_mode = 2
+text = "Join (ENet)"
+
+[node name="AddressField" type="LineEdit" parent="UI/Menu/Panel/Layout"]
+layout_mode = 2
+placeholder_text = "127.0.0.1  /  Steam lobby ID"
+
+[node name="HostSteam" type="Button" parent="UI/Menu/Panel/Layout"]
+layout_mode = 2
+text = "Host (Steam P2P)"
+
+[node name="JoinSteam" type="Button" parent="UI/Menu/Panel/Layout"]
+layout_mode = 2
+text = "Join (Steam lobby ID)"
+
+[node name="Status" type="Label" parent="UI/Menu/Panel/Layout"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+autowrap_mode = 3
+horizontal_alignment = 1
