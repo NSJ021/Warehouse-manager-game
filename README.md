@@ -52,16 +52,20 @@ Variety comes from **constraints**, not assets: cold storage bleeds money on ref
 ## Repo layout
 
 ```
-docs/GDD.md          Design document — pitch, systems, scope, build order
-decisions/           Architecture Decision Records (append-only)
-  decision-log.md    Index — start here
+docs/GDD.md                Design document — pitch, systems, scope, build order
+docs/conversation-log.md   Session-by-session record of decisions and progress
+decisions/                 Architecture Decision Records (append-only)
+  decision-log.md          Index — start here
+warehouse-manager/         The Godot project
 ```
 
 **`decisions/` is the source of truth.** ADRs win over the GDD and over this README until superseded. Changing course means writing a *new* ADR, not editing an old one.
 
 ## Status
 
-**Design phase — no code yet.**
+**Design complete. Godot project scaffolded — no gameplay code yet.**
+
+The project is on Godot 4.6 with Forward+ rendering and the Jolt physics backend, matching the engine ADR. Nothing else is built.
 
 Next milestone is **Phase 0: the netcode spine** — four players, an empty room, one physics crate, pick up / drop / hand off / two-player carry. Nothing else. This is a project gate: if it isn't rock solid, the project stops there rather than building on a broken foundation.
 
