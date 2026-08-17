@@ -69,8 +69,8 @@ Plans:
 
 Plans:
 - [ ] 01-01-PLAN.md — Prove the spawner despawns a freed crate on both peers; name physics layer 4 `storage` *(wave 1)*
-- [ ] 01-02-PLAN.md — `StorageGrid` slot arithmetic, test-first, and the unit layer wired into the suite *(wave 1)*
-- [ ] 01-03-PLAN.md — The rack fixture: slot geometry, occupancy as data, derived local visuals *(wave 2)*
+- [ ] 01-02-PLAN.md — `StorageGrid` slot arithmetic, test-first, and the unit layer wired into the suite *(wave 1)* — **⚠ needs rework for ADR 18's cell model**
+- [ ] 01-03-PLAN.md — The rack fixture: slot geometry, occupancy as data, derived local visuals *(wave 2)* — **⚠ needs rework for ADR 18's cell model**
 - [ ] 01-04-PLAN.md — Place and retrieve: referee RPCs, one aim ray for crates and slots, a second integration session *(wave 3)*
 - [ ] 01-05-PLAN.md — Goods IN / Goods OUT zones, agreed on both peers *(wave 3)*
 - [ ] 01-06-PLAN.md — Aim feedback and the snap: slot highlight, travel, placement sound *(wave 4)*

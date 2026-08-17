@@ -1,7 +1,7 @@
 # The storage grid module is 0.5 m
 
 - **Date:** 2026-08-17
-- **Status:** Accepted
+- **Status:** **Superseded in full** by [storage-cells](2026-08-17-storage-cells.md) (ADR 18). The 0.5 m module survives as the size of a Small item; the 1/2/4 slot counts do not. Kept for the reasoning, and because the risk it named — that Large would not read as a two-person job — is exactly what superseded it.
 - **Deciders:** NJ
 
 ## Context

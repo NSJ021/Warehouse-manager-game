@@ -4,8 +4,9 @@ Append-only. Newest at the top. To change course, write a **new** ADR and mark t
 
 | Date | Decision | Status | ADR |
 |---|---|---|---|
+| 2026-08-17 | Storage cells bundle small cargo; a cell is atomic | Accepted | [storage-cells](2026-08-17-storage-cells.md) |
 | 2026-08-17 | Settled cargo becomes solid; disturbed cargo wakes | Accepted | [settled-clutter-is-solid](2026-08-17-settled-clutter-is-solid.md) |
-| 2026-08-17 | The storage grid module is 0.5 m | Accepted | [storage-grid-module](2026-08-17-storage-grid-module.md) |
+| 2026-08-17 | The storage grid module is 0.5 m | **Superseded** by ADR 18 | [storage-grid-module](2026-08-17-storage-grid-module.md) |
 | 2026-08-17 | The planning tool wraps the build order, never replaces it | Accepted | [gsd-wraps-the-build-order](2026-08-17-gsd-wraps-the-build-order.md) |
 | 2026-08-17 | Physics body budget of 150; cargo replicates at 20 Hz on change | Accepted | [physics-budget](2026-08-17-physics-budget.md) |
 | 2026-08-17 | Held items are force-driven, not parented | Accepted | [springy-held-item-grab](2026-08-17-springy-held-item-grab.md) |

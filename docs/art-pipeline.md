@@ -10,10 +10,19 @@ Nothing here is a locked decision. Where a call becomes load-bearing it graduate
 
 **Grid-critical geometry is hand-modelled. Everything organic can be generated.**
 
-> ⚠ **The grid module is 0.5 m** (ADR 16), and grid-critical assets are modelled to it
-> *exactly* — not approximately, not "close enough to snap". A crate is 0.5 m cubed; a
-> Medium is 1.0 × 0.5; a Large is 1.0 × 1.0; a four-slot rack bay is 2.0 m wide. Getting
-> this wrong is not a visual problem, it is a snapping problem, and it is discovered late.
+> ⚠ **The storage cell is 1.0 m and a Small crate is 0.5 m** (ADR 18, superseding 16).
+> Grid-critical assets are modelled to these *exactly* — not approximately, not "close enough
+> to snap":
+>
+> | Asset | Exact size |
+> |---|---|
+> | Small crate | 0.5 × 0.5 × 0.5 (eight fit a cell) |
+> | Medium crate | 1.0 × 1.0 × 1.0 (one whole cell) |
+> | Large crate | 2.0 × 1.0 × 1.0 (two cells) |
+> | Rack bay | 2.0 wide × 2.0 deep × 3.0 tall (12 cells) |
+>
+> Getting this wrong is not a visual problem, it is a snapping problem, and it is discovered
+> late.
 
 The grid-storage ADR makes exact dimensions load-bearing — a rack slot that is 3% off does not snap. Generative tools are indifferent to precise measurement, which is fine for a person and fatal for a shelf.
 

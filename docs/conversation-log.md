@@ -74,9 +74,34 @@ That last one answers the "both machines are on my LAN" question: two LAN machin
 - **Feel tuning is provisional.** Stiffness 2400 / damping 460 came from one session. All exported and live-tunable.
 - **A named crew with specialties** — proposed, undecided, in `docs/idea-book.md`. Unique picks settled; roster wants to be about double the party size or nobody actually chooses.
 
+### Later the same session — Phase 1 planned, and storage redesigned
+
+**The planning tool was adopted as a wrapper (ADR 15)**, then used to plan Phase 1: research, nine plans across seven waves, and an independent verification pass that returned clean. The decision that mattered was made before the first command — the roadmap mirrors GDD §13 rather than generating a rival, because two roadmaps do not stay in agreement.
+
+**Foundation #4 stopped being only a rule.** `test/api/engine_assumptions.gd` now asserts 77 engine and addon assumptions, including three whose failure would otherwise be invisible. It exists because six throwaway probes were written, run and deleted in one day. It immediately caught two bugs in itself: `ClassDB` lookups take `no_inheritance` and reported inherited members as missing, and referencing a `class_name` statically made the test compile-depend on an autoload that does not exist in a `--script` run — it reported a pass and *then* failed to compile.
+
+**Two design decisions came out of playing the numbers rather than building.**
+
+**ADR 17 — settled cargo becomes solid.** GDD §6.2 promised floor stacking "blocks pathing" and it did not: cargo and players share no collision mask, so clutter obstructed cargo but not people. A crate that settles now turns static and joins the world layer; the push sensor still fires while frozen, so walking into it wakes it and it scatters. Verified before deciding — a static crate blocks a capsule at exactly crate face plus capsule radius and cannot be bulldozed (0.000 m). It does not disturb ADR 7, and the reason is the elegance: a static crate is *world geometry*, and clients already simulate against that authoritatively.
+
+**ADR 18 — storage cells, superseding ADR 16 four hours after it was fixed.** The trigger was an innocent question: how much does a rack hold? ADR 16 had fixed footprints only, never depth, height or pitch. Answering exposed something worse — its Medium (1.0 × 0.5 × 0.5) does not occlude your view and its Large (1.0 m square) does not need two people, so the model was quietly undermining the co-op incentive the whole game leans on.
+
+The new model: a **cell is 1.0 m**, a Small is 0.5 m and eight fit a cell, a Medium *is* a cell, a Large is two. A cell is **atomic** and retrieval within it is **LIFO**, which turns FIFO discipline from a habit into something the building enforces — unstack six crates while a client waits. A rack is 2 × 2 × 3 = 12 cells: 96 Smalls, 12 Mediums or 6 Larges. And **placement decides burial**: a 2-deep rack against a wall buries its back row, the same rack as an island has two front rows.
+
+Two things fell out of that discussion worth recording. **Fees must price volume, not items** — otherwise eight Smalls in a cell earn eight times a Medium in the same space and the packing decision collapses. And **Large gets no size premium**: for the same commodity, large and small pay the same per volume, and the reward for Large is *fewer journeys*, which scales with how many mates you have. That is the co-op incentive expressed through the economy rather than a rule.
+
+**The dodgy-client idea landed in scope by being reframed.** Contraband as a cargo system implies police, and raids are parked. As a *client personality* it needs nothing new: a Tony Montana knock-off shipping "legitimate baby talcum powder", paying far above rate, risk borne entirely by reputation with legitimate clients. The joke does the work.
+
+### Open questions
+
+- **Steam join half** — still blocked on a second machine.
+- **Plans 01-02 and 01-03** were written against the superseded slot model and need rework before Phase 1 executes.
+- **Does two-deep racking plus in-cell burial become tedious rather than tense?** Two layers of awkwardness stacked. Relieve with island placement before touching either rule.
+- **The memory game gets coarser** under cells — twelve addresses instead of twenty-four. Traded knowingly for physical rummaging.
+
 ### Next steps
 
-Phase 1: storage. Racks with slots, grid-snapped insertion, Goods IN / Goods OUT zones, and rack shedding. Verifiable headlessly, because placing into a slot is the same client-asks/host-decides path the harness already tests.
+Rework 01-02 and 01-03 for the cell model, then execute Phase 1.
 
 ---
 

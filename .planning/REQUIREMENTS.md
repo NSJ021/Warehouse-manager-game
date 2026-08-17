@@ -26,15 +26,16 @@
 
 ### Storage (STORE)
 
-- [ ] **STORE-01**: Racks expose slots that hold items
-- [ ] **STORE-02**: Items snap into slots on insert, with no physics jitter
+- [ ] **STORE-01**: Racks expose **cells** that hold cargo — 8 Smalls, or 1 Medium, or half a Large
+- [ ] **STORE-02**: Cargo snaps into cells on insert, with no physics jitter
 - [ ] **STORE-03**: Goods IN and Goods OUT zones detect what is inside them
 - [ ] **STORE-04**: Floor stacking is allowed, blocks pathing, and counts as clutter
 - [ ] **STORE-05**: Racks have stability; hit one hard enough and the top row sheds
+- [ ] **STORE-06**: A cell is atomic — one kind of cargo at a time — and retrieval within it is last-in-first-out
 
 ### Goods (GOODS)
 
-- [ ] **GOODS-01**: Size classes — Small 1 slot, Medium 2 slots and view-blocking, Large 4 slots
+- [ ] **GOODS-01**: Size classes — Small (0.5 m, 8 per cell), Medium (1.0 m, one whole cell, view-blocking), Large (2.0 × 1.0 × 1.0, two cells)
 - [ ] **GOODS-02**: Fragility 0–3, from crated machinery to glassware
 - [ ] **GOODS-03**: A store-until date that is both the deadline and the spoilage limit
 - [ ] **GOODS-04**: Condition tiers — Pristine, Scuffed, Damaged, Destroyed
@@ -54,7 +55,7 @@
 
 ### Clients (CLIENT)
 
-- [ ] **CLIENT-01**: A named roster of 4–6 clients, each with a personality
+- [ ] **CLIENT-01**: A named roster of 4–6 clients, each with a personality — including dodgy ones whose cargo everybody can see through, played entirely through trust and suspicion with no contraband system
 - [ ] **CLIENT-02**: Trust, which gates contract quality and volume
 - [ ] **CLIENT-03**: Suspicion, which is raised permanently by being caught
 
@@ -63,6 +64,8 @@
 - [ ] **ECON-01**: Income from storage fees, on-time delivery and condition bonuses
 - [ ] **ECON-02**: Daily rent, plus costs for tape, supplies and rack repairs
 - [ ] **ECON-03**: Failing to make rent evicts you and ends the run
+- [ ] **ECON-04**: Storage fees price **volume (per cell per day), never per item** — forced by ADR 18, since per-item fees make Smalls strictly dominant
+- [ ] **ECON-05**: Value density varies by cargo type, and Large gets **no size premium** — its reward is fewer journeys
 
 ### The run (RUN)
 
