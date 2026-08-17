@@ -20,11 +20,29 @@ signal hold_broken(peer_id: int)
 ## Pull toward the hold point. Stiffness against crate mass is what sets the
 ## sag, and the sag is deliberate feedback about weight (ADR 13) — it is not a
 ## bug to be tuned out.
-const HOLD_STIFFNESS := 1500.0
-const HOLD_DAMPING := 250.0
+##
+## Tuned from 1500/250 after the first playable test read as floaty (NJ). The two
+## numbers move together, and here is the arithmetic so the next change is not a
+## guess:
+##
+##   sag at rest   = mass × gravity / stiffness   → 12 × 9.8 / 2400 ≈ 4.9 cm
+##   critical damp = 2 × √(stiffness × mass)      → 2 × √(2400 × 12) ≈ 339
+##
+## So 340 is critically damped: it settles as fast as possible without
+## overshooting. Raising stiffness *alone* leaves it under-damped and the crate
+## bounces on the spring instead of hanging from it.
+const HOLD_STIFFNESS := 2400.0
+const HOLD_DAMPING := 340.0
 ## Load-bearing rather than a nicety: a spring whose force outruns the solver is
-## exactly how this becomes a jitter bug.
-const MAX_HOLD_FORCE := 4000.0
+## exactly how this becomes a jitter bug. Raised alongside stiffness so the clamp
+## stays a safety net instead of quietly becoming the thing that limits a normal
+## carry — at full stretch the spring alone now asks for 2400 × 2.0 = 4800 N.
+##
+## There is far more headroom here than the numbers suggest: this spring is
+## stable while dt < 2 / √(stiffness / mass), which at 60 Hz allows a stiffness
+## in the tens of thousands. 2400 is nowhere near the limit, so if it still reads
+## floaty it can go a great deal higher before the solver is the problem.
+const MAX_HOLD_FORCE := 6500.0
 ## Keeps the crate upright and facing the holder, so labels stay readable once
 ## there are labels to read (Phase 2).
 const ALIGN_STIFFNESS := 45.0
