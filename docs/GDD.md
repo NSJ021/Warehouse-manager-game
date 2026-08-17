@@ -216,6 +216,9 @@ Goods in → grid-snapped storage → goods out · physics carry, two-player car
 ### Out (parked, not cancelled)
 Forklift · layout build mode · cleaning & mess system · blackout and police-raid events · price bartering at the door · 90-day term · additional maps · upgrade trees.
 
+### Proposed, undecided
+Ideas raised during development that are neither in scope nor parked — they have never been decided either way. They live in **[`docs/idea-book.md`](idea-book.md)** so they are neither lost nor quietly built: a named four-character crew with specialties, and the sales counter. Same rule as the Out list — each needs its own ADR to enter v1.
+
 > **Proximity voice chat moved from Out to In** — see ADR 9. It was already flagged as the first feature back, and two things settled it: the acquisition channel for this game is short-form video, and a physics-comedy clip with no voices in it is not a clip; and the Steam Voice API turned out to already be in the GodotSteam build the project now carries, so it costs integration time rather than a new dependency.
 >
 > **This is the exception, not the precedent.** Everything remaining on the Out list still needs its own superseding ADR. The guardrail is now more important, not less — one door opening is the moment the others start being pushed.
