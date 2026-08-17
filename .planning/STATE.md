@@ -14,11 +14,16 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: none yet
-Status: Ready to plan
-Last activity: 2026-08-17 — Phase 0 closed except the Steam join; physics budget measured; GSD adopted
+Plan: none started — **9 plans across 7 waves, planned and verified**
+Status: **Ready to execute** — `/gsd:execute-phase 01`, from a fresh context
+Last activity: 2026-08-17 — storage redesigned around cells (ADR 18), 01-02/01-03 reworked and re-verified
 
 Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
+
+**Wave 1 starts with 01-01 (prove the spawner despawns a freed crate on both peers, three
+fallbacks ranked) and 01-02 (cell arithmetic, test-first) in parallel. 01-01 is the load-bearing
+unknown — if it needs a fallback, 01-03 and 01-04 must adapt and no plan currently tells them
+to.**
 
 ## Accumulated Context
 
@@ -42,7 +47,11 @@ constrain upcoming work:
 - **Steam join half is unproven** and needs a second machine. `docs/steam-validation-run.md`.
 - **Detection and patch maths are undefined** — the thinnest part of the GDD, and Phase 3 depends on it entirely.
 - **The storage unit is a 1.0 m cell** (ADR 18, superseding 16). Nothing is modelled yet, and the crate sizes must match exactly before anyone builds art.
-- Plans 01-02 and 01-03 have been **reworked for ADR 18's cell model**, and the concept was renamed slot → cell across every plan. Phase 1 is ready to execute.
+- Plans 01-02 and 01-03 were **reworked for ADR 18's cell model** and re-verified. The
+  re-check found two blockers, both caused by the slot → cell rename being a text substitution
+  rather than a semantic one: 01-04 still enforced one item per cell, and two broadcast methods
+  were called but never defined. Both fixed. **A cell now holds a stack of crate ids rather than
+  a count**, so LIFO is observable through the real player path rather than only in a unit test.
 - **Feel tuning is provisional.** Hold stiffness 2400 / damping 460 came from one play session. All exported and tunable live.
 
 ### Constraints learned the hard way

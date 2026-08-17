@@ -99,9 +99,41 @@ Two things fell out of that discussion worth recording. **Fees must price volume
 - **Does two-deep racking plus in-cell burial become tedious rather than tense?** Two layers of awkwardness stacked. Relieve with island placement before touching either rule.
 - **The memory game gets coarser** under cells — twelve addresses instead of twenty-four. Traded knowingly for physical rummaging.
 
+### How the session ended
+
+Plans 01-02 and 01-03 were reworked for the cell model, and the concept was renamed slot → cell
+across every plan — 139 replacements. Re-running the plan checker on the two rewrites found
+**two blockers, both caused by that rename being a text substitution rather than a semantic
+one**, which is the exact risk flagged when doing it:
+
+- **01-04 still enforced one item per cell.** Its validation read "the cell is empty" and its
+  test asserted "occupied cells refuse" as *correct*. Every task would have passed its own
+  verify step while shipping a rack holding 12 items instead of 96 — the packing decision ADR
+  18 exists to create would simply never happen, and LIFO would only ever run inside a unit test.
+- **`apply_cell_filled` / `apply_cell_cleared` were called by two plans and defined by none.**
+  The read half of that contract had been fixed; the write half was missed.
+
+Chasing the second surfaced a third problem neither pass had flagged: 01-04 asserted
+`occupant(cell) != 0` while the rewrite returned a kind — a type mismatch hiding under a
+matching name. Fixed at the data model rather than the signature: **a cell now holds a stack of
+crate ids**, so `occupied_count` and the contents cannot disagree, and **LIFO is observable
+through the real player path** rather than only in isolation. A mechanic nothing observes is a
+mechanic that quietly breaks.
+
+Also purged the superseded slot model from the roadmap, where **Phase 2's success criteria still
+said items occupy "1, 2 and 4 slots"** — a dead decision sitting in a future phase's acceptance
+criteria, which is how the wrong thing gets built with a document vouching for it.
+
+Everything merged to `main` (PRs #3–#6). 19 ADRs. Suite green across api, smoke and integration.
+
 ### Next steps
 
-Rework 01-02 and 01-03 for the cell model, then execute Phase 1.
+**Execute Phase 1** — `/gsd:execute-phase 01`, from a fresh context. Nine plans, seven waves.
+Wave 1 is the despawn proof and the cell arithmetic in parallel. The despawn proof is the
+load-bearing unknown: if it needs its fallback, 01-03 and 01-04 have to adapt and no plan
+currently tells them to.
+
+Still blocked: the Steam join half, which needs a second machine.
 
 ---
 
