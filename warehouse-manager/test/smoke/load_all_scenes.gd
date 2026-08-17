@@ -44,6 +44,14 @@ func _initialize() -> void:
 func _check(path: String) -> void:
 	_checked += 1
 
+	# Checked before loading, because loading is not strict enough on its own:
+	# Godot will happily load and instance a scene whose script file is missing,
+	# substituting a null script and only printing an ERROR. Proven by planting a
+	# scene pointing at a nonexistent script — this assertion passed it, and only
+	# the runner's zero-tolerance error scan caught it. Verifying the declared
+	# dependencies closes that hole rather than relying on log text.
+	_check_dependencies(path)
+
 	var packed := load(path) as PackedScene
 	if packed == null:
 		_fail("%s — did not load as a PackedScene" % path)
@@ -58,6 +66,23 @@ func _check(path: String) -> void:
 
 	print("[smoke] ok  %-42s root=%s (%s)" % [path, instance.name, instance.get_class()])
 	instance.free()
+
+
+## Every res:// path a scene declares as an ext_resource must actually exist.
+## Catches a missing script, a moved sub-scene, and the stale-path-after-a-move
+## case that ADR 12 warns is silent rather than loud.
+func _check_dependencies(scene_path: String) -> void:
+	var text := FileAccess.get_file_as_string(scene_path)
+	if text.is_empty():
+		_fail("%s — could not be read as text" % scene_path)
+		return
+
+	var pattern := RegEx.new()
+	pattern.compile('\\[ext_resource[^\\]]*path="([^"]+)"')
+	for found in pattern.search_all(text):
+		var dependency := found.get_string(1)
+		if not ResourceLoader.exists(dependency):
+			_fail("%s — declares a missing dependency: %s" % [scene_path, dependency])
 
 
 func _fail(message: String) -> void:
