@@ -52,9 +52,17 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Called by the host's referee once it has decided. Not a request — a verdict.
 func on_hold_granted(crate: Crate) -> void:
 	_held = crate
+	if crate != null:
+		# What you are holding rides directly in front of the camera, so without
+		# this the ray only ever hits your own crate and you can never aim at
+		# anything past it. Harmless while E just drops it; fatal in Phase 1,
+		# where you have to aim at a rack slot with a crate in your hands.
+		_ray.add_exception(crate)
 
 
 func on_hold_released() -> void:
+	if _held != null:
+		_ray.remove_exception(_held)
 	_held = null
 
 

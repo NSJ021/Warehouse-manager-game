@@ -7,78 +7,86 @@ extends RigidBody3D
 ## Held crates are force-driven and never parented (ADR 13). The host pulls the
 ## body toward a hold point in front of each holder with a spring-damper, so the
 ## crate keeps colliding with the world for real, sags under its own weight, and
-## renders its own latency as mass rather than as error.
+## renders its own latency as mass rather than as error. Throwing falls out of
+## this for free — momentum is real, so swinging and releasing lobs it.
 ##
 ## Only the host runs [method _physics_process]. If clients simulated locally
 ## they would fight the host and drift, so they are frozen and posed from
 ## [member sync_position] / [member sync_basis] instead.
+##
+## Every tuning value below is exported rather than constant so it can be dialled
+## in the inspector while the game runs. Two things to know when you do:
+## the Remote tree edits one crate, not all of them — handy for A/B, surprising
+## otherwise — and remote edits are live-only, so write the number down before
+## you quit or it dies with the process. Changing the default here changes every
+## crate.
 
-## The host has taken this crate off a holder because it was dragged past
-## [constant BREAK_DISTANCE], or because the holder vanished mid-carry.
+## The host has taken this crate off a holder because it strayed past
+## [member break_distance], or because the holder vanished mid-carry.
 signal hold_broken(peer_id: int)
 
-## Pull toward the hold point. Stiffness against crate mass is what sets the
-## sag, and the sag is deliberate feedback about weight (ADR 13) — it is not a
-## bug to be tuned out.
-##
-## Tuned from 1500/250 after the first playable test read as floaty (NJ). The two
-## numbers move together, and here is the arithmetic so the next change is not a
-## guess:
-##
-##   sag at rest   = mass × gravity / stiffness   → 12 × 9.8 / 2400 ≈ 4.9 cm
-##   critical damp = 2 × √(stiffness × mass)      → 2 × √(2400 × 12) ≈ 339
-##
-## So 340 is critically damped: it settles as fast as possible without
-## overshooting. Raising stiffness *alone* leaves it under-damped and the crate
-## bounces on the spring instead of hanging from it.
-const HOLD_STIFFNESS := 2400.0
-const HOLD_DAMPING := 340.0
-## Load-bearing rather than a nicety: a spring whose force outruns the solver is
-## exactly how this becomes a jitter bug. Raised alongside stiffness so the clamp
-## stays a safety net instead of quietly becoming the thing that limits a normal
-## carry — at full stretch the spring alone now asks for 2400 × 2.0 = 4800 N.
-##
-## There is far more headroom here than the numbers suggest: this spring is
-## stable while dt < 2 / √(stiffness / mass), which at 60 Hz allows a stiffness
-## in the tens of thousands. 2400 is nowhere near the limit, so if it still reads
-## floaty it can go a great deal higher before the solver is the problem.
-const MAX_HOLD_FORCE := 6500.0
-## Keeps the crate upright and facing the holder, so labels stay readable once
-## there are labels to read (Phase 2).
-const ALIGN_STIFFNESS := 45.0
-const ALIGN_DAMPING := 9.0
-const MAX_ALIGN_TORQUE := 180.0
-## Walk into a wall with a crate and you lose it.
-const BREAK_DISTANCE := 2.0
-## Two holders are steadier, not twice as violent (ADR 13).
-const EXTRA_HOLDER_DAMPING := 0.5
 ## Two is the ceiling by design — two-player carry, not four (GDD §6.1).
 const MAX_HOLDERS := 2
-## Shoving. Cargo is deliberately on a collision mask players do not share, so a
-## capsule never touches a crate directly — without that, a puppet capsule (whose
-## position is written rather than simulated) resolves the overlap with unlimited
-## force and bulldozes cargo across the room at walking pace, while the host's own
-## capsule is simply blocked. Measured, not guessed: 3.39 m of launch versus
-## 0.01 m. Separating the masks removes both behaviours, and the host then applies
-## this clamped force instead, so every player shoves identically (ADR 7 — "the
-## push must be requested rather than applied directly").
-const SHOVE_FORCE := 90.0
-const MAX_SHOVE_FORCE := 700.0
-## Below this you are leaning on it, not shoving it.
-const MIN_SHOVE_SPEED := 0.4
 ## How fast a client puppet catches up to the host's last known transform.
 const PUPPET_SMOOTHING := 20.0
-## Below this the rotation error is noise, and asking a near-identity quaternion
+## Below this, a rotation error is noise, and asking a near-identity quaternion
 ## for its axis divides by roughly zero.
 const MIN_ALIGN_ANGLE := 0.001
+
+@export_group("Hold")
+## Stiffness against crate mass sets the sag, and the sag is deliberate feedback
+## about weight (ADR 13) — not a bug to tune out. sag = mass × gravity /
+## stiffness, so at mass 12 this gives roughly 4.9 cm of hang.
+@export var hold_stiffness := 2400.0
+## Critical damping is 2 × √(stiffness × mass) ≈ 339 here, so this is deliberately
+## *over*-damped at about 1.35×. That is what reads as heavy: an over-damped
+## spring resists being yanked about but never bobs, where an under-damped one
+## bounces and reads as floaty. Raise this for more weight, not the stiffness.
+@export var hold_damping := 460.0
+## A safety net, not a limiter — a spring whose force outruns the solver is how
+## this becomes a jitter bug. At full stretch the spring alone asks for
+## stiffness × break_distance, so keep this comfortably above that.
+@export var max_hold_force := 10000.0
+## How far in front of the holder's eyeline the crate rides, and how far below it.
+@export var hold_reach := 1.15
+@export var hold_drop := -0.15
+## Walk into a wall with a crate and you lose it. Measured from the true hold
+## point rather than the lag-compensated one, so it means "how far is this from
+## my hands" and does not fire merely because someone is sprinting.
+@export var break_distance := 2.2
+## Cancels the lag a damped spring has at constant speed, which is
+## damping × velocity / stiffness — about 1.2 m at a sprint. Uncompensated, the
+## crate settles that far behind the hold point, which puts it inside the holder
+## and stores the energy that later launches it across the room. 1.0 cancels it
+## exactly; 0.0 restores the old behaviour if the trailing is wanted.
+@export_range(0.0, 1.0, 0.05) var lag_compensation := 1.0
+
+@export_group("Alignment")
+## Keeps the crate upright and facing the holder, so labels stay readable once
+## there are labels to read (Phase 2).
+@export var align_stiffness := 45.0
+@export var align_damping := 9.0
+@export var max_align_torque := 180.0
+
+@export_group("Shoving")
+## Cargo sits on a collision mask players do not share, so a capsule never
+## touches a crate directly — without that, a puppet capsule (whose position is
+## written rather than simulated) resolves the overlap with unlimited force and
+## bulldozes cargo at walking pace, while the host's own capsule is simply
+## blocked. Measured: 3.39 m of launch versus 0.01 m. The host applies this
+## clamped force instead, so every player shoves identically (ADR 7).
+@export var shove_force := 90.0
+@export var max_shove_force := 700.0
+## Below this you are leaning on it, not shoving it.
+@export var min_shove_speed := 0.4
 
 ## Replicated by the MultiplayerSynchronizer. Written only by the host.
 var sync_position := Vector3.ZERO
 var sync_basis := Quaternion.IDENTITY
 
-## peer_id -> that holder's hold-point node. Host-only, and never replicated: a
-## node reference means nothing on another machine.
-var _hold_targets: Dictionary = {}
+## peer_id -> the holding [Player]. Host-only, and never replicated: a node
+## reference means nothing on another machine.
+var _holders: Dictionary = {}
 
 @onready var _push_sensor: Area3D = $PushSensor
 
@@ -102,7 +110,7 @@ func _ready() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_apply_shoves()
-	if not _hold_targets.is_empty():
+	if not _holders.is_empty():
 		_apply_hold_forces()
 	sync_position = global_position
 	sync_basis = global_transform.basis.get_rotation_quaternion()
@@ -116,10 +124,10 @@ func _process(delta: float) -> void:
 
 
 ## Host-only. Returns false if this crate is full or the peer already has it.
-func add_holder(peer_id: int, hold_target: Node3D) -> bool:
-	if _hold_targets.size() >= MAX_HOLDERS or _hold_targets.has(peer_id):
+func add_holder(peer_id: int, holder: Player) -> bool:
+	if _holders.size() >= MAX_HOLDERS or _holders.has(peer_id):
 		return false
-	_hold_targets[peer_id] = hold_target
+	_holders[peer_id] = holder
 	# A held body is awake by definition — letting it sleep would strand it in
 	# mid-air the moment the spring settled.
 	can_sleep = false
@@ -128,17 +136,17 @@ func add_holder(peer_id: int, hold_target: Node3D) -> bool:
 
 ## Host-only.
 func remove_holder(peer_id: int) -> void:
-	_hold_targets.erase(peer_id)
-	if _hold_targets.is_empty():
+	_holders.erase(peer_id)
+	if _holders.is_empty():
 		can_sleep = true
 
 
 func holder_count() -> int:
-	return _hold_targets.size()
+	return _holders.size()
 
 
 func is_held_by(peer_id: int) -> bool:
-	return _hold_targets.has(peer_id)
+	return _holders.has(peer_id)
 
 
 ## Called on every peer by the spawner before the node enters the tree.
@@ -171,44 +179,55 @@ func _apply_shoves() -> void:
 		# Read off the replicated value rather than the physics engine: a puppet
 		# capsule has no velocity of its own on this machine.
 		var closing := player.sync_velocity.dot(toward)
-		if closing < MIN_SHOVE_SPEED:
+		if closing < min_shove_speed:
 			continue
 
 		# A crate asleep on the floor will not wake for an applied force alone.
 		sleeping = false
-		apply_central_force((toward * closing * SHOVE_FORCE).limit_length(MAX_SHOVE_FORCE))
+		apply_central_force((toward * closing * shove_force).limit_length(max_shove_force))
 
 
 func _apply_hold_forces() -> void:
-	var target := Vector3.ZERO
+	var hold_point := Vector3.ZERO
+	var holder_velocity := Vector3.ZERO
 	var facing := Vector3.ZERO
-	for id in _hold_targets:
-		var node := _hold_targets[id] as Node3D
-		if node == null or not node.is_inside_tree():
+
+	for id in _holders:
+		var holder := _holders[id] as Player
+		if holder == null or not holder.is_inside_tree():
 			# The holder left mid-carry and its body is already gone.
 			_break_hold(int(id))
 			return
-		target += node.global_position
-		facing += -node.global_transform.basis.z
+		var eyes := holder.camera_pivot.global_transform
+		hold_point += eyes * Vector3(0.0, hold_drop, -hold_reach)
+		holder_velocity += holder.sync_velocity
+		facing += -eyes.basis.z
 
-	var count := _hold_targets.size()
-	target /= float(count)
+	var count := _holders.size()
+	hold_point /= float(count)
+	holder_velocity /= float(count)
 
-	var to_target := target - global_position
-	if to_target.length() > BREAK_DISTANCE:
-		for id in _hold_targets.keys():
+	# Two holders are steadier, not twice as violent (ADR 13).
+	var damping := hold_damping * (1.0 + 0.5 * float(count - 1))
+
+	# Aim ahead by exactly the lag the damper will introduce, so the crate ends up
+	# at the hold point rather than trailing behind it into the holder.
+	var target := hold_point + holder_velocity * (damping / hold_stiffness) * lag_compensation
+
+	# Break against the real hold point, not the compensated one — otherwise
+	# simply running would look like the crate had been dragged away.
+	if hold_point.distance_to(global_position) > break_distance:
+		for id in _holders.keys():
 			_break_hold(int(id))
 		return
 
-	var damping := HOLD_DAMPING * (1.0 + EXTRA_HOLDER_DAMPING * float(count - 1))
-	var force := to_target * HOLD_STIFFNESS - linear_velocity * damping
-	apply_central_force(force.limit_length(MAX_HOLD_FORCE))
+	var force := (target - global_position) * hold_stiffness - linear_velocity * damping
+	apply_central_force(force.limit_length(max_hold_force))
 	_apply_alignment_torque(facing)
 
 
 func _apply_alignment_torque(facing: Vector3) -> void:
-	# Flattened, so the crate stays upright however far the holder is looking up
-	# or down.
+	# Flattened, so the crate stays upright however far the holder looks up or down.
 	facing.y = 0.0
 	if facing.length_squared() < MIN_ALIGN_ANGLE:
 		return
@@ -225,8 +244,8 @@ func _apply_alignment_torque(facing: Vector3) -> void:
 	if angle > MIN_ALIGN_ANGLE:
 		axis = error.get_axis()
 
-	var torque := axis * angle * ALIGN_STIFFNESS - angular_velocity * ALIGN_DAMPING
-	apply_torque(torque.limit_length(MAX_ALIGN_TORQUE))
+	var torque := axis * angle * align_stiffness - angular_velocity * align_damping
+	apply_torque(torque.limit_length(max_align_torque))
 
 
 func _break_hold(peer_id: int) -> void:

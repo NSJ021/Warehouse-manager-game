@@ -45,12 +45,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
 current = true
 fov = 80.0
 
-[node name="HoldTarget" type="Marker3D" parent="CameraPivot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, -1.1)
-
 [node name="GrabRay" type="RayCast3D" parent="CameraPivot"]
 target_position = Vector3(0, 0, -2.5)
 collision_mask = 4
+hit_from_inside = true
 
 [node name="NameLabel" type="Label3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.15, 0)

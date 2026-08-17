@@ -46,12 +46,12 @@ func request_grab(crate_name: String) -> void:
 	if crate == null:
 		return
 
-	var hold_target := _hold_target_for(peer_id)
-	if hold_target == null:
+	var holder := _player_for(peer_id)
+	if holder == null:
 		return
-	if hold_target.global_position.distance_to(crate.global_position) > GRAB_REACH:
+	if holder.camera_pivot.global_position.distance_to(crate.global_position) > GRAB_REACH:
 		return
-	if not crate.add_holder(peer_id, hold_target):
+	if not crate.add_holder(peer_id, holder):
 		return
 
 	_held[peer_id] = crate
@@ -83,13 +83,13 @@ func _sender_id() -> int:
 	return 1 if id == 0 else id
 
 
-func _hold_target_for(peer_id: int) -> Node3D:
+## The crate works out its own hold geometry from the holder's eyeline, so the
+## host owns that maths and it cannot desync — a per-client offset node could be
+## edited on one machine and silently disagree with the host.
+func _player_for(peer_id: int) -> Player:
 	# Player bodies are named after their owning peer — that naming is protocol
 	# (ADR 12), and this lookup is one of the things relying on it.
-	var body := players.get_node_or_null(str(peer_id))
-	if body == null:
-		return null
-	return body.get_node_or_null("CameraPivot/HoldTarget") as Node3D
+	return players.get_node_or_null(str(peer_id)) as Player
 
 
 func _local_carrier() -> Carrier:

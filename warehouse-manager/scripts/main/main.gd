@@ -16,8 +16,9 @@ const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 ## footage shows the controls without a caption being added afterwards.
 const CONTROLS: Array[String] = [
 	"WASD move   ·   Shift sprint   ·   Space jump",
-	"E  grab / drop a crate",
+	"E  grab / drop a crate   —   one each, so drop before you take another",
 	"walk into a crate to shove it",
+	"two players can hold the SAME crate — that's the two-player carry",
 	"Esc releases the mouse, click to recapture",
 ]
 
@@ -161,4 +162,8 @@ func _carry_line() -> String:
 	var crate := carrier.held_crate()
 	if crate == null:
 		return "hands: empty"
-	return "hands: %s (%d carrying)" % [crate.name, crate.holder_count()]
+	# Spelled out rather than counted. "(2 carrying)" was read as two crates
+	# rather than two people, which is exactly the wrong thing to be vague about.
+	if crate.holder_count() > 1:
+		return "hands: %s   ·   TWO-PLAYER CARRY" % crate.name
+	return "hands: %s   ·   carrying alone" % crate.name
