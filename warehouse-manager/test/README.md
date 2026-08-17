@@ -25,9 +25,24 @@ Four rules it holds to, each of which exists because of something that actually 
 
 | Layer | What it proves | Cost |
 |---|---|---|
+| `api/` | The engine and addon APIs we depend on still exist and behave as assumed | <1s |
 | `smoke/` | Every scene under `res://scenes/` loads *and instances* | ~1s |
 | `integration/` | Two processes: grab, two-player carry, handoff, release, all agreeing | ~1s |
 | `unit/` | Reserved. Nothing pure enough to be worth it yet | — |
+
+### api
+
+Runs first, because a broken engine assumption explains every other failure.
+
+Every check here started life as a throwaway probe — written, run once, deleted. Six of them in one day, verifying things like whether a `RayCast3D` reports a shape it starts inside, whether Jolt populates the physics monitors, and what GodotSteam's init signature actually is. Deleting them meant the next session re-derived the same facts, and meant an engine upgrade would break those assumptions **silently**.
+
+Three sections: engine methods and properties; engine *behaviours* where the shape of the answer matters (`Basis.looking_at` still points −Z at its target; a 270° rotation error still resolves to 90° the short way); and **invariants fixed by decisions** — the crate is exactly 0.5 m (ADR 16), cargo replicates at 20 Hz (ADR 14), players do not share a collision mask with cargo, two holders remains the carry ceiling.
+
+That last section is the one to extend when an ADR fixes a number. Code drifting from a decision is exactly as bad as code drifting from a spec, and nothing else checks it.
+
+GodotSteam is checked by **argument count**, not just existence, because the transport runs rarely — a changed signature would otherwise fail on its first line, on a second machine, mid-validation.
+
+Two gotchas it has already hit, both recorded in the file: `ClassDB` property and method lookups take `no_inheritance`, and passing `true` reports inherited members as missing. And referencing a `class_name` statically makes the test compile-depend on that script — which fails in a `--script` run if the script touches an autoload, because autoloads are not registered there. Load at runtime instead.
 
 ### smoke
 

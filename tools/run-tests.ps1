@@ -170,7 +170,30 @@ Write-Host ''
 
 # ---------------------------------------------------------------- smoke
 
-Write-Host '[1/2] smoke - every scene loads and instances' -ForegroundColor Cyan
+Write-Host '[1/3] api - engine assumptions and decided invariants' -ForegroundColor Cyan
+$api = Start-Godot -Name 'api' -GodotArgs @(
+    '--headless', '--path', $projectDir, '--script', 'res://test/api/engine_assumptions.gd'
+)
+$apiExited = Wait-ForExit -Job $api -TimeoutSeconds $StartupTimeoutSeconds
+
+if (-not $apiExited) {
+    $failures.Add('api: timed out and was killed')
+} else {
+    $code = Get-ExitCode $api
+    if ($code -gt 0) { $failures.Add("api: exit code $code") }
+    Test-Marker $api '\[api\] PASS' 'an api PASS' | Out-Null
+}
+# Only the failures are worth printing here; 70-odd passing lines is noise.
+foreach ($line in ((Get-LogText $api) -split "`r?`n" | Where-Object { $_ -match '^\[api\] (FAIL|PASS)' })) {
+    $colour = 'Gray'
+    if ($line -match 'FAIL') { $colour = 'Red' }
+    if ($line -match 'PASS') { $colour = 'Green' }
+    Write-Host "      $line" -ForegroundColor $colour
+}
+Test-CleanLog $api | Out-Null
+
+Write-Host ''
+Write-Host '[2/3] smoke - every scene loads and instances' -ForegroundColor Cyan
 $smoke = Start-Godot -Name 'smoke' -GodotArgs @(
     '--headless', '--path', $projectDir, '--script', 'res://test/smoke/load_all_scenes.gd'
 )
@@ -208,7 +231,7 @@ if ($SmokeOnly) {
 # ---------------------------------------------------------- integration
 
 Write-Host ''
-Write-Host '[2/2] integration - 2 processes, grab / two-player carry / handoff' -ForegroundColor Cyan
+Write-Host '[3/3] integration - 2 processes, grab / two-player carry / handoff' -ForegroundColor Cyan
 
 $scene = 'res://test/integration/carry_session.tscn'
 $host_ = Start-Godot -Name 'host' -GodotArgs @(
