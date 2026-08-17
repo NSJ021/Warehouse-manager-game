@@ -38,10 +38,16 @@ const EXPECTED_CRATES := 6
 ## this separates "picked up" from "sat there" with room to spare.
 const LIFT_MIN_Y := 0.55
 
-## Where each role stands to reach crate_0, which spawns at (-2.5, 0.6, -6.0).
-## Either side of it, facing in, close enough to be inside GRAB_REACH.
-const HOST_STAND := Vector3(-2.5, 0.1, -4.4)
-const CLIENT_STAND := Vector3(-2.5, 0.1, -6.8)
+## How far either side of the crate each role stands, along Z.
+##
+## Derived from where the crate actually is rather than hard-coded, because
+## hard-coding it broke the moment the level's cargo layout changed: the stand
+## positions stayed put, the crate moved six metres, and every grab silently
+## failed the reach check. Approached along Z on purpose — a small crate count
+## lays out as a row along X, so nothing sits between the player and the target.
+const HOST_STAND_OFFSET_Z := 1.6
+const CLIENT_STAND_OFFSET_Z := -1.2
+const STAND_HEIGHT := 0.1
 
 var _role := "host"
 var _world: Node = null
@@ -103,14 +109,19 @@ func _run() -> void:
 		_fail("find %s" % CRATE_NAME, "not present under Crates")
 		return _finish(false)
 
+	print("[test]      (crate_0 is at %v)" % crate.global_position)
 	if _role == "host":
 		await _run_host(crate)
 	else:
 		await _run_client(crate)
 
 
+func _stand_beside(crate: Crate, offset_z: float) -> Vector3:
+	return Vector3(crate.global_position.x, STAND_HEIGHT, crate.global_position.z + offset_z)
+
+
 func _run_host(crate: Crate) -> void:
-	_take(HOST_STAND, crate)
+	_take(_stand_beside(crate, HOST_STAND_OFFSET_Z), crate)
 	if not await _until("host holds it", func() -> bool: return crate.holder_count() == 1):
 		return _finish(false)
 
@@ -142,7 +153,7 @@ func _run_client(crate: Crate) -> void:
 	if not await _until("host grabbed first", func() -> bool: return crate.holder_count() == 1):
 		return _finish(false)
 
-	_take(CLIENT_STAND, crate)
+	_take(_stand_beside(crate, CLIENT_STAND_OFFSET_Z), crate)
 	if not await _until("client joined the carry", func() -> bool:
 			return crate.holder_count() == 2):
 		return _finish(false)

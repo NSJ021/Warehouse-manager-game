@@ -53,6 +53,7 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 11 | The game is called Nice Little Earner | `decisions/2026-08-16-game-name.md` |
 | 12 | Project structure, file layout and naming | `decisions/2026-08-17-project-structure.md` |
 | 13 | Held items are force-driven, not parented | `decisions/2026-08-17-springy-held-item-grab.md` |
+| 14 | Physics body budget of 150; cargo replicates at 20 Hz | `decisions/2026-08-17-physics-budget.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -134,6 +135,8 @@ That last row is the real incentive. A lone player dragging a Large crate physic
 - Racks expose **slots**. Items **snap** in on insert. Storage is a clean spatial puzzle, unpolluted by physics jitter.
 - Racks have **stability**. Hit one hard enough and it wobbles; the top row may shed. Chaos is a *punishment for recklessness*, not ambient noise.
 - **Floor stacking is allowed.** It's faster, it blocks pathing, it counts as clutter, and it's begging to be kicked over. A tempting shortcut with a real cost.
+
+> **Budget note (ADR 14).** Grid snapping is not only a feel decision — it is what makes the game affordable. Racked items can be static, non-simulated and non-replicated, so physics is reserved for cargo actually in transit. The measured ceiling is **~150 concurrent loose rigid bodies** across four peers, which sizes floor clutter, how much a rack may shed, and how many items a day can involve. Full-physics storage would have spent the entire budget on stock merely sitting there. See [`docs/physics-budget.md`](physics-budget.md).
 
 ### 6.3 The memory game
 

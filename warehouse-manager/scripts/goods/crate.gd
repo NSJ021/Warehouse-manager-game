@@ -29,6 +29,10 @@ signal hold_broken(peer_id: int)
 const MAX_HOLDERS := 2
 ## How fast a client puppet catches up to the host's last known transform.
 const PUPPET_SMOOTHING := 20.0
+## Once a puppet is this close to the host's last word on where it is, there is
+## nothing left to smooth. About 3 mm, and a hair off perfectly aligned.
+const PUPPET_EPSILON_SQ := 0.00001
+const PUPPET_ALIGNED_DOT := 0.99995
 ## Below this, a rotation error is noise, and asking a near-identity quaternion
 ## for its axis divides by roughly zero.
 const MIN_ALIGN_ANGLE := 0.001
@@ -127,9 +131,25 @@ func _physics_process(_delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# Measured, not guessed: smoothing every crate every frame cost a client about
+	# 6 ms per frame at 100 crates - over a third of a 60 Hz budget, before
+	# anything is drawn - and most of those crates were sitting perfectly still.
+	#
+	# So: while the host is still sending updates, ease toward them. Once it goes
+	# quiet, converge and then stop entirely. Settled cargo costs two comparisons
+	# instead of a lerp, a slerp and a transform write into the physics server.
+	# Keyed on being *already there* rather than on the host having gone quiet. An
+	# earlier version waited for updates to stop arriving, which never happened:
+	# at a 20 Hz sync there are only a handful of frames between messages, so the
+	# idle counter never reached its threshold and this saved nothing at all.
+	var current := global_transform.basis.get_rotation_quaternion()
+	if global_position.distance_squared_to(sync_position) < PUPPET_EPSILON_SQ \
+			and absf(current.dot(sync_basis)) > PUPPET_ALIGNED_DOT:
+		return
+
 	var weight := clampf(PUPPET_SMOOTHING * delta, 0.0, 1.0)
 	var eased_position := global_position.lerp(sync_position, weight)
-	var eased_basis := global_transform.basis.get_rotation_quaternion().slerp(sync_basis, weight)
+	var eased_basis := current.slerp(sync_basis, weight)
 	global_transform = Transform3D(Basis(eased_basis), eased_position)
 
 
