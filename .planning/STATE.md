@@ -42,7 +42,7 @@ constrain upcoming work:
 - **Steam join half is unproven** and needs a second machine. `docs/steam-validation-run.md`.
 - **Detection and patch maths are undefined** — the thinnest part of the GDD, and Phase 3 depends on it entirely.
 - **The storage unit is a 1.0 m cell** (ADR 18, superseding 16). Nothing is modelled yet, and the crate sizes must match exactly before anyone builds art.
-- **Plans 01-02 and 01-03 were written against the superseded slot model and need rework before execution.**
+- Plans 01-02 and 01-03 have been **reworked for ADR 18's cell model**, and the concept was renamed slot → cell across every plan. Phase 1 is ready to execute.
 - **Feel tuning is provisional.** Hold stiffness 2400 / damping 460 came from one play session. All exported and tunable live.
 
 ### Constraints learned the hard way

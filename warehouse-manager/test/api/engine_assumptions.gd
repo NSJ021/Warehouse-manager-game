@@ -68,12 +68,12 @@ func _report() -> void:
 	quit(1)
 
 
-## Storage slots are aim targets, not detectors. Phase 1 plans to raycast against
-## Area3D slot volumes with monitoring and monitorable both OFF, so that 150-odd
-## slots cost nothing in collision detection while still being aimable at.
+## Storage cells are aim targets, not detectors. Phase 1 plans to raycast against
+## Area3D cell volumes with monitoring and monitorable both OFF, so that a rack full of
+## cells costs nothing in collision detection while still being aimable at.
 ##
 ## Measured before relying on it: hittability is independent of both flags. If a
-## future engine version ever couples them, every slot silently starts paying for
+## future engine version ever couples them, every cell silently starts paying for
 ## detection it never reads, and aiming would keep working — so nothing would look
 ## wrong. That is exactly the kind of regression worth an assertion.
 func _build_aim_scene() -> void:
@@ -82,9 +82,9 @@ func _build_aim_scene() -> void:
 
 	var x := 0.0
 	for case in [
-		["slot area is aimable with monitoring ON", true, true],
-		["slot area is aimable with monitoring OFF", false, true],
-		["slot area is aimable with monitoring AND monitorable OFF", false, false],
+		["cell area is aimable with monitoring ON", true, true],
+		["cell area is aimable with monitoring OFF", false, true],
+		["cell area is aimable with monitoring AND monitorable OFF", false, false],
 	]:
 		var area := Area3D.new()
 		area.collision_layer = 8
@@ -112,7 +112,7 @@ func _build_aim_scene() -> void:
 
 
 func _check_aim_behaviour() -> void:
-	print("[api] aiming at storage slots")
+	print("[api] aiming at storage cells")
 	_expect_properties("RayCast3D", ["collide_with_areas", "collide_with_bodies"])
 	for entry in _aim_cases:
 		var ray: RayCast3D = entry[1]
