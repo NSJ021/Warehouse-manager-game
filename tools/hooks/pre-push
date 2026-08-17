@@ -1,0 +1,37 @@
+#!/bin/sh
+#
+# Blocks a push when the test suite is red.
+#
+# This is the tracked copy. Git only runs hooks from .git/hooks/, which is not
+# tracked, so it has to be installed once per clone:
+#
+#     cp tools/hooks/pre-push .git/hooks/pre-push
+#     chmod +x .git/hooks/pre-push
+#
+# Unlike the pre-commit and commit-msg hooks, there is nothing sensitive in here,
+# which is why this one is tracked and those two deliberately are not.
+
+repo="$(git rev-parse --show-toplevel)"
+runner="$repo/tools/run-tests.ps1"
+
+if [ ! -f "$runner" ]; then
+	echo "pre-push: $runner not found, skipping tests"
+	exit 0
+fi
+
+echo "pre-push: running the test suite before pushing..."
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$runner"
+status=$?
+
+if [ "$status" -ne 0 ]; then
+	echo ""
+	echo "pre-push: BLOCKED - the test suite is red."
+	echo "          A red suite that gets pushed anyway is how a suite stops being"
+	echo "          trusted, so fix it rather than working around it."
+	echo "          If you have consciously decided to push regardless:"
+	echo "              git push --no-verify"
+	exit 1
+fi
+
+echo "pre-push: suite green, pushing."
+exit 0

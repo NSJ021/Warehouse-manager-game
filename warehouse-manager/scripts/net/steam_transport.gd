@@ -18,6 +18,19 @@ const DEV_APP_ID := 480
 ## k_EChatRoomEnterResponseSuccess — GodotSteam re-exports Valve's value.
 const LOBBY_ENTER_SUCCESS := 1
 
+## Lobby visibility by name, so it can be changed on the day with a launch flag
+## rather than an edit and a re-export. Friends-only is the default and the right
+## answer for dev, but it requires both Steam accounts to actually be friends —
+## and a *new* Steam account cannot add friends until it has spent money, which is
+## exactly the sort of thing that derails a two-machine test at the worst moment.
+## `--lobby=public` sidesteps it.
+const LOBBY_TYPES := {
+	"public": Steam.LOBBY_TYPE_PUBLIC,
+	"friends": Steam.LOBBY_TYPE_FRIENDS_ONLY,
+	"invisible": Steam.LOBBY_TYPE_INVISIBLE,
+	"private": Steam.LOBBY_TYPE_PRIVATE,
+}
+
 var _lobby_id := 0
 var _steam_ready := false
 
@@ -27,8 +40,10 @@ func host(max_players: int) -> void:
 		return
 	if not Steam.lobby_created.is_connected(_on_lobby_created):
 		Steam.lobby_created.connect(_on_lobby_created, CONNECT_ONE_SHOT)
-	# Friends-only keeps dev lobbies off the public list. Revisit before launch.
-	Steam.createLobby(Steam.LOBBY_TYPE_FRIENDS_ONLY, max_players)
+	var kind := _arg_value("--lobby=", "friends")
+	var lobby_type: int = LOBBY_TYPES.get(kind, Steam.LOBBY_TYPE_FRIENDS_ONLY)
+	print("[net] creating a %s Steam lobby for %d" % [kind, max_players])
+	Steam.createLobby(lobby_type, max_players)
 
 
 func join(address: String) -> void:
@@ -72,12 +87,50 @@ func get_lobby_id() -> int:
 func _ensure_steam() -> bool:
 	if _steam_ready:
 		return true
+	# embed_callbacks stays true, and [method poll] also pumps them. The redundancy
+	# is deliberate for now: this path has never been executed, and belt-and-braces
+	# callback pumping is the wrong thing to be clever about on a first run. Tidy to
+	# one or the other once Steam is proven end to end.
 	var result: Dictionary = Steam.steamInitEx(DEV_APP_ID, true)
 	if int(result.get("status", 1)) != 0:
 		failed.emit("Steam did not initialise: %s" % result.get("verbal", "unknown error"))
 		return false
 	_steam_ready = true
+	_apply_network_simulation()
 	return true
+
+
+## Valve's own network simulator, which is a better test than a real connection
+## because it is repeatable and dial-able.
+##
+## Two machines on one LAN connect to each other more or less directly, so a
+## same-network Steam test measures about a millisecond and proves nothing about
+## how the game feels over the internet. This injects the latency instead:
+##
+##     --fake-lag=40      40 ms each way, so an 80 ms round trip
+##     --fake-loss=1.5    1.5% of packets dropped, each way
+##
+## Applied globally, so it affects every connection this process makes.
+func _apply_network_simulation() -> void:
+	var lag_ms := _arg_value("--fake-lag=", "0").to_int()
+	var loss_pct := _arg_value("--fake-loss=", "0").to_float()
+	if lag_ms <= 0 and loss_pct <= 0.0:
+		return
+
+	Steam.setGlobalConfigValueInt32(Steam.NETWORKING_CONFIG_FAKE_PACKET_LAG_SEND, lag_ms)
+	Steam.setGlobalConfigValueInt32(Steam.NETWORKING_CONFIG_FAKE_PACKET_LAG_RECV, lag_ms)
+	Steam.setGlobalConfigValueFloat(Steam.NETWORKING_CONFIG_FAKE_PACKET_LOSS_SEND, loss_pct)
+	Steam.setGlobalConfigValueFloat(Steam.NETWORKING_CONFIG_FAKE_PACKET_LOSS_RECV, loss_pct)
+	print("[net] simulating %d ms each way (%d ms round trip) and %.1f%% packet loss" % [
+		lag_ms, lag_ms * 2, loss_pct,
+	])
+
+
+func _arg_value(prefix: String, fallback: String) -> String:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with(prefix):
+			return arg.trim_prefix(prefix)
+	return fallback
 
 
 func _on_lobby_created(connect_result: int, lobby_id: int) -> void:

@@ -32,6 +32,10 @@ const PLAYER_COLOURS: Array[Color] = [
 var sync_position := Vector3.ZERO
 var sync_yaw := 0.0
 var sync_pitch := 0.0
+## Replicated because the host needs it and cannot measure it: a puppet capsule
+## runs no physics, so the host reads the owner's own velocity to work out how
+## hard a shove into cargo should be.
+var sync_velocity := Vector3.ZERO
 
 var peer_id := 1
 var player_name := "Player"
@@ -106,6 +110,7 @@ func _physics_process(delta: float) -> void:
 	sync_position = global_position
 	sync_yaw = rotation.y
 	sync_pitch = _pitch
+	sync_velocity = velocity
 
 
 func _process(delta: float) -> void:
@@ -117,6 +122,33 @@ func _process(delta: float) -> void:
 	global_position = global_position.lerp(sync_position, weight)
 	rotation.y = lerp_angle(rotation.y, sync_yaw, weight)
 	camera_pivot.rotation.x = lerp_angle(camera_pivot.rotation.x, sync_pitch, weight)
+
+
+## Place this capsule immediately, skipping the walk. For respawns, day resets,
+## and the integration harness putting a player where a crate is.
+func teleport_to(point: Vector3) -> void:
+	global_position = point
+	sync_position = point
+	velocity = Vector3.ZERO
+	sync_velocity = Vector3.ZERO
+
+
+## Point the camera at a world position.
+##
+## Writes the same state a mouse would, which is the whole point: setting
+## [member camera_pivot] rotation directly would leave [member sync_pitch] stale,
+## so remote peers — including the host, which decides what you can reach — would
+## still think this player was looking straight ahead.
+func aim_at(point: Vector3) -> void:
+	var to_target := point - camera.global_position
+	if to_target.length_squared() < 0.0001:
+		return
+	# Forward is -Z, hence the negated arguments.
+	rotation.y = atan2(-to_target.x, -to_target.z)
+	_pitch = clampf(asin(to_target.normalized().y), -PITCH_LIMIT, PITCH_LIMIT)
+	camera_pivot.rotation.x = _pitch
+	sync_yaw = rotation.y
+	sync_pitch = _pitch
 
 
 ## Called on every peer by the spawner before the node enters the tree.

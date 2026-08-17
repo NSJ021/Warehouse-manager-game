@@ -1,0 +1,56 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/goods/crate.gd" id="1_crate"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_crate"]
+size = Vector3(0.5, 0.5, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_crate"]
+size = Vector3(0.5, 0.5, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_card"]
+albedo_color = Color(0.72, 0.55, 0.36, 1)
+roughness = 0.85
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sensor"]
+size = Vector3(0.62, 0.62, 0.62)
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_crate"]
+properties/0/path = NodePath(".:sync_position")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+properties/1/path = NodePath(".:sync_basis")
+properties/1/spawn = true
+properties/1/replication_mode = 2
+properties/2/path = NodePath(".:sync_holder_a")
+properties/2/spawn = true
+properties/2/replication_mode = 2
+properties/3/path = NodePath(".:sync_holder_b")
+properties/3/spawn = true
+properties/3/replication_mode = 2
+
+[node name="Crate" type="RigidBody3D"]
+collision_layer = 4
+collision_mask = 5
+mass = 12.0
+continuous_cd = true
+script = ExtResource("1_crate")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_crate")
+
+[node name="PushSensor" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+
+[node name="SensorShape" type="CollisionShape3D" parent="PushSensor"]
+shape = SubResource("BoxShape3D_sensor")
+
+[node name="BodyMesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_crate")
+material_override = SubResource("StandardMaterial3D_card")
+
+[node name="Synchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_interval = 0.05
+replication_config = SubResource("SceneReplicationConfig_crate")

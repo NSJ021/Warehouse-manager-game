@@ -29,8 +29,13 @@ warehouse-manager/
 │                     steam_transport.gd
 ├── resources/                         .tres by domain — resources/goods/…
 ├── assets/                            Art pipeline output — models/ materials/ textures/ audio/
-└── test/                              Unit tests mirroring scripts/, plus integration/
+└── test/                              See test/README.md
+    ├── smoke/                         Every scene loads and instances
+    ├── integration/                   Two real processes over real ENet
+    └── unit/                          Reserved — nothing pure enough yet
 ```
+
+The suite is one command, `./tools/run-tests.ps1`, and runs automatically on push via the `pre-push` hook. `tools/hooks/pre-push` is the tracked copy — git only runs hooks from the untracked `.git/hooks/`, so it needs installing once per clone.
 
 Folders are created **on first use**. Empty directories are not tracked by git and rot; `world/`, `goods/`, `ui/`, `resources/`, `assets/` and `test/` above are the agreed destinations, not existing folders.
 
@@ -75,6 +80,22 @@ The rule most likely to be broken by accident and the most expensive when it is.
 `player.gd` derives its multiplayer authority from `name.to_int()`, and `MultiplayerSpawner` matches nodes across peers by path. **Renaming a networked node does not fail locally.** It fails on *remote* peers, as an authority mismatch, with no error and no warning.
 
 So: any node whose name encodes identity carries a comment saying so, and renaming one is a netcode change, not a tidy-up.
+
+## ⚠ A new `class_name` is invisible to headless runs until the editor rescans
+
+Global class names live in `.godot/global_script_class_cache.cfg`, and **only the editor writes it.** Add a script with a new `class_name` on disk and a headless run will fail with `Parse Error: Could not find type "X" in the current scope` — on every file that refers to it, which makes it look like a much bigger breakage than it is.
+
+The fix is a rescan, not a code change:
+
+```gdscript
+EditorInterface.get_resource_filesystem().scan()
+```
+
+Then confirm before re-running, rather than hoping:
+
+```bash
+grep -E '"(YourNewClass)"' warehouse-manager/.godot/global_script_class_cache.cfg
+```
 
 ## Moving a file later
 

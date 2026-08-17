@@ -8,9 +8,21 @@ extends Node
 ##   --join[=address]  join over ENet, default 127.0.0.1
 ##   --steam           use the Steam transport instead of ENet
 ##   --name=NAME       display name above the character
+##   --port=N          override the ENet port, so a second session can run
+##                     alongside a live one without fighting for it
 ## Set these per instance under Debug > Customize Run Instances.
 
 const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
+
+## On screen during a session. Cheap to read while testing, and it means devlog
+## footage shows the controls without a caption being added afterwards.
+const CONTROLS: Array[String] = [
+	"WASD move   ·   Shift sprint   ·   Space jump",
+	"E  grab / drop a crate   —   one each, so drop before you take another",
+	"walk into a crate to shove it",
+	"two players can hold the SAME crate — that's the two-player carry",
+	"Esc releases the mouse, click to recapture",
+]
 
 var _world: Node = null
 
@@ -54,6 +66,7 @@ func _apply_launch_arguments() -> void:
 	var wants_host := false
 	var wants_join := false
 	var address := ""
+	var port := 0
 
 	for arg in args:
 		if arg == "--steam":
@@ -67,14 +80,16 @@ func _apply_launch_arguments() -> void:
 			address = arg.trim_prefix("--join=")
 		elif arg.begins_with("--name="):
 			Net.local_player_name = arg.trim_prefix("--name=")
+		elif arg.begins_with("--port="):
+			port = arg.trim_prefix("--port=").to_int()
 
 	if wants_host:
 		Net.local_player_name = Net.local_player_name if Net.local_player_name != "Player" else "Host"
 		_set_status("Hosting over %s..." % ("Steam" if kind == Net.TransportKind.STEAM else "ENet"))
-		Net.host_session(kind)
+		Net.host_session(kind, port)
 	elif wants_join:
 		_set_status("Connecting...")
-		Net.join_session(kind, address)
+		Net.join_session(kind, address, port)
 
 
 func _on_host_enet_pressed() -> void:
@@ -136,5 +151,24 @@ func _refresh_hud() -> void:
 		var lobby_id := (transport as SteamTransport).get_lobby_id()
 		if lobby_id != 0:
 			lines.append("lobby: %d" % lobby_id)
-	lines.append("Esc releases the mouse, click to recapture")
+
+	lines.append(_carry_line())
+	lines.append("")
+	lines.append_array(CONTROLS)
 	hud_label.text = "\n".join(lines)
+
+
+## Reads the local player's hands via a group, so the HUD needs to know nothing
+## about how a level arranges its nodes.
+func _carry_line() -> String:
+	var carrier := get_tree().get_first_node_in_group("local_carrier") as Carrier
+	if carrier == null:
+		return "hands: —"
+	var crate := carrier.held_crate()
+	if crate == null:
+		return "hands: empty"
+	# Spelled out rather than counted. "(2 carrying)" was read as two crates
+	# rather than two people, which is exactly the wrong thing to be vague about.
+	if crate.holder_count() > 1:
+		return "hands: %s   ·   TWO-PLAYER CARRY" % crate.name
+	return "hands: %s   ·   carrying alone" % crate.name

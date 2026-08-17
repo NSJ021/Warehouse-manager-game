@@ -2,7 +2,7 @@
 
 *(working title until 2026-08-16: "Warehouse Manager" — see ADR 11)*
 
-- **Version:** 0.4 — held items are force-driven rather than parented (ADR 13); project structure ratified (ADR 12)
+- **Version:** 0.5 — storage cells replace the slot model (ADR 18); settled cargo becomes solid (ADR 17); cargo value density and the client roster fleshed out
 - **Date:** 2026-08-17
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
@@ -53,6 +53,11 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 11 | The game is called Nice Little Earner | `decisions/2026-08-16-game-name.md` |
 | 12 | Project structure, file layout and naming | `decisions/2026-08-17-project-structure.md` |
 | 13 | Held items are force-driven, not parented | `decisions/2026-08-17-springy-held-item-grab.md` |
+| 14 | Physics body budget of 150; cargo replicates at 20 Hz | `decisions/2026-08-17-physics-budget.md` |
+| 15 | Planning tool wraps the build order, never replaces it | `decisions/2026-08-17-gsd-wraps-the-build-order.md` |
+| 16 | ~~The storage grid module is 0.5 m~~ *(superseded by 18)* | `decisions/2026-08-17-storage-grid-module.md` |
+| 17 | Settled cargo becomes solid; disturbed cargo wakes | `decisions/2026-08-17-settled-clutter-is-solid.md` |
+| 18 | Storage cells bundle small cargo; a cell is atomic | `decisions/2026-08-17-storage-cells.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -105,7 +110,8 @@ Every item carries:
 
 | Property | Values |
 |---|---|
-| **Size class** | Small (1 slot, one-handed) · Medium (2 slots, two-handed, **occludes your view**) · Large (4 slots, two-player carry or drag) |
+| **Size class** | Small (0.5 m cube, one-handed, **8 fit a cell**) · Medium (1.0 m cube = **a whole cell**, two-handed, **occludes your view**) · Large (2.0 × 1.0 × 1.0 = **2 cells**, two-player carry or drag) — ADR 18 |
+| **Value density** | What it earns per cell per day. Bricks are bulky and cheap; jewellery is compact and enormous. This is the portfolio decision across a lease. |
 | **Fragility** | 0–3 (crated machinery → glassware) |
 | **Store-until date** | The day it must leave. Also the spoilage deadline. |
 | **Condition** | Pristine · Scuffed · Damaged · Destroyed |
@@ -132,8 +138,15 @@ That last row is the real incentive. A lone player dragging a Large crate physic
 ### 6.2 Storage
 
 - Racks expose **slots**. Items **snap** in on insert. Storage is a clean spatial puzzle, unpolluted by physics jitter.
+- **The storage unit is a cell: 1.0 m cubed** (ADR 18). Eight Smalls fill one, a Medium *is* one, a Large takes two. **A cell is atomic** — one kind of cargo at a time — so filling a cell with Smalls is efficient and spending it on a Medium is not. That trade is the packing decision.
+- **Retrieval within a cell is last-in-first-out.** You take what's reachable. Badly-ordered stock is *physically painful* to get at, which is what turns FIFO discipline (§6.3) from a good habit into something the building enforces — unstacking six crates while a client waits.
+- **A rack is 2 cells wide × 2 deep × 3 high = 12 cells:** 96 Smalls, or 12 Mediums, or 6 Larges. The top level sits at 2–3 m, so a solo player (floor level only) reaches the bottom row and nothing else.
+- **Placement decides whether stock gets buried.** A 2-deep rack against a wall has a buried back row. The same rack as an island, reachable from both sides, has two front rows and no buried stock at all. Islands store better and eat aisle space; wall racks are compact and bury half their contents.
 - Racks have **stability**. Hit one hard enough and it wobbles; the top row may shed. Chaos is a *punishment for recklessness*, not ambient noise.
 - **Floor stacking is allowed.** It's faster, it blocks pathing, it counts as clutter, and it's begging to be kicked over. A tempting shortcut with a real cost.
+- **How the blocking works (ADR 17):** a crate that settles on the floor turns *static* and becomes solid — you walk around it like a wall. Shove it hard enough and it wakes back into a physics body and scatters. Cargo in transit stays dynamic and stays out of your way, so nothing you are carrying can be bulldozed. This is what makes "blocks pathing" real rather than aspirational.
+
+> **Budget note (ADR 14).** Grid snapping is not only a feel decision — it is what makes the game affordable. Racked items can be static, non-simulated and non-replicated, so physics is reserved for cargo actually in transit. The measured ceiling is **~150 concurrent loose rigid bodies** across four peers, which sizes floor clutter, how much a rack may shed, and how many items a day can involve. Full-physics storage would have spent the entire budget on stock merely sitting there. See [`docs/physics-budget.md`](physics-budget.md).
 
 ### 6.3 The memory game
 
@@ -165,11 +178,21 @@ At handover, for any item below Pristine, the player holding it chooses:
 
 A small named roster (4–6 in v1), each with a personality, a **trust** value and a **suspicion** value. Burn one and their contracts dry up. Keep one happy and they bring volume.
 
+**Some of them are dodgy, and that's a personality rather than a system.** The high-value end of the roster is where the film piss-takes live — a Tony Montana knock-off shipping crates of "legitimate baby talcum powder", that sort of thing. Everyone knows what's in the box; nobody says it.
+
+This needs **no contraband mechanic and no police**. It runs entirely on trust and suspicion: dodgy clients pay far above rate, their goods must not be damaged or examined, and the risk is **reputational with your legitimate clients**. Raids and law enforcement stay parked (§10) — the joke does the work, and it costs one line of dialogue rather than a new system.
+
 Reputation gates contract quality and volume — that's the whole loop in v1. The louder consequences (raids, cut power) are post-launch and are *earned* by burning clients, not rolled randomly.
 
 ### 6.7 Economy
 
-**In:** storage fee per item per day · on-time delivery bonus · condition bonus.
+**In:** storage fee **per cell per day** · on-time delivery bonus · condition bonus.
+
+> **Fees price volume, not items — this is forced, not a preference (ADR 18).** With per-item fees, eight Smalls in a cell earn eight times what a Medium earns in the same space, Smalls become strictly dominant and the packing decision collapses.
+>
+> **Large cargo gets no size premium either.** For the same commodity, large and small pay the same per unit volume — a tonne of bricks is a tonne of bricks. The reward for handling Large is **fewer journeys**, which scales with how many players you have and vanishes when you're alone. A premium on top would let Large win on both axes and make Small cargo something you take only when nothing better is offered.
+>
+> What *does* vary the money is **value density by cargo type**, and it pays for itself twice: compact high-value goods earn more per cell **and make the dilemma hotter**, because dropping something precious turns patch-or-confess from a shrug into a crisis. Bulky cheap cargo is safe money that eats your warehouse.
 **Out:** daily rent · tape and supplies · rack repairs.
 **Fail:** can't make rent → evicted → run ends.
 
@@ -180,6 +203,7 @@ Reputation gates contract quality and volume — that's the whole loop in v1. Th
 - **Host-authoritative over everything that isn't a player.** The host simulates every rigid body, owns every held-item state, and decides every pick up, drop and hand off.
 - **Each client owns its own capsule.** It simulates its own movement locally — no prediction, no reconciliation — and replicates the result for other peers to ease toward. Movement is zero-latency for everyone; anything you *touch* costs one round trip. (ADR 7 — this replaces the earlier input-prediction plan.)
 - **Held items are force-driven, never parented.** A held crate stays an awake rigid body simulated by the host, pulled toward a hold point in front of the holder by a spring and released if dragged too far. It collides with the world for real — that's where the comedy and the damage data both come from — and it sags under its own weight, which tells you how heavy it is without a UI element. Two holders means two hold points and the crate tracks their midpoint. (ADR 13 — this replaces the earlier parenting plan.)
+  - **Throwing came free.** Confirmed in the first playable test: a held crate keeps its momentum, so swinging and releasing throws it, and swinging harder throws it further. No throw button, no throw animation, no throw code — it falls out of the crate being a real rigid body. A parented crate could not do this at all. Phase 3's damage model reads those release velocities without extra work.
 - **Steam P2P lobbies** via GodotSteam — no servers to run, no infrastructure cost. Development runs on ENet so four instances can be tested on one machine; Steam allows only one client per PC (ADR 8).
 - **Proximity voice chat**, 3D-positioned and distance-attenuated, via Steam Voice (ADR 9).
 - **Late join:** v1 allows joining between days only. Mid-day drop-in is a post-launch problem.
