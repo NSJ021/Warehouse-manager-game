@@ -26,9 +26,16 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
-	if not event.is_action_pressed("interact"):
-		return
+	if event.is_action_pressed("interact"):
+		try_toggle_hold()
 
+
+## Grab whatever we are aiming at, or put down what we are holding.
+##
+## Public so the integration harness drives exactly the path a keypress does. A
+## test that called the referee directly would pass with a completely broken aim
+## ray — which is precisely the bug that shipped and had to be found by hand.
+func try_toggle_hold() -> void:
 	var referee := _authority()
 	if referee == null:
 		return

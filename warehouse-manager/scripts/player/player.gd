@@ -124,6 +124,33 @@ func _process(delta: float) -> void:
 	camera_pivot.rotation.x = lerp_angle(camera_pivot.rotation.x, sync_pitch, weight)
 
 
+## Place this capsule immediately, skipping the walk. For respawns, day resets,
+## and the integration harness putting a player where a crate is.
+func teleport_to(point: Vector3) -> void:
+	global_position = point
+	sync_position = point
+	velocity = Vector3.ZERO
+	sync_velocity = Vector3.ZERO
+
+
+## Point the camera at a world position.
+##
+## Writes the same state a mouse would, which is the whole point: setting
+## [member camera_pivot] rotation directly would leave [member sync_pitch] stale,
+## so remote peers — including the host, which decides what you can reach — would
+## still think this player was looking straight ahead.
+func aim_at(point: Vector3) -> void:
+	var to_target := point - camera.global_position
+	if to_target.length_squared() < 0.0001:
+		return
+	# Forward is -Z, hence the negated arguments.
+	rotation.y = atan2(-to_target.x, -to_target.z)
+	_pitch = clampf(asin(to_target.normalized().y), -PITCH_LIMIT, PITCH_LIMIT)
+	camera_pivot.rotation.x = _pitch
+	sync_yaw = rotation.y
+	sync_pitch = _pitch
+
+
 ## Called on every peer by the spawner before the node enters the tree.
 func setup(id: int, display_name: String, spawn_point: Vector3) -> void:
 	peer_id = id

@@ -83,6 +83,12 @@ const MIN_ALIGN_ANGLE := 0.001
 ## Replicated by the MultiplayerSynchronizer. Written only by the host.
 var sync_position := Vector3.ZERO
 var sync_basis := Quaternion.IDENTITY
+## Who is holding this, replicated so clients can tell the truth about it — the
+## host-only dictionary below is invisible to them, so without these a client's
+## HUD would report a two-player carry as carrying alone. Two fields rather than
+## an array because two is the cap, so the shape encodes the rule. 0 means empty.
+var sync_holder_a := 0
+var sync_holder_b := 0
 
 ## peer_id -> the holding [Player]. Host-only, and never replicated: a node
 ## reference means nothing on another machine.
@@ -115,6 +121,10 @@ func _physics_process(_delta: float) -> void:
 	sync_position = global_position
 	sync_basis = global_transform.basis.get_rotation_quaternion()
 
+	var ids := _holders.keys()
+	sync_holder_a = int(ids[0]) if ids.size() > 0 else 0
+	sync_holder_b = int(ids[1]) if ids.size() > 1 else 0
+
 
 func _process(delta: float) -> void:
 	var weight := clampf(PUPPET_SMOOTHING * delta, 0.0, 1.0)
@@ -141,10 +151,18 @@ func remove_holder(peer_id: int) -> void:
 		can_sleep = true
 
 
+## Correct on every peer, host or client, because it reads the replicated fields
+## rather than the host-only dictionary.
 func holder_count() -> int:
-	return _holders.size()
+	var count := 0
+	if sync_holder_a != 0:
+		count += 1
+	if sync_holder_b != 0:
+		count += 1
+	return count
 
 
+## Host-only truth, used by the physics. Clients should ask [method holder_count].
 func is_held_by(peer_id: int) -> bool:
 	return _holders.has(peer_id)
 

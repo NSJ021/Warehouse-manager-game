@@ -29,8 +29,13 @@ warehouse-manager/
 │                     steam_transport.gd
 ├── resources/                         .tres by domain — resources/goods/…
 ├── assets/                            Art pipeline output — models/ materials/ textures/ audio/
-└── test/                              Unit tests mirroring scripts/, plus integration/
+└── test/                              See test/README.md
+    ├── smoke/                         Every scene loads and instances
+    ├── integration/                   Two real processes over real ENet
+    └── unit/                          Reserved — nothing pure enough yet
 ```
+
+The suite is one command, `./tools/run-tests.ps1`, and runs automatically on push via the `pre-push` hook. `tools/hooks/pre-push` is the tracked copy — git only runs hooks from the untracked `.git/hooks/`, so it needs installing once per clone.
 
 Folders are created **on first use**. Empty directories are not tracked by git and rot; `world/`, `goods/`, `ui/`, `resources/`, `assets/` and `test/` above are the agreed destinations, not existing folders.
 

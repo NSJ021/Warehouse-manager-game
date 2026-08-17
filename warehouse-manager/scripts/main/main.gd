@@ -8,6 +8,8 @@ extends Node
 ##   --join[=address]  join over ENet, default 127.0.0.1
 ##   --steam           use the Steam transport instead of ENet
 ##   --name=NAME       display name above the character
+##   --port=N          override the ENet port, so a second session can run
+##                     alongside a live one without fighting for it
 ## Set these per instance under Debug > Customize Run Instances.
 
 const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
@@ -64,6 +66,7 @@ func _apply_launch_arguments() -> void:
 	var wants_host := false
 	var wants_join := false
 	var address := ""
+	var port := 0
 
 	for arg in args:
 		if arg == "--steam":
@@ -77,14 +80,16 @@ func _apply_launch_arguments() -> void:
 			address = arg.trim_prefix("--join=")
 		elif arg.begins_with("--name="):
 			Net.local_player_name = arg.trim_prefix("--name=")
+		elif arg.begins_with("--port="):
+			port = arg.trim_prefix("--port=").to_int()
 
 	if wants_host:
 		Net.local_player_name = Net.local_player_name if Net.local_player_name != "Player" else "Host"
 		_set_status("Hosting over %s..." % ("Steam" if kind == Net.TransportKind.STEAM else "ENet"))
-		Net.host_session(kind)
+		Net.host_session(kind, port)
 	elif wants_join:
 		_set_status("Connecting...")
-		Net.join_session(kind, address)
+		Net.join_session(kind, address, port)
 
 
 func _on_host_enet_pressed() -> void:

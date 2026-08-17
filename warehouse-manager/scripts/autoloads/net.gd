@@ -53,22 +53,23 @@ func _process(_delta: float) -> void:
 		_transport.poll()
 
 
-## Open a session as host.
-func host_session(kind: TransportKind) -> void:
+## Open a session as host. [param port] of 0 means the transport's default; the
+## integration harness passes its own so it can never collide with a live game.
+func host_session(kind: TransportKind, port: int = 0) -> void:
 	if _in_session:
 		push_warning("Already in a session — leave first")
 		return
-	_bind_transport(kind)
+	_bind_transport(kind, port)
 	_is_host = true
 	_transport.host(MAX_PLAYERS)
 
 
 ## Join an existing session. [param address] is an IP for ENet, a lobby ID for Steam.
-func join_session(kind: TransportKind, address: String) -> void:
+func join_session(kind: TransportKind, address: String, port: int = 0) -> void:
 	if _in_session:
 		push_warning("Already in a session — leave first")
 		return
-	_bind_transport(kind)
+	_bind_transport(kind, port)
 	_is_host = false
 	_transport.join(address)
 
@@ -122,12 +123,13 @@ func get_transport() -> NetTransport:
 	return _transport
 
 
-func _bind_transport(kind: TransportKind) -> void:
+func _bind_transport(kind: TransportKind, port: int = 0) -> void:
 	match kind:
 		TransportKind.STEAM:
+			# Steam lobbies are not addressed by port, so it is ignored here.
 			_transport = SteamTransport.new()
 		_:
-			_transport = ENetTransport.new()
+			_transport = ENetTransport.new(port if port > 0 else ENetTransport.DEFAULT_PORT)
 	_transport.peer_ready.connect(_on_peer_ready)
 	_transport.failed.connect(_on_transport_failed)
 
