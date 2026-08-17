@@ -54,6 +54,8 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 12 | Project structure, file layout and naming | `decisions/2026-08-17-project-structure.md` |
 | 13 | Held items are force-driven, not parented | `decisions/2026-08-17-springy-held-item-grab.md` |
 | 14 | Physics body budget of 150; cargo replicates at 20 Hz | `decisions/2026-08-17-physics-budget.md` |
+| 15 | Planning tool wraps the build order, never replaces it | `decisions/2026-08-17-gsd-wraps-the-build-order.md` |
+| 16 | The storage grid module is 0.5 m | `decisions/2026-08-17-storage-grid-module.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -133,6 +135,7 @@ That last row is the real incentive. A lone player dragging a Large crate physic
 ### 6.2 Storage
 
 - Racks expose **slots**. Items **snap** in on insert. Storage is a clean spatial puzzle, unpolluted by physics jitter.
+- **One slot is 0.5 m** (ADR 16). Small = 1 slot, Medium = 2 (1.0 × 0.5), Large = 4 (1.0 × 1.0). A rack bay four slots wide is 2.0 m. Every grid-critical asset is modelled to this exactly — see the art pipeline.
 - Racks have **stability**. Hit one hard enough and it wobbles; the top row may shed. Chaos is a *punishment for recklessness*, not ambient noise.
 - **Floor stacking is allowed.** It's faster, it blocks pathing, it counts as clutter, and it's begging to be kicked over. A tempting shortcut with a real cost.
 
