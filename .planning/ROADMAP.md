@@ -53,13 +53,13 @@ Plans:
 - [ ] 00-06: Two-machine Steam validation — see `docs/steam-validation-run.md`
 
 ### Phase 1: Storage
-**Goal:** Racks with slots, grid-snapped insertion, and Goods IN / Goods OUT zones.
+**Goal:** Racks with cells, grid-snapped insertion, and Goods IN / Goods OUT zones.
 **Depends on:** Phase 0
 **Requirements**: STORE-01, STORE-02, STORE-03, STORE-04, STORE-05
 **Gate (GDD §13)**: *Storage feels deliberate.*
 **Success Criteria** (what must be TRUE):
-  1. A player carrying a crate can aim at a rack slot and place it, and it snaps cleanly
-  2. Every peer agrees which slot holds which crate
+  1. A player carrying a crate can aim at a rack cell and place it, and it snaps cleanly
+  2. Every peer agrees which cell holds which crate, and how many are in it
   3. Racked items are static and unreplicated, so they cost nothing against the body budget (ADR 14)
   4. Goods IN and Goods OUT zones detect what is inside them
   5. Floor stacking still works, and is still a tempting bad idea
@@ -71,9 +71,9 @@ Plans:
 - [ ] 01-01-PLAN.md — Prove the spawner despawns a freed crate on both peers; name physics layer 4 `storage` *(wave 1)*
 - [ ] 01-02-PLAN.md — `StorageGrid` cell arithmetic and the 2×2×2 lattice, test-first, unit layer wired into the suite *(wave 1)*
 - [ ] 01-03-PLAN.md — The rack fixture: cell geometry, atomic occupancy as data, derived local visuals *(wave 2)*
-- [ ] 01-04-PLAN.md — Place and retrieve: referee RPCs, one aim ray for crates and slots, a second integration session *(wave 3)*
+- [ ] 01-04-PLAN.md — Place and retrieve: referee RPCs, one aim ray for crates and cells, a second integration session *(wave 3)*
 - [ ] 01-05-PLAN.md — Goods IN / Goods OUT zones, agreed on both peers *(wave 3)*
-- [ ] 01-06-PLAN.md — Aim feedback and the snap: slot highlight, travel, placement sound *(wave 4)*
+- [ ] 01-06-PLAN.md — Aim feedback and the snap: cell highlight, travel, placement sound *(wave 4)*
 - [ ] 01-07-PLAN.md — Rack shedding, bounded; and what floor stacking actually costs *(wave 5)*
 - [ ] 01-09-PLAN.md — Settled cargo turns solid and disturbed cargo wakes, so floor stacking finally blocks pathing (ADR 17) *(wave 6)*
 - [ ] 01-08-PLAN.md — The gate: a human judges whether storage feels deliberate, and the ADRs that follow *(wave 7)*
@@ -84,7 +84,7 @@ Plans:
 **Requirements**: GOODS-01, GOODS-02, GOODS-03, CARRY-03, RUN-02
 **Gate (GDD §13)**: *The loop closes.*
 **Success Criteria** (what must be TRUE):
-  1. Items come in Small, Medium and Large, occupying 1, 2 and 4 slots
+  1. Items come in Small (8 per cell), Medium (one whole cell) and Large (two cells) — ADR 18
   2. A lone player can drag any item, badly, and cannot rack a Large one above floor level
   3. A day runs morning → shift → close in 6–10 minutes
   4. Items have a store-until date, and being late costs something
