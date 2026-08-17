@@ -29,13 +29,30 @@ extends SceneTree
 var _failures: Array[String] = []
 var _checked := 0
 
+## Physics-dependent checks cannot run in _initialize — the server needs a few
+## frames before a raycast returns anything meaningful.
+var _frames := 0
+var _aim_cases: Array = []
+
 
 func _initialize() -> void:
 	_check_engine_apis()
 	_check_engine_behaviours()
 	_check_godotsteam()
 	_check_decided_invariants()
+	_build_aim_scene()
 
+
+func _physics_process(_delta: float) -> bool:
+	_frames += 1
+	if _frames < 3:
+		return false
+	_check_aim_behaviour()
+	_report()
+	return true
+
+
+func _report() -> void:
 	print("")
 	if _failures.is_empty():
 		print("[api] PASS - %d assumptions still hold" % _checked)
@@ -49,6 +66,59 @@ func _initialize() -> void:
 	print("  An assumption breaking is usually an engine or addon upgrade.")
 	print("  Find what replaced it before changing any game code.")
 	quit(1)
+
+
+## Storage slots are aim targets, not detectors. Phase 1 plans to raycast against
+## Area3D slot volumes with monitoring and monitorable both OFF, so that 150-odd
+## slots cost nothing in collision detection while still being aimable at.
+##
+## Measured before relying on it: hittability is independent of both flags. If a
+## future engine version ever couples them, every slot silently starts paying for
+## detection it never reads, and aiming would keep working — so nothing would look
+## wrong. That is exactly the kind of regression worth an assertion.
+func _build_aim_scene() -> void:
+	var world := Node3D.new()
+	get_root().add_child(world)
+
+	var x := 0.0
+	for case in [
+		["slot area is aimable with monitoring ON", true, true],
+		["slot area is aimable with monitoring OFF", false, true],
+		["slot area is aimable with monitoring AND monitorable OFF", false, false],
+	]:
+		var area := Area3D.new()
+		area.collision_layer = 8
+		area.collision_mask = 0
+		area.monitoring = case[1]
+		area.monitorable = case[2]
+		area.position = Vector3(x, 0.0, 0.0)
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(0.5, 0.5, 0.5)
+		shape.shape = box
+		area.add_child(shape)
+		world.add_child(area)
+
+		var ray := RayCast3D.new()
+		ray.position = Vector3(x, 0.0, 2.0)
+		ray.target_position = Vector3(0.0, 0.0, -3.0)
+		ray.collision_mask = 8
+		ray.collide_with_areas = true
+		ray.collide_with_bodies = false
+		world.add_child(ray)
+
+		_aim_cases.append([case[0], ray, area])
+		x += 3.0
+
+
+func _check_aim_behaviour() -> void:
+	print("[api] aiming at storage slots")
+	_expect_properties("RayCast3D", ["collide_with_areas", "collide_with_bodies"])
+	for entry in _aim_cases:
+		var ray: RayCast3D = entry[1]
+		ray.force_raycast_update()
+		var hit: bool = ray.is_colliding() and ray.get_collider() == entry[2]
+		_expect(hit, entry[0])
 
 
 # --------------------------------------------------------------- section 1
