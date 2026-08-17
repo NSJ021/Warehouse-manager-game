@@ -1,9 +1,9 @@
 # Client-authoritative player capsule, host-authoritative everything else
 
 - **Date:** 2026-08-16
-- **Status:** Accepted
+- **Status:** Accepted — except the held-item attachment mechanism, superseded by [springy-held-item-grab](2026-08-17-springy-held-item-grab.md). Host authority over held items, and the authority line at the capsule boundary, stand in full.
 - **Deciders:** NJ
-- **Supersedes:** the character-prediction clause of [host-authoritative-netcode](2026-08-16-host-authoritative-netcode.md). The rest of that ADR — host simulates all rigid bodies, held items parent on the host, Steam P2P, Phase 0 as a project gate — stands unchanged.
+- **Supersedes:** the character-prediction clause of [host-authoritative-netcode](2026-08-16-host-authoritative-netcode.md). The rest of that ADR — host simulates all rigid bodies, host owns every held item, Steam P2P, Phase 0 as a project gate — stands unchanged. That ADR's *parenting* mechanism for held items has since been superseded separately; host ownership of them has not.
 
 ## Context
 

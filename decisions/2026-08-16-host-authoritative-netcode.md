@@ -1,7 +1,7 @@
 # Host-authoritative networking, built in Phase 0
 
 - **Date:** 2026-08-16
-- **Status:** Accepted — except the character-prediction clause, superseded by [client-authoritative-character](2026-08-16-client-authoritative-character.md). Host authority over rigid bodies, held items, Steam P2P and the Phase 0 gate all stand.
+- **Status:** Accepted — except two clauses. The character-prediction clause is superseded by [client-authoritative-character](2026-08-16-client-authoritative-character.md). The held-item *parenting* clause is superseded by [springy-held-item-grab](2026-08-17-springy-held-item-grab.md), which makes held items force-driven instead. Host authority over rigid bodies and held items, Steam P2P and the Phase 0 gate all stand.
 - **Deciders:** NJ
 
 ## Context

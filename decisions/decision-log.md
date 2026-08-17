@@ -4,13 +4,15 @@ Append-only. Newest at the top. To change course, write a **new** ADR and mark t
 
 | Date | Decision | Status | ADR |
 |---|---|---|---|
+| 2026-08-17 | Held items are force-driven, not parented | Accepted | [springy-held-item-grab](2026-08-17-springy-held-item-grab.md) |
+| 2026-08-17 | Project structure, file layout and naming conventions | Accepted | [project-structure](2026-08-17-project-structure.md) |
 | 2026-08-16 | The game is called Nice Little Earner | Accepted | [game-name](2026-08-16-game-name.md) |
 | 2026-08-16 | Launch price £9.99 / $11.99 with a launch-week discount | Accepted | [launch-price](2026-08-16-launch-price.md) |
 | 2026-08-16 | Proximity voice chat is in v1 | Accepted | [proximity-voice-in-v1](2026-08-16-proximity-voice-in-v1.md) |
 | 2026-08-16 | ENet for development, Steam P2P for shipping | Accepted | [enet-development-transport](2026-08-16-enet-development-transport.md) |
-| 2026-08-16 | Client-authoritative player capsule, host-authoritative everything else | Accepted | [client-authoritative-character](2026-08-16-client-authoritative-character.md) |
+| 2026-08-16 | Client-authoritative player capsule, host-authoritative everything else | Partly superseded (held-item attachment) | [client-authoritative-character](2026-08-16-client-authoritative-character.md) |
 | 2026-08-16 | Lean v1 scope; co-op-first with solo playable | Partly superseded (voice chat) | [lean-v1-scope](2026-08-16-lean-v1-scope.md) |
-| 2026-08-16 | Host-authoritative networking, built in Phase 0 | Partly superseded (character clause) | [host-authoritative-netcode](2026-08-16-host-authoritative-netcode.md) |
+| 2026-08-16 | Host-authoritative networking, built in Phase 0 | Partly superseded (character clause, held-item clause) | [host-authoritative-netcode](2026-08-16-host-authoritative-netcode.md) |
 | 2026-08-16 | Grid-snapped storage, physics transport | Accepted | [grid-storage-physics-transport](2026-08-16-grid-storage-physics-transport.md) |
 | 2026-08-16 | Session structure: the Lease Run | Accepted | [lease-run-structure](2026-08-16-lease-run-structure.md) |
 | 2026-08-16 | Engine: Godot 4.6 + Jolt + Steam P2P | Accepted | [engine-godot](2026-08-16-engine-godot.md) |
