@@ -65,7 +65,7 @@ Plans:
   5. Floor stacking still works, and is still a tempting bad idea
   6. Hitting a rack hard enough sheds from the top row, and it reads as punishment rather than noise
 
-**Plans:** 8 plans in 6 waves
+**Plans:** 9 plans in 7 waves
 
 Plans:
 - [ ] 01-01-PLAN.md — Prove the spawner despawns a freed crate on both peers; name physics layer 4 `storage` *(wave 1)*
@@ -75,7 +75,8 @@ Plans:
 - [ ] 01-05-PLAN.md — Goods IN / Goods OUT zones, agreed on both peers *(wave 3)*
 - [ ] 01-06-PLAN.md — Aim feedback and the snap: slot highlight, travel, placement sound *(wave 4)*
 - [ ] 01-07-PLAN.md — Rack shedding, bounded; and what floor stacking actually costs *(wave 5)*
-- [ ] 01-08-PLAN.md — The gate: a human judges whether storage feels deliberate, and the ADRs that follow *(wave 6)*
+- [ ] 01-09-PLAN.md — Settled cargo turns solid and disturbed cargo wakes, so floor stacking finally blocks pathing (ADR 17) *(wave 6)*
+- [ ] 01-08-PLAN.md — The gate: a human judges whether storage feels deliberate, and the ADRs that follow *(wave 7)*
 
 ### Phase 2: Goods
 **Goal:** Goods with size classes, fragility, store-until dates, and the day clock that makes them matter.
