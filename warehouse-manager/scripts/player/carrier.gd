@@ -17,6 +17,8 @@ func _ready() -> void:
 	if not _player.is_multiplayer_authority():
 		set_process_unhandled_input(false)
 		return
+	# So the HUD can find whose hands these are without knowing the level layout.
+	add_to_group("local_carrier")
 	# The ray starts inside our own capsule, so it has to be told to ignore it.
 	_ray.add_exception(_player)
 

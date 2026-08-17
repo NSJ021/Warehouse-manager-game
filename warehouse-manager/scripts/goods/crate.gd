@@ -36,6 +36,18 @@ const BREAK_DISTANCE := 2.0
 const EXTRA_HOLDER_DAMPING := 0.5
 ## Two is the ceiling by design — two-player carry, not four (GDD §6.1).
 const MAX_HOLDERS := 2
+## Shoving. Cargo is deliberately on a collision mask players do not share, so a
+## capsule never touches a crate directly — without that, a puppet capsule (whose
+## position is written rather than simulated) resolves the overlap with unlimited
+## force and bulldozes cargo across the room at walking pace, while the host's own
+## capsule is simply blocked. Measured, not guessed: 3.39 m of launch versus
+## 0.01 m. Separating the masks removes both behaviours, and the host then applies
+## this clamped force instead, so every player shoves identically (ADR 7 — "the
+## push must be requested rather than applied directly").
+const SHOVE_FORCE := 90.0
+const MAX_SHOVE_FORCE := 700.0
+## Below this you are leaning on it, not shoving it.
+const MIN_SHOVE_SPEED := 0.4
 ## How fast a client puppet catches up to the host's last known transform.
 const PUPPET_SMOOTHING := 20.0
 ## Below this the rotation error is noise, and asking a near-identity quaternion
@@ -50,6 +62,8 @@ var sync_basis := Quaternion.IDENTITY
 ## node reference means nothing on another machine.
 var _hold_targets: Dictionary = {}
 
+@onready var _push_sensor: Area3D = $PushSensor
+
 
 func _enter_tree() -> void:
 	# Cargo is host-owned, always. Clients ask; the host decides (ADR 7).
@@ -60,12 +74,16 @@ func _ready() -> void:
 	if Net.is_host():
 		set_process(false)
 		return
+	# Only the host acts on overlaps, so every client was paying for detection it
+	# never reads — which multiplies by crate count in the stress test.
+	_push_sensor.monitoring = false
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = true
 	set_physics_process(false)
 
 
 func _physics_process(_delta: float) -> void:
+	_apply_shoves()
 	if not _hold_targets.is_empty():
 		_apply_hold_forces()
 	sync_position = global_position
@@ -113,6 +131,34 @@ func setup(id: int, spawn_point: Vector3) -> void:
 	name = "crate_%d" % id
 	position = spawn_point
 	sync_position = spawn_point
+
+
+## Host-only. Walking into cargo shoves it, at a force the host controls.
+func _apply_shoves() -> void:
+	for body in _push_sensor.get_overlapping_bodies():
+		var player := body as Player
+		if player == null:
+			continue
+		# Never shove what you are carrying. Without this the holder's own capsule
+		# pushes their crate away from them for as long as they walk forward.
+		if is_held_by(player.peer_id):
+			continue
+
+		var toward := global_position - player.global_position
+		toward.y = 0.0
+		if toward.length_squared() < 0.0001:
+			continue
+		toward = toward.normalized()
+
+		# Read off the replicated value rather than the physics engine: a puppet
+		# capsule has no velocity of its own on this machine.
+		var closing := player.sync_velocity.dot(toward)
+		if closing < MIN_SHOVE_SPEED:
+			continue
+
+		# A crate asleep on the floor will not wake for an applied force alone.
+		sleeping = false
+		apply_central_force((toward * closing * SHOVE_FORCE).limit_length(MAX_SHOVE_FORCE))
 
 
 func _apply_hold_forces() -> void:

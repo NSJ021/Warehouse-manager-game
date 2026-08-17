@@ -32,6 +32,10 @@ const PLAYER_COLOURS: Array[Color] = [
 var sync_position := Vector3.ZERO
 var sync_yaw := 0.0
 var sync_pitch := 0.0
+## Replicated because the host needs it and cannot measure it: a puppet capsule
+## runs no physics, so the host reads the owner's own velocity to work out how
+## hard a shove into cargo should be.
+var sync_velocity := Vector3.ZERO
 
 var peer_id := 1
 var player_name := "Player"
@@ -106,6 +110,7 @@ func _physics_process(delta: float) -> void:
 	sync_position = global_position
 	sync_yaw = rotation.y
 	sync_pitch = _pitch
+	sync_velocity = velocity
 
 
 func _process(delta: float) -> void:

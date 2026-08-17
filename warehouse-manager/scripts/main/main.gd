@@ -12,6 +12,15 @@ extends Node
 
 const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 
+## On screen during a session. Cheap to read while testing, and it means devlog
+## footage shows the controls without a caption being added afterwards.
+const CONTROLS: Array[String] = [
+	"WASD move   ·   Shift sprint   ·   Space jump",
+	"E  grab / drop a crate",
+	"walk into a crate to shove it",
+	"Esc releases the mouse, click to recapture",
+]
+
 var _world: Node = null
 
 @onready var menu: Control = $UI/Menu
@@ -136,5 +145,20 @@ func _refresh_hud() -> void:
 		var lobby_id := (transport as SteamTransport).get_lobby_id()
 		if lobby_id != 0:
 			lines.append("lobby: %d" % lobby_id)
-	lines.append("Esc releases the mouse, click to recapture")
+
+	lines.append(_carry_line())
+	lines.append("")
+	lines.append_array(CONTROLS)
 	hud_label.text = "\n".join(lines)
+
+
+## Reads the local player's hands via a group, so the HUD needs to know nothing
+## about how a level arranges its nodes.
+func _carry_line() -> String:
+	var carrier := get_tree().get_first_node_in_group("local_carrier") as Carrier
+	if carrier == null:
+		return "hands: —"
+	var crate := carrier.held_crate()
+	if crate == null:
+		return "hands: empty"
+	return "hands: %s (%d carrying)" % [crate.name, crate.holder_count()]
