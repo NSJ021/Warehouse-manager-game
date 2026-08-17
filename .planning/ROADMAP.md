@@ -33,8 +33,8 @@ insertions and are marked INSERTED.
 ## Phase Details
 
 ### Phase 0: Netcode spine
-**Goal**: Four players, an empty room, one physics crate. Pick up, drop, hand off, two-player carry. Nothing else.
-**Depends on**: Nothing
+**Goal:** Four players, an empty room, one physics crate. Pick up, drop, hand off, two-player carry. Nothing else.
+**Depends on:** Nothing
 **Requirements**: NET-01, NET-02, NET-03, CARRY-01, CARRY-02, CARRY-04
 **Gate (GDD §13)**: *If this isn't rock solid, the project stops here.*
 **Success Criteria** (what must be TRUE):
@@ -53,8 +53,8 @@ Plans:
 - [ ] 00-06: Two-machine Steam validation — see `docs/steam-validation-run.md`
 
 ### Phase 1: Storage
-**Goal**: Racks with slots, grid-snapped insertion, and Goods IN / Goods OUT zones.
-**Depends on**: Phase 0
+**Goal:** Racks with slots, grid-snapped insertion, and Goods IN / Goods OUT zones.
+**Depends on:** Phase 0
 **Requirements**: STORE-01, STORE-02, STORE-03, STORE-04, STORE-05
 **Gate (GDD §13)**: *Storage feels deliberate.*
 **Success Criteria** (what must be TRUE):
@@ -68,8 +68,8 @@ Plans:
 Plans: TBD
 
 ### Phase 2: Goods
-**Goal**: Goods with size classes, fragility, store-until dates, and the day clock that makes them matter.
-**Depends on**: Phase 1
+**Goal:** Goods with size classes, fragility, store-until dates, and the day clock that makes them matter.
+**Depends on:** Phase 1
 **Requirements**: GOODS-01, GOODS-02, GOODS-03, CARRY-03, RUN-02
 **Gate (GDD §13)**: *The loop closes.*
 **Success Criteria** (what must be TRUE):
@@ -81,8 +81,8 @@ Plans: TBD
 Plans: TBD
 
 ### Phase 3: The dilemma
-**Goal**: Damage, condition tiers, the tape gun, and the patch / confess / comp choice.
-**Depends on**: Phase 2
+**Goal:** Damage, condition tiers, the tape gun, and the patch / confess / comp choice.
+**Depends on:** Phase 2
 **Requirements**: DMG-01, DMG-02, GOODS-04, GOODS-05, DIL-01, DIL-02, DIL-03, DIL-04
 **Gate (GDD §13)**: ***The pillar works or the game doesn't.***
 **Success Criteria** (what must be TRUE):
@@ -96,8 +96,8 @@ Plans: TBD
 Plans: TBD
 
 ### Phase 4: Consequence
-**Goal**: Clients with trust and suspicion, the economy, rent, and eviction.
-**Depends on**: Phase 3
+**Goal:** Clients with trust and suspicion, the economy, rent, and eviction.
+**Depends on:** Phase 3
 **Requirements**: CLIENT-01, CLIENT-02, CLIENT-03, ECON-01, ECON-02, ECON-03
 **Gate (GDD §13)**: *A run can be lost.*
 **Success Criteria** (what must be TRUE):
@@ -108,8 +108,8 @@ Plans: TBD
 Plans: TBD
 
 ### Phase 5: The run
-**Goal**: The Lease Run wrapper — pick a map and a term, get scored, unlock.
-**Depends on**: Phase 4
+**Goal:** The Lease Run wrapper — pick a map and a term, get scored, unlock.
+**Depends on:** Phase 4
 **Requirements**: RUN-01, RUN-03, RUN-04
 **Gate (GDD §13)**: *A run can be won.*
 **Success Criteria** (what must be TRUE):
@@ -120,8 +120,8 @@ Plans: TBD
 Plans: TBD
 
 ### Phase 6: Presentation
-**Goal**: Art pass, audio, proximity voice chat, and juice.
-**Depends on**: Phase 5
+**Goal:** Art pass, audio, proximity voice chat, and juice.
+**Depends on:** Phase 5
 **Requirements**: NET-04, plus the art pipeline
 **Gate (GDD §13)**: *It's a game, not a prototype — and it can clip itself.*
 **Success Criteria** (what must be TRUE):
@@ -132,8 +132,8 @@ Plans: TBD
 Plans: TBD
 
 ### Phase 7: Shippable
-**Goal**: Solo tuning, balance across both lease terms, and playtest.
-**Depends on**: Phase 6
+**Goal:** Solo tuning, balance across both lease terms, and playtest.
+**Depends on:** Phase 6
 **Requirements**: SOLO-01
 **Gate (GDD §13)**: *Shippable.*
 **Success Criteria** (what must be TRUE):
