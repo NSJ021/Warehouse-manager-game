@@ -76,6 +76,22 @@ The rule most likely to be broken by accident and the most expensive when it is.
 
 So: any node whose name encodes identity carries a comment saying so, and renaming one is a netcode change, not a tidy-up.
 
+## ⚠ A new `class_name` is invisible to headless runs until the editor rescans
+
+Global class names live in `.godot/global_script_class_cache.cfg`, and **only the editor writes it.** Add a script with a new `class_name` on disk and a headless run will fail with `Parse Error: Could not find type "X" in the current scope` — on every file that refers to it, which makes it look like a much bigger breakage than it is.
+
+The fix is a rescan, not a code change:
+
+```gdscript
+EditorInterface.get_resource_filesystem().scan()
+```
+
+Then confirm before re-running, rather than hoping:
+
+```bash
+grep -E '"(YourNewClass)"' warehouse-manager/.godot/global_script_class_cache.cfg
+```
+
 ## Moving a file later
 
 Every script has a `.uid` sidecar, so UIDs survive a move and a stale path still resolves — which makes a botched move **silent rather than loud**. If a move is unavoidable:

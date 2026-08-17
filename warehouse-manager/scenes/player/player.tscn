@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://scripts/player/carrier.gd" id="2_carrier"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.4
@@ -39,6 +40,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
 current = true
 fov = 80.0
 
+[node name="HoldTarget" type="Marker3D" parent="CameraPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.15, -1.1)
+
+[node name="GrabRay" type="RayCast3D" parent="CameraPivot"]
+target_position = Vector3(0, 0, -2.5)
+
 [node name="NameLabel" type="Label3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.15, 0)
 billboard = 1
@@ -46,6 +53,9 @@ no_depth_test = true
 fixed_size = true
 pixel_size = 0.0015
 text = "Player"
+
+[node name="Carrier" type="Node" parent="."]
+script = ExtResource("2_carrier")
 
 [node name="Synchronizer" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("SceneReplicationConfig_player")
