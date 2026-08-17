@@ -56,6 +56,7 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 14 | Physics body budget of 150; cargo replicates at 20 Hz | `decisions/2026-08-17-physics-budget.md` |
 | 15 | Planning tool wraps the build order, never replaces it | `decisions/2026-08-17-gsd-wraps-the-build-order.md` |
 | 16 | The storage grid module is 0.5 m | `decisions/2026-08-17-storage-grid-module.md` |
+| 17 | Settled cargo becomes solid; disturbed cargo wakes | `decisions/2026-08-17-settled-clutter-is-solid.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -138,6 +139,7 @@ That last row is the real incentive. A lone player dragging a Large crate physic
 - **One slot is 0.5 m** (ADR 16). Small = 1 slot, Medium = 2 (1.0 × 0.5), Large = 4 (1.0 × 1.0). A rack bay four slots wide is 2.0 m. Every grid-critical asset is modelled to this exactly — see the art pipeline.
 - Racks have **stability**. Hit one hard enough and it wobbles; the top row may shed. Chaos is a *punishment for recklessness*, not ambient noise.
 - **Floor stacking is allowed.** It's faster, it blocks pathing, it counts as clutter, and it's begging to be kicked over. A tempting shortcut with a real cost.
+- **How the blocking works (ADR 17):** a crate that settles on the floor turns *static* and becomes solid — you walk around it like a wall. Shove it hard enough and it wakes back into a physics body and scatters. Cargo in transit stays dynamic and stays out of your way, so nothing you are carrying can be bulldozed. This is what makes "blocks pathing" real rather than aspirational.
 
 > **Budget note (ADR 14).** Grid snapping is not only a feel decision — it is what makes the game affordable. Racked items can be static, non-simulated and non-replicated, so physics is reserved for cargo actually in transit. The measured ceiling is **~150 concurrent loose rigid bodies** across four peers, which sizes floor clutter, how much a rack may shed, and how many items a day can involve. Full-physics storage would have spent the entire budget on stock merely sitting there. See [`docs/physics-budget.md`](physics-budget.md).
 
