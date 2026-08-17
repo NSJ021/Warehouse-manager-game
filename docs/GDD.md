@@ -2,8 +2,8 @@
 
 *(working title until 2026-08-16: "Warehouse Manager" — see ADR 11)*
 
-- **Version:** 0.3 — game renamed; adds positioning & price (§11), voice chat into scope, netcode model corrected to match ADR 7
-- **Date:** 2026-08-16
+- **Version:** 0.4 — held items are force-driven rather than parented (ADR 13); project structure ratified (ADR 12)
+- **Date:** 2026-08-17
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
 ---
@@ -51,8 +51,10 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 9 | Proximity voice chat is in v1 | `decisions/2026-08-16-proximity-voice-in-v1.md` |
 | 10 | Launch price £9.99 / $11.99 | `decisions/2026-08-16-launch-price.md` |
 | 11 | The game is called Nice Little Earner | `decisions/2026-08-16-game-name.md` |
+| 12 | Project structure, file layout and naming | `decisions/2026-08-17-project-structure.md` |
+| 13 | Held items are force-driven, not parented | `decisions/2026-08-17-springy-held-item-grab.md` |
 
-ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively. Check `decisions/decision-log.md` for current status before relying on any of them.
+ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
 ---
 
@@ -177,7 +179,7 @@ Reputation gates contract quality and volume — that's the whole loop in v1. Th
 
 - **Host-authoritative over everything that isn't a player.** The host simulates every rigid body, owns every held-item state, and decides every pick up, drop and hand off.
 - **Each client owns its own capsule.** It simulates its own movement locally — no prediction, no reconciliation — and replicates the result for other peers to ease toward. Movement is zero-latency for everyone; anything you *touch* costs one round trip. (ADR 7 — this replaces the earlier input-prediction plan.)
-- **Held items** parent to the holder on the host; transform replicates to clients.
+- **Held items are force-driven, never parented.** A held crate stays an awake rigid body simulated by the host, pulled toward a hold point in front of the holder by a spring and released if dragged too far. It collides with the world for real — that's where the comedy and the damage data both come from — and it sags under its own weight, which tells you how heavy it is without a UI element. Two holders means two hold points and the crate tracks their midpoint. (ADR 13 — this replaces the earlier parenting plan.)
 - **Steam P2P lobbies** via GodotSteam — no servers to run, no infrastructure cost. Development runs on ENet so four instances can be tested on one machine; Steam allows only one client per PC (ADR 8).
 - **Proximity voice chat**, 3D-positioned and distance-attenuated, via Steam Voice (ADR 9).
 - **Late join:** v1 allows joining between days only. Mid-day drop-in is a post-launch problem.

@@ -10,7 +10,7 @@ extends Node
 ##   --name=NAME       display name above the character
 ## Set these per instance under Debug > Customize Run Instances.
 
-const WORLD_SCENE := preload("res://scenes/world/test_room.tscn")
+const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 
 var _world: Node = null
 
