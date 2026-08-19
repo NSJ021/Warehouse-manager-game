@@ -4,6 +4,73 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 5 — 2026-08-19
+
+**Phase 1 starts building. The nine plans were audited against the decisions made the day before first — six were wrong, and one of them would have failed the suite on the opening task.**
+
+### The audit, and why it happened first
+
+The nine Phase 1 plans were written on 2026-08-17. ADRs 19–22 landed on 2026-08-19, along with solo drag, cargo recovery and the `unit/` test layer. Only 01-04 had been checked against any of that. `STATE.md` said as much, and said plainly that the other eight were "unverified rather than clean".
+
+So they were read against the ADRs and against what was actually on disk before anything executed. Six conflicts:
+
+| Plan | What was wrong |
+|---|---|
+| **01-01** | The despawn probe targeted `crate_5` — which had since become `LOST_CRATE_NAME`, the crate the supply-conservation check drops through the floor. Freeing it makes that check's lookup return null. **Guaranteed failure, on the first task of the phase** |
+| **01-02** | Task 3 created the `unit/` layer, renumbered the stage banners and rewrote the README row. All three already existed |
+| **01-02** | The objective and its house-style reference both described `test/unit/` as empty and reserved |
+| **01-04** | The ADR 19 patch added the drag rule host-side but never updated the client-side branch table |
+| **01-06** | Its highlight table declares it matches 01-04's "exactly" — and had no drag rows |
+| **01-08** | Presented floor stacking as an open blocking decision, quoted superseded ADR 16 geometry, and loaded ADR 16 in its context block rather than ADR 18 |
+
+**01-06 was the one worth the whole exercise.** Its single headline promise is that the highlight distinguishes an action that will work from one that will be refused. Without the drag rows, a player dragging something too heavy to lift would see a top-row cell painted green, press, and be silently refused by the host — the exact divergence the plan exists to prevent, in the case a solo player meets most often. Both tables now carry the rule, and above-floor shows BLOCKED rather than nothing, because "the game has not noticed me" and "the game is refusing me" must not look alike.
+
+**01-08 was the one that mattered structurally.** It asked a human to decide what floor stacking costs. ADR 17 decided that on 2026-08-17, and plan 01-09 builds it in wave 6 — the wave before the gate runs. Under ADR 15 an ADR outranks anything in `.planning/`, so the fork was replaced with a verification: walk into a settled stack, confirm you are stopped, confirm shoving wakes it, and look for the failure ADR 17 named — something settled half-inside a wall and now permanent furniture. This is precisely the drift the planning tool was flagged for when it was adopted: a generated plan quietly re-opening a settled decision.
+
+Three interactions were flagged rather than patched. The sharpest: **01-05 parks a probe crate in a zone and asserts the zone sees it — and 01-09 will make that crate settle static.** If `Area3D` does not report frozen bodies, the zone count silently drops to zero in wave 6 and reads as a settle bug. It is not a test artefact either way: Goods OUT has to detect stock that has been sat there all day.
+
+### What was built
+
+Three of nine plans, waves 1 and 2.
+
+**The despawn proof (01-01).** Phase 1's architecture rests on a racked crate being *freed* rather than frozen — a client pays roughly 40 µs/frame per rigid body merely for it to exist (ADR 14). That needs `MultiplayerSpawner` to replicate the despawn when the host calls `queue_free()` on a node it spawned through a custom `spawn_function`. Documented, leaned on for player disconnects, never once asserted for the crate path, and four plans stacked on it.
+
+**It holds.** Both peers independently observe the crate gone. None of the three ranked fallbacks was needed. Physics layer 4 is now named `storage`, asserted in the api layer (79 → 80) and documented.
+
+The probe also had a real race in it, found and fixed during execution: the host reaches "all crates replicated" locally with no round trip, so freeing immediately afterwards could ride the same network flush as the tail of the client's initial sync, letting the client's crate count go 5 → 6 → 5 inside unpolled network processing. A host-side settle wait fixed it. Worth the time — a flaky netcode test is worse than none, because it trains you to ignore red.
+
+**Cell arithmetic (01-02), test-first with an observed RED.** `StorageGrid` is pure static functions: index ↔ coords ↔ centre, out-of-rack detection returning −1 with the half-open boundary rule asserted on all six faces, the 2×2×2 Small lattice, and LIFO fill/remove proven exact inverses. 183 checks. The test was run against nothing first and watched to fail by naming the missing script.
+
+One trap recorded in the file itself: `cell_coords()` returns `(column, depth, level)`, **not world axes**. `cell_centre()` is the single place that remaps onto Godot's x/y/z.
+
+The unit stage now enumerates `test/unit/*.gd` and requires each file to print its own `PASS`, rather than running one hardcoded path — a loop checking only the last file's marker would let earlier ones fail silently.
+
+**The rack (01-03).** Twelve cells as *data*: occupancy is `{kind, ids}`, atomic by kind, LIFO within a cell, with all geometry delegated to `StorageGrid` — twelve calls to it and zero cell maths of its own, so nothing the unit test cannot see. A greybox scene with twelve per-cell aim volumes on the new storage layer, and `racked_item.tscn` as a bare `MeshInstance3D` with no body, no collision and no synchronizer, so a full warehouse costs nothing against the ~150-body budget. Two racks in the test room — one against a wall, one as an island, which is ADR 18's burial trade made physical.
+
+**The rack placement had to move.** The first position collided with the solo drag test's step-back corridor and timed the integration layer out. Fixed by relocating the racks, not by touching the test — which is the right way round, and a reminder that the integration suite now constrains level layout.
+
+### Decisions made
+
+None. No ADR was written this session; the audit's job was to stop plans quietly making decisions that ADRs had already made.
+
+### Housekeeping
+
+- Work is on `feat/phase-1-storage`, branched from `main`. The planning tool was configured to commit straight to `main`, which would have put nine plans' worth of commits on the default branch against the project's own rule.
+- Three `.uid` files were left untracked by the executors. This repo tracks them, so a fresh clone would have had broken resource references.
+- The audit record lives in `STATE.md`, because `.planning/phases/` is excluded from the repo and the plan patches themselves cannot be committed.
+
+### Open questions
+
+- **Does an `Area3D` report a frozen static body?** Decides whether Goods zones survive ADR 17's settling. Unknown, and it lands in wave 6.
+- **The shed threshold versus a dragged crate.** A drag tops out near 1.7 m/s against a 4.0 m/s threshold, so a dragged crate can never shed a rack. Probably right, but it should be a conscious call at the gate rather than a number nobody looked at.
+- Everything from session 4 still stands: the Steam join half needs a second machine, and feel tuning is provisional.
+
+### Next steps
+
+Resume at **wave 3** — `/gsd:execute-phase 1` from a fresh context, which skips the three completed plans and picks up 01-04 and 01-05 in parallel. Six plans remain, ending at the human gate in wave 7.
+
+---
+
 ## Session 4 — 2026-08-19
 
 **Phase 0's last build item lands, and the design's two thinnest areas — the dilemma maths and the economy — get settled in one sitting. Four ADRs, and the test suite rejected two of its author's ideas.**

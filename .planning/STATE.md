@@ -27,7 +27,7 @@ physics layer 4 named `storage` and asserted. Before that: solo drag built and p
 detection and patch maths settled and put under test (ADR 20); the economy settled (ADRs 21–22);
 a `unit/` test layer now exists; plan 01-04 patched for ADR 19 before execution
 
-Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
+Progress: [██░░░░░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-2 of 7 done (3/9 plans)
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -61,10 +61,17 @@ Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
 > ROADMAP.md both say wave 3, `depends_on: ["01-03"]`. The tool is wrong; trust the frontmatter,
 > or place/retrieve runs before the rack it places into exists.
 
-**Wave 1 starts with 01-01 (prove the spawner despawns a freed crate on both peers, three
-fallbacks ranked) and 01-02 (cell arithmetic, test-first) in parallel. 01-01 is the load-bearing
-unknown — if it needs a fallback, 01-03 and 01-04 must adapt and no plan currently tells them
-to.**
+**Next session: resume at wave 3** — `/gsd:execute-phase 1` from a fresh context. It skips the
+three plans that have SUMMARYs and picks up at **01-04 (place and retrieve) and 01-05 (Goods IN /
+Goods OUT zones)**, which run in parallel.
+
+Two things to carry in, both from the audit above rather than from any plan:
+
+- **`gsd-tools phase-plan-index` still misreports 01-04 as wave 1.** It depends on 01-03. Read
+  the frontmatter, not the tool.
+- **01-04 is the first plan to touch the referee**, and the drag rule now lives in two places:
+  host-side validation in `request_place`, and the client-side branch table that 01-06 copies.
+  Both were patched; keep them saying the same thing.
 
 > **01-01 resolved 2026-08-19: `queue_free()` despawn replication holds, no fallback needed.**
 > A despawn probe in `carry_session.gd` has the host free a crate spawned through the level's

@@ -65,12 +65,12 @@ Plans:
   5. Floor stacking still works, and is still a tempting bad idea
   6. Hitting a rack hard enough sheds from the top row, and it reads as punishment rather than noise
 
-**Plans:** 9 plans in 7 waves
+**Plans:** 9 plans in 7 waves — **3 complete (waves 1-2), 6 remaining (waves 3-7)**
 
 Plans:
-- [ ] 01-01-PLAN.md — Prove the spawner despawns a freed crate on both peers; name physics layer 4 `storage` *(wave 1)*
-- [ ] 01-02-PLAN.md — `StorageGrid` cell arithmetic and the 2×2×2 lattice, test-first, unit layer wired into the suite *(wave 1)*
-- [ ] 01-03-PLAN.md — The rack fixture: cell geometry, atomic occupancy as data, derived local visuals *(wave 2)*
+- [x] 01-01-PLAN.md — Prove the spawner despawns a freed crate on both peers; name physics layer 4 `storage` *(wave 1)*
+- [x] 01-02-PLAN.md — `StorageGrid` cell arithmetic and the 2×2×2 lattice, test-first, unit layer wired into the suite *(wave 1)*
+- [x] 01-03-PLAN.md — The rack fixture: cell geometry, atomic occupancy as data, derived local visuals *(wave 2)*
 - [ ] 01-04-PLAN.md — Place and retrieve: referee RPCs, one aim ray for crates and cells, a second integration session *(wave 3)*
 - [ ] 01-05-PLAN.md — Goods IN / Goods OUT zones, agreed on both peers *(wave 3)*
 - [ ] 01-06-PLAN.md — Aim feedback and the snap: cell highlight, travel, placement sound *(wave 4)*
