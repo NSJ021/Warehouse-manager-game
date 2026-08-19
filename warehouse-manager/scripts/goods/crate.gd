@@ -43,6 +43,12 @@ signal hold_mode_changed(peer_id: int, mode: HoldMode)
 ## pick up, and deliberately worse in every way except that it is always possible.
 enum HoldMode { CARRY, DRAG }
 
+## This crate's kind, for storage (01-03 onward). A cell is atomic — one kind
+## at a time (ADR 18) — so racking needs to know what it is holding. Phase 1
+## has exactly one cargo size, so this is the only kind that exists; Phase 2
+## turns it into a real size class rather than a single constant.
+const KIND_SMALL := &"small"
+
 ## Two is the ceiling by design — two-player carry, not four (GDD §6.1).
 const MAX_HOLDERS := 2
 ## Above this, one player cannot get a crate off the floor and is given a drag
@@ -162,6 +168,15 @@ var _holders: Dictionary = {}
 ## Host-only. What the current hold is, kept so a change can be spotted and
 ## announced rather than recomputed by everyone every frame.
 var _hold_mode := HoldMode.CARRY
+## Set once in [method setup]. -1 means never assigned, which would be a bug —
+## every crate is minted with an id, and racking (01-03 onward) needs it to
+## turn stored occupancy data back into a real crate.
+var id := -1
+## Always [constant KIND_SMALL] in Phase 1. A real field rather than the
+## constant read directly, so 01-04 onward can ask "what kind is this crate"
+## without caring whether the answer is fixed or, later, per-instance.
+var kind := KIND_SMALL
+
 ## Where this crate came into the world. Kept so a crate that falls out of it has
 ## somewhere valid to come back to — the dock, in a real level.
 var _spawn_point := Vector3.ZERO
@@ -302,11 +317,12 @@ func is_held_by(peer_id: int) -> bool:
 
 
 ## Called on every peer by the spawner before the node enters the tree.
-func setup(id: int, spawn_point: Vector3) -> void:
+func setup(crate_id: int, spawn_point: Vector3) -> void:
+	id = crate_id
 	# Deterministic on every machine: this name is how peers agree which crate is
 	# which, so it is protocol rather than decoration (ADR 12). Do not rename it
 	# for cosmetic reasons — it would fail on remote peers only, and silently.
-	name = "crate_%d" % id
+	name = "crate_%d" % crate_id
 	position = spawn_point
 	sync_position = spawn_point
 	_spawn_point = spawn_point
