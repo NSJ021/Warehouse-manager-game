@@ -280,6 +280,14 @@ func _check_decided_invariants() -> void:
 	_expect(crate.collision_layer == 4, "cargo is on the cargo layer (got %d)" % crate.collision_layer)
 	_expect(crate.collision_mask == 5, "cargo collides with world and cargo only (got %d)" % crate.collision_mask)
 
+	# Phase 1: rack cell aim-volumes get their own physics layer rather than
+	# joining cargo, so a rack full of cells never enters a shove or a carry
+	# check. A NAME is worth asserting on its own, separately from the layer
+	# existing: an unnamed layer is an anonymous bit in a .tscn, and the next
+	# person to add a layer picks the same one rather than reading this far.
+	_expect(str(ProjectSettings.get_setting("layer_names/3d_physics/layer_4", "")) == "storage",
+			"physics layer 4 is named 'storage' - rack cell sensors live there")
+
 	# GDD 6.1: solo drag runs at about 40% of walking pace. That penalty is the
 	# entire reason two-player carry is worth organising, so it is a balance
 	# number rather than a feel one - tune it knowingly, not by drift.

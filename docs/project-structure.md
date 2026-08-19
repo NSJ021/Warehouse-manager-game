@@ -83,6 +83,17 @@ The coming temptations are a day clock, a client roster and an economy ledger (P
 
 Code style — static typing, script section order, past-tense signals — is governed separately and is not repeated here.
 
+## Physics layers
+
+Named in `project.godot` (`layer_names/3d_physics/layer_N`) and pinned in `test/api/engine_assumptions.gd` so a new layer cannot appear silently inside a `.tscn`.
+
+| Layer | Name | Bit value | What lives there |
+|---|---|---|---|
+| 1 | `world` | 1 | Static level geometry — floors, walls, dock doors |
+| 2 | `players` | 2 | Player capsules. Deliberately does not share a mask with cargo — a puppet capsule's position is written rather than simulated, so a shared mask lets the solver bulldoze cargo at full walking speed |
+| 3 | `cargo` | 4 | Crates and other held or thrown goods — host-simulated rigid bodies |
+| 4 | `storage` | 8 | Rack cell aim-volumes (Phase 1) — `Area3D`s with `monitoring` and `monitorable` both off, hittable by the grab ray without joining the cargo layer |
+
 ## ⚠ Node names are protocol, not decoration
 
 The rule most likely to be broken by accident and the most expensive when it is.
