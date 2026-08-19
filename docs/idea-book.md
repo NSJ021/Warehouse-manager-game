@@ -129,6 +129,83 @@ Not in v1's In list, and it is not on the parked list either — it is new. If i
 
 ## The sales counter
 
-**Status:** proposal, needs an ADR · roughly half of it is parked scope
+**Raised:** 2026-08-17 (NJ) · **Developed:** 2026-08-19 · **Status:** proposal, not in v1 scope · needs an ADR
 
-Selling stored cargo over a counter rather than only dispatching it to its owner. Noted here so it stops living only in an untracked working file. Overlaps price bartering, which is explicitly on the parked list, so it cannot enter piecemeal without deciding that too.
+### The idea
+
+Two halves, as originally raised: **sell the cargo you are meant to be storing**, and **short-change depositors at intake** — accept forty crates, record thirty-eight, keep the difference.
+
+It converges hard with the name. [ADR 11](../decisions/2026-08-16-game-name.md) already notes that *Nice Little Earner* "implies actively making money in ways you would rather not itemise", which is this proposal described exactly.
+
+### Four strands, and separating them is the whole point
+
+"The sales counter" is not one idea, and treating it as one is how parked scope gets in through the side door. It is at least four, with different costs and different scope status:
+
+| # | Strand | What it is | Scope status |
+|---|---|---|---|
+| 1 | **Fencing** | Sell a client's stored crate for cash today | **New scope.** The core proposal |
+| 2 | **Short-changing intake** | Under-record what arrived, pocket the difference | **New scope.** Independent of 1 |
+| 3 | **Lien sale** | Sell stock the client abandoned past its store-until date | **New scope**, and the only strand that is not fraud |
+| 4 | **Bartering at the door** | Haggling on price | **Parked** — explicitly on the ADR 6 Out list |
+
+Strand 4 is the trap. It is already parked, and a "sales counter" that quietly includes haggling adopts parked scope without a superseding ADR. **Any ADR that takes this on must say which strands it takes**, and strand 4 needs its own reasoning or its own explicit exclusion.
+
+Strand 3 is the surprise. Selling uncollected goods to recover storage costs is real, legal warehousing practice, and it is the one version that adds a decision **without** adding fraud. It also solves a problem the design currently has no answer for — what to do with stock whose store-until date has passed and whose owner never came.
+
+### The framing that makes it work: borrowing, not stealing
+
+NJ's framing from the day it was raised, and it is the thing that stops this being a different game: **cash now, a certain reckoning on collection day.**
+
+You are not stealing a crate, you are *borrowing against* it. The client's collection day is already in the design (§6.1's store-until date), so the debt has a fixed maturity written into the item itself. When they turn up, it is not there, and you are back at the fork — comp it from someone else's stock, or confess.
+
+That is why it is worth considering at all: **it manufactures more dilemmas rather than replacing them.** A mechanic that let you cash out cleanly would compete with the pillar. This one feeds it.
+
+### The risk that would kill it — and it is new since ADR 21
+
+**The endgame fire-sale.**
+
+[ADR 21](../decisions/2026-08-19-two-currencies-and-the-crew-split.md) settled that reputation is an interest rate that decays to nothing as the lease runs out. That is correct and load-bearing for the dilemma — but it means the cost of a reputation hit *falls every day*. Point that at a mechanic that converts stock into cash and the consequence is immediate:
+
+> On day 29 of 30, sell the entire warehouse. Every reputation hit lands when reputation is nearly worthless. Bank the cash, split it at the checkout, walk away rich.
+
+That is a dominant endgame strategy and it would hollow out the last third of every run. Three mitigations, all of which need deciding rather than assuming:
+
+1. **The reckoning must be denominated in cash, not only reputation.** Failing to produce a crate on collection day should cost its full value plus a penalty. Then selling is a loan with interest rather than free money, and the fire-sale prices itself out.
+2. **Contract win conditions already exist** (§4) and are the natural counter — *"move 200 crates with zero damaged deliveries"* is failed by a fire-sale automatically.
+3. **Cap what is sellable.** Restricting clean sales to strand 3 — genuinely abandoned stock — removes the exploit entirely, at the cost of most of the fun.
+
+**This risk did not exist when the idea was raised.** It is a consequence of ADR 21, and it is the single strongest argument for keeping the whole thing parked until the economy is real enough to test the fire-sale against actual numbers.
+
+### Two things it would fill that are currently empty
+
+- **The rent clock has no escape valve.** Today, "cannot make rent" has exactly one answer: should have played better three days ago. A sales counter is the desperate lever — a bad decision available at the worst moment, which is a better failure state than arithmetic.
+- **Expired stock has no purpose.** Cargo past its store-until date currently just sits there being a spoilage penalty.
+
+The honest counter-argument to the first one: **the game may not want an escape valve.** Eviction being final is part of what makes rent frightening, and a lever that softens it could defang the clock the whole run is built around. Unresolved, and it should be resolved before this is built rather than discovered afterwards.
+
+### Constraints it must not break
+
+1. **It must feed the dilemma, never bypass it.** The moment selling becomes a clean alternative to patch/confess/comp, it competes with the pillar instead of supplying it.
+2. **It must not be the optimal default.** If selling stored cargo beats storing it, the game is about fencing and the warehouse is set dressing.
+3. **It must stay a decision, not a routine.** Once per crisis is a story; a sales loop every morning is a second job.
+
+### The cheap version
+
+**No counter, no NPC, no haggling UI — a bloke in a van round the back.**
+
+A dead drop: a marked spot by the loading door. Put a crate there, it is gone by morning, cash appears. That removes the shop fixture, the buyer character, the price negotiation and — crucially — strand 4 entirely, which is the parked half. It is also funnier and more in keeping with the tone than a shopfront, and it costs one trigger volume and one audio cue.
+
+If this ever enters scope, it should enter as the van, not as the counter.
+
+### Where it sits with the other parked ideas
+
+It reinforces the crew and is reinforced by it — **Half-Inch Del** and **Gaz the Gap** are already in the name pool as characters whose entire joke is stock quietly going missing. Neither idea needs the other, but if either lands the second gets cheaper and funnier.
+
+It also gets a **free evidence trail** from ADR 21's contribution tally: *"sold 3 of other people's crates"* is a column, and it is the most damning line the host could read at the split.
+
+### Open questions
+
+- **Does a sale show up on the day's tally, or only at the final reckoning?** ADR 21 posts the tally at each day's CLOSE, which would make secret selling impossible. Hiding it until the checkout fits the unilateral-decision pillar better and is considerably funnier, but it is an explicit exception to a rule just made.
+- **Who can sell?** If any player can fence any crate, one person can bankrupt the crew's reputation alone. That is consistent with the pillar — and it is a far bigger unilateral act than patching one item.
+- **Does the client find out it was sold, or only that it is missing?** Different reputation consequences, and the second is more interesting because it leaves room for a lie.
+- **Strand 2 (short-changing intake) has had no design at all.** It is listed here because it was raised, not because it has been thought about.
