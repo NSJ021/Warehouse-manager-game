@@ -28,7 +28,7 @@ Four rules it holds to, each of which exists because of something that actually 
 | `api/` | The engine and addon APIs we depend on still exist and behave as assumed | <1s |
 | `smoke/` | Every scene under `res://scenes/` loads *and instances* | ~1s |
 | `integration/` | Two processes: grab, two-player carry, handoff, release, **solo drag and its promotion to a carry**, all agreeing | ~2s |
-| `unit/` | The condition model and the dilemma maths, including *no dominant strategy* as an assertion | <1s |
+| `unit/` | The condition model and the dilemma maths, including *no dominant strategy* as an assertion; and the storage cell arithmetic (ADR 18) | <1s |
 
 ### api
 
@@ -53,6 +53,10 @@ This layer sat empty and marked "reserved" until those two existed, on the state
 **No GUT.** The suite already has a working `--script` runner idiom, and adding a framework to run pure arithmetic would be more moving parts than the tests themselves. If a future need genuinely wants fixtures and parameterised cases, revisit it then.
 
 The valuable half of this file is not the arithmetic — it is the assertion that **there is no dominant strategy**. GDD §6.5 only works if the right answer changes with the situation, which is a claim about the *shape* of the numbers rather than any one of them, and it is exactly what a later balance tweak breaks silently. So it sweeps 192 situations across item value, damage depth, client suspicion and days remaining, and requires that all three forks win somewhere and none wins more than 75%. It reports the realistic one-tier slice separately, because a uniform sweep can look healthy while the common case has quietly settled.
+
+`storage_grid_test.gd` covers `StorageGrid` — the cell arithmetic ADR 18 fixes: dimensions, the cell index round trip, the boundary rule that resolves anything outside a rack to `-1`, the 2×2×2 lattice a cell's 8 Smalls tile with no overlap, and the LIFO fill/remove pair proven as exact inverses. It was written before `StorageGrid` existed and watched to fail by naming the missing script, not by crashing.
+
+The unit stage in `tools/run-tests.ps1` runs every `*.gd` file under this directory, not just these two, and requires each one to print its own `[unit] PASS` — a loop that only checked the last file's marker would let earlier files fail silently. Adding another pure module here costs nothing beyond dropping the file in.
 
 ### smoke
 

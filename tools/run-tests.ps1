@@ -194,28 +194,41 @@ foreach ($line in ((Get-LogText $api) -split "`r?`n" | Where-Object { $_ -match 
 Test-CleanLog $api | Out-Null
 
 Write-Host ''
-Write-Host '[2/4] unit - the condition model and the dilemma maths' -ForegroundColor Cyan
-$unit = Start-Godot -Name 'unit' -GodotArgs @(
-    '--headless', '--path', $projectDir, '--script', 'res://test/unit/dilemma_maths.gd'
-)
-$unitExited = Wait-ForExit -Job $unit -TimeoutSeconds $StartupTimeoutSeconds
+Write-Host '[2/4] unit - the condition model, the dilemma maths, and the cell arithmetic' -ForegroundColor Cyan
 
-if (-not $unitExited) {
-    $failures.Add('unit: timed out and was killed')
-} else {
-    $code = Get-ExitCode $unit
-    if ($code -gt 0) { $failures.Add("unit: exit code $code") }
-    Test-Marker $unit '\[unit\] PASS' 'a unit PASS' | Out-Null
+# Enumerated rather than hardcoded: the next pure module (there will be one)
+# should cost nothing to add here, and a loop that only checked the last
+# file's marker would let earlier files fail silently - exactly the class of
+# bug the zero-tolerance scan exists to prevent. Every file must earn its own
+# [unit] PASS.
+$unitDir = Join-Path $repoRoot "$projectDir\test\unit"
+$unitScripts = Get-ChildItem -Path $unitDir -Filter '*.gd' | Sort-Object Name
+
+foreach ($script in $unitScripts) {
+    # Distinguishable per-file job name, so a Test-CleanLog or Test-Marker
+    # failure below names the file rather than just saying "unit".
+    $unitJob = Start-Godot -Name "unit-$($script.BaseName)" -GodotArgs @(
+        '--headless', '--path', $projectDir, '--script', "res://test/unit/$($script.Name)"
+    )
+    $unitExited = Wait-ForExit -Job $unitJob -TimeoutSeconds $StartupTimeoutSeconds
+
+    if (-not $unitExited) {
+        $failures.Add("$($unitJob.Name): timed out and was killed")
+    } else {
+        $code = Get-ExitCode $unitJob
+        if ($code -gt 0) { $failures.Add("$($unitJob.Name): exit code $code") }
+        Test-Marker $unitJob '\[unit\] PASS' "a unit PASS ($($script.Name))" | Out-Null
+    }
+    # Same as the api layer: the passing lines are numerous and uninteresting,
+    # and each file's own summary line is worth seeing on a green run.
+    foreach ($line in ((Get-LogText $unitJob) -split "`r?`n" | Where-Object { $_ -match '^\[unit\] (FAIL|PASS|     )' })) {
+        $colour = 'Gray'
+        if ($line -match 'FAIL') { $colour = 'Red' }
+        if ($line -match 'PASS') { $colour = 'Green' }
+        Write-Host "      $line" -ForegroundColor $colour
+    }
+    Test-CleanLog $unitJob | Out-Null
 }
-# Same as the api layer: the passing lines are numerous and uninteresting, and
-# the sweep's own summary line is worth seeing on a green run.
-foreach ($line in ((Get-LogText $unit) -split "`r?`n" | Where-Object { $_ -match '^\[unit\] (FAIL|PASS|     )' })) {
-    $colour = 'Gray'
-    if ($line -match 'FAIL') { $colour = 'Red' }
-    if ($line -match 'PASS') { $colour = 'Green' }
-    Write-Host "      $line" -ForegroundColor $colour
-}
-Test-CleanLog $unit | Out-Null
 
 Write-Host ''
 Write-Host '[3/4] smoke - every scene loads and instances' -ForegroundColor Cyan
