@@ -14,11 +14,13 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: none started — **9 plans across 7 waves, planned and verified**
-Status: **Ready to execute** — `/gsd:execute-phase 01`, from a fresh context
-Last activity: 2026-08-19 — solo drag built and proved (ADR 19); detection and patch maths settled
-and put under test (ADR 20); the economy settled (ADRs 21–22); a `unit/` test layer now exists;
-plan 01-04 patched for ADR 19 before execution
+Plan: **01-01 complete** — 8 of 9 plans remaining across 7 waves
+Status: **Executing** — wave 1 (01-01 done; 01-02 running in parallel)
+Last activity: 2026-08-19 — 01-01 executed: `queue_free()` despawn replication proven on both
+peers (no fallback needed), physics layer 4 named `storage` and asserted. Before that: solo
+drag built and proved (ADR 19); detection and patch maths settled and put under test (ADR 20);
+the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched for ADR 19
+before execution
 
 Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
 
@@ -58,6 +60,16 @@ Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
 fallbacks ranked) and 01-02 (cell arithmetic, test-first) in parallel. 01-01 is the load-bearing
 unknown — if it needs a fallback, 01-03 and 01-04 must adapt and no plan currently tells them
 to.**
+
+> **01-01 resolved 2026-08-19: `queue_free()` despawn replication holds, no fallback needed.**
+> A despawn probe in `carry_session.gd` has the host free a crate spawned through the level's
+> custom `spawn_function`, and both host and client independently observe it gone. **Plans
+> 01-03 onward can rely on plain `queue_free()`** for "racked = freed, not frozen" (ADR 14) —
+> none of the three ranked fallbacks (RPC-based despawn, `set_visibility_for()`, escalation)
+> were needed. Physics layer 4 is named `storage`, asserted in the api test layer, and
+> documented in `docs/project-structure.md`. Full detail, including two harness-race deviations
+> found and fixed along the way: `.planning/phases/01-storage/01-01-SUMMARY.md` (local-only,
+> see the note above on `.planning/phases/`).
 
 ## Accumulated Context
 
