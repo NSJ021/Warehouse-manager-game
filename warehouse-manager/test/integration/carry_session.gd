@@ -37,6 +37,19 @@ const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 ## Deliberately not 27015 — the suite must never collide with someone playing.
 const TEST_PORT := 27099
 const STEP_TIMEOUT_MS := 15000
+## Crate name allocation across this suite. Keep this table accurate — a plan
+## has already twice picked a crate name another scenario already relied on,
+## and the second time silently broke a step several lines later rather than
+## failing where the mistake actually was.
+##
+## | Crate   | Claimed by                                              |
+## |---------|----------------------------------------------------------|
+## | crate_0 | CRATE_NAME - the carry / handoff choreography           |
+## | crate_1 | free                                                     |
+## | crate_2 | DESPAWN_PROBE_NAME - the queue_free() replication probe |
+## | crate_3 | DRAG_CRATE_NAME - solo drag and its promotion (ADR 19)  |
+## | crate_4 | reserved for plan 01-05's Goods IN zone probe           |
+## | crate_5 | LOST_CRATE_NAME - supply conservation                   |
 const CRATE_NAME := "crate_0"
 const EXPECTED_PLAYERS := 2
 const EXPECTED_CRATES := 6
@@ -55,6 +68,14 @@ const HOST_STAND_OFFSET_Z := 1.6
 const CLIENT_STAND_OFFSET_Z := -1.2
 const STAND_HEIGHT := 0.1
 
+## A crate no other assertion in this suite has claimed. See the allocation
+## table above.
+const DESPAWN_PROBE_NAME := "crate_2"
+## How long the initial 6-crate spawn must read as stable before the despawn
+## probe is allowed to fire. Real wall time, not frames, on purpose: headless
+## runs uncapped, so a frame count buys no fixed amount of real time for the
+## initial MultiplayerSpawner sync to a freshly-joined peer to actually land.
+const SPAWN_SETTLE_MS := 500
 ## A second crate, far enough along the row that the first one falling back to the
 ## floor at the end of the carry scenario cannot interfere with the drag one.
 const DRAG_CRATE_NAME := "crate_3"
@@ -126,6 +147,48 @@ func _run() -> void:
 	if not await _until("all %d crates replicated" % EXPECTED_CRATES, func() -> bool:
 			return _crates() != null and _crates().get_child_count() == EXPECTED_CRATES):
 		return _finish(false)
+
+	## The load-bearing unknown of the whole phase: a racked crate is meant to be
+	## FREED, not frozen (ADR 14 / NFR-01) — a client pays ~40 µs/frame merely for
+	## a rigid body to exist, awake or asleep, so Phase 1's "static and
+	## unreplicated" design only works if MultiplayerSpawner replicates the
+	## despawn of a node spawned through a custom spawn_function when the host
+	## calls queue_free() on it. The docs describe the mechanism and player
+	## disconnects already lean on it, but nobody had ever asserted it for the
+	## crate path before this plan. Both roles run the poll below, but only the
+	## host frees — asserted on the CLIENT because the host believing a node is
+	## gone proves nothing, only the client's own replicated view does. This
+	## must stay in the suite forever: an engine upgrade could silently take the
+	## guarantee away and nothing else here would notice.
+	if _role == "host":
+		# The host reaches "all 6 crates replicated" in the same script
+		# continuation it learns the client has joined roster, and
+		# MultiplayerSpawner's initial sync of already-existing nodes to that
+		# new peer is queued in that very same moment. Freeing crate_2
+		# immediately would let its despawn RPC ride the same network flush as
+		# the tail of that initial sync, so the client's own Crates node could
+		# go 5→6→5 inside network processing it never gets a polled frame to
+		# observe — "all 6 crates replicated" would then never read true on
+		# the client, not because despawn replication is broken, but because
+		# the harness raced its own precondition. Real wall time, not frames,
+		# on purpose: headless runs uncapped, so a frame count buys no fixed
+		# amount of real time for the sync to land. Host-only: the client
+		# needs no matching wait, since the despawn poll below already has its
+		# own full timeout budget to catch the despawn whenever it lands.
+		var settle_deadline := Time.get_ticks_msec() + SPAWN_SETTLE_MS
+		while Time.get_ticks_msec() < settle_deadline:
+			await get_tree().process_frame
+
+		var despawn_target := _crates().get_node_or_null(DESPAWN_PROBE_NAME)
+		if despawn_target == null:
+			_fail("find %s" % DESPAWN_PROBE_NAME, "not present under Crates")
+			return _finish(false)
+		despawn_target.queue_free()
+		print("[test]      (host freed %s)" % DESPAWN_PROBE_NAME)
+	if not await _until("%s despawned on this peer" % DESPAWN_PROBE_NAME, func() -> bool:
+			return _crates().get_node_or_null(DESPAWN_PROBE_NAME) == null and _crates().get_child_count() == EXPECTED_CRATES - 1):
+		return _finish(false)
+
 	if not await _until("own body spawned", func() -> bool: return _me() != null):
 		return _finish(false)
 
