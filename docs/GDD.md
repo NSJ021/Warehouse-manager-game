@@ -2,8 +2,8 @@
 
 *(working title until 2026-08-16: "Warehouse Manager" — see ADR 11)*
 
-- **Version:** 0.5 — storage cells replace the slot model (ADR 18); settled cargo becomes solid (ADR 17); cargo value density and the client roster fleshed out
-- **Date:** 2026-08-17
+- **Version:** 0.6 — solo drag built and specified (ADR 19); §6.5 detection and patch maths settled, the document's thinnest section closed (ADR 20)
+- **Date:** 2026-08-19
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
 ---
@@ -58,6 +58,8 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 16 | ~~The storage grid module is 0.5 m~~ *(superseded by 18)* | `decisions/2026-08-17-storage-grid-module.md` |
 | 17 | Settled cargo becomes solid; disturbed cargo wakes | `decisions/2026-08-17-settled-clutter-is-solid.md` |
 | 18 | Storage cells bundle small cargo; a cell is atomic | `decisions/2026-08-17-storage-cells.md` |
+| 19 | Solo drag is a hold mode, not a parallel system | `decisions/2026-08-19-solo-drag-is-a-hold-mode.md` |
+| 20 | Detection and patch maths; reputation decays with the lease | `decisions/2026-08-19-detection-and-patch-maths.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -122,6 +124,8 @@ Every item carries:
 
 **The drag mechanic:** any item, any size, can be dragged along the floor by one player — slowly, noisily, with a scuff chance. This is the solo player's answer to Large cargo, and it is funny. Keep it bad but possible.
 
+**Built, and it is a hold *mode* rather than a separate system** (ADR 19). `F` drags anything; anything too heavy for one person to lift is dragged whether or not you asked. The drag spring acts only on the floor plane, so gravity holds the crate down and nothing ever lifts it — which is what makes it catch on obstacles, and what makes racking impossible for a lone player, since the hold point follows your *body*, not where you are looking. **A mate grabbing the other end promotes a drag into a two-player carry**, and it drops back when they let go.
+
 **Two-player carry is always optional, never required.** Nothing in the game is gated behind having a second player. Teamwork is rewarded by being *better*, not by being mandatory:
 
 | | Two-player carry | Solo drag |
@@ -168,9 +172,17 @@ At handover, for any item below Pristine, the player holding it chooses:
 | **Confess** | ~40% | Small gain | Thin margins, rent still due |
 | **Comp a replacement** | Negative | Large gain | The replacement belonged to **another client**. The problem moves; it doesn't vanish. |
 
-**The tape gun** raises *apparent* condition by one tier per application. Time and materials cost. Apparent ≠ actual.
+**The tape gun** raises *apparent* condition by one tier per application. £15 and 12 seconds each — the seconds are the real cost, because the day clock is the pressure. Apparent ≠ actual. **New damage drags apparent back down**, so a patch is a gamble rather than a licence to keep dropping the thing.
 
 **Detection is a weighted roll**, not a menu outcome — driven by patch quality, item value, and that client's accumulated suspicion. That's what makes it a gamble instead of a decision tree.
+
+**The maths is settled (ADR 20).** Detection rises steeply with how many tiers you're hiding — 15% / 45% / 80% for one, two and three — plus up to 25 points for a valuable item and up to 30 for a suspicious client, never below 2% or above 95%. Getting caught raises that client's suspicion **permanently** by 0.25; confessing walks it back by 0.08, which makes owning up on something cheap a real tactic for buying back room to gamble later.
+
+> **The mechanism that makes the fork a real decision:** reputation is priced in cash at **£90 per point per day of lease remaining**. It only pays out by gating future contracts, so it's worth a lot on day 1 of a 30-day term and nothing on the last night of a 10-day one. Early in a lease, comping is the strongest play. At the end, reputation is worthless and the right move is to tape it up and gamble. **Same item, same damage, opposite answer** — that's what stops the pillar becoming a decision tree with one correct branch.
+>
+> Verified rather than hoped: a unit sweep over value, damage depth, suspicion and days remaining requires all three forks to win somewhere and none to win more than 75%. On ordinary one-tier damage it lands at roughly a three-way split.
+
+**Expected value is deliberately not the whole decision.** The maths prices the *average* outcome, and a player facing eviction tomorrow doesn't care about averages — they need the full fee tonight, and only the gamble produces it. Confessing is worth more on paper and loses the run. That gap is the drama, which is why **the odds are never shown to the player**.
 
 > **Co-op rule: whoever is holding the item decides.** No vote, no confirmation from the group. The player who broke it can quietly patch and ship it before anyone notices. Do not gate this — the unilateral choice *is* the social engine.
 

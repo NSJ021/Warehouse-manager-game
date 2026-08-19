@@ -19,8 +19,10 @@ const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 const CONTROLS: Array[String] = [
 	"WASD move   ·   Shift sprint   ·   Space jump",
 	"E  grab / drop a crate   —   one each, so drop before you take another",
+	"F  drag it along the floor instead — slow, and it never leaves the ground",
 	"walk into a crate to shove it",
 	"two players can hold the SAME crate — that's the two-player carry",
+	"grab the other end of a dragged crate and it lifts",
 	"Esc releases the mouse, click to recapture",
 ]
 

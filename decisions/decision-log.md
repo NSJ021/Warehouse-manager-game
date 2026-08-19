@@ -1,9 +1,11 @@
-# Decision Log — Warehouse Manager
+# Decision Log — Nice Little Earner
 
 Append-only. Newest at the top. To change course, write a **new** ADR and mark the old one `Superseded by <file>`.
 
 | Date | Decision | Status | ADR |
 |---|---|---|---|
+| 2026-08-19 | Detection and patch maths; reputation decays with the lease | Accepted | [detection-and-patch-maths](2026-08-19-detection-and-patch-maths.md) |
+| 2026-08-19 | Solo drag is a hold mode, not a parallel system | Accepted | [solo-drag-is-a-hold-mode](2026-08-19-solo-drag-is-a-hold-mode.md) |
 | 2026-08-17 | Storage cells bundle small cargo; a cell is atomic | Accepted | [storage-cells](2026-08-17-storage-cells.md) |
 | 2026-08-17 | Settled cargo becomes solid; disturbed cargo wakes | Accepted | [settled-clutter-is-solid](2026-08-17-settled-clutter-is-solid.md) |
 | 2026-08-17 | The storage grid module is 0.5 m | **Superseded** by ADR 18 | [storage-grid-module](2026-08-17-storage-grid-module.md) |

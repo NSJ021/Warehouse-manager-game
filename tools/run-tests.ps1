@@ -10,9 +10,10 @@
                    paths after a move, and a new class_name the editor has not
                    registered yet.
       integration  Two real processes over real ENet, driving the real keypress
-                   path: grab, two-player carry, handoff, release. This is the
-                   layer that matters, because host authority and held-item
-                   handoff are exactly what unit tests cannot reach.
+                   path: grab, two-player carry, handoff, release, then solo
+                   drag and its promotion back into a carry. This is the layer
+                   that matters, because host authority and held-item handoff
+                   are exactly what unit tests cannot reach.
 
     Fails loudly and prints the failing steps plus both sides' state, so a red run
     tells you what disagreed without rerunning anything.
@@ -170,7 +171,7 @@ Write-Host ''
 
 # ---------------------------------------------------------------- smoke
 
-Write-Host '[1/3] api - engine assumptions and decided invariants' -ForegroundColor Cyan
+Write-Host '[1/4] api - engine assumptions and decided invariants' -ForegroundColor Cyan
 $api = Start-Godot -Name 'api' -GodotArgs @(
     '--headless', '--path', $projectDir, '--script', 'res://test/api/engine_assumptions.gd'
 )
@@ -193,7 +194,31 @@ foreach ($line in ((Get-LogText $api) -split "`r?`n" | Where-Object { $_ -match 
 Test-CleanLog $api | Out-Null
 
 Write-Host ''
-Write-Host '[2/3] smoke - every scene loads and instances' -ForegroundColor Cyan
+Write-Host '[2/4] unit - the condition model and the dilemma maths' -ForegroundColor Cyan
+$unit = Start-Godot -Name 'unit' -GodotArgs @(
+    '--headless', '--path', $projectDir, '--script', 'res://test/unit/dilemma_maths.gd'
+)
+$unitExited = Wait-ForExit -Job $unit -TimeoutSeconds $StartupTimeoutSeconds
+
+if (-not $unitExited) {
+    $failures.Add('unit: timed out and was killed')
+} else {
+    $code = Get-ExitCode $unit
+    if ($code -gt 0) { $failures.Add("unit: exit code $code") }
+    Test-Marker $unit '\[unit\] PASS' 'a unit PASS' | Out-Null
+}
+# Same as the api layer: the passing lines are numerous and uninteresting, and
+# the sweep's own summary line is worth seeing on a green run.
+foreach ($line in ((Get-LogText $unit) -split "`r?`n" | Where-Object { $_ -match '^\[unit\] (FAIL|PASS|     )' })) {
+    $colour = 'Gray'
+    if ($line -match 'FAIL') { $colour = 'Red' }
+    if ($line -match 'PASS') { $colour = 'Green' }
+    Write-Host "      $line" -ForegroundColor $colour
+}
+Test-CleanLog $unit | Out-Null
+
+Write-Host ''
+Write-Host '[3/4] smoke - every scene loads and instances' -ForegroundColor Cyan
 $smoke = Start-Godot -Name 'smoke' -GodotArgs @(
     '--headless', '--path', $projectDir, '--script', 'res://test/smoke/load_all_scenes.gd'
 )
@@ -231,7 +256,7 @@ if ($SmokeOnly) {
 # ---------------------------------------------------------- integration
 
 Write-Host ''
-Write-Host '[3/3] integration - 2 processes, grab / two-player carry / handoff' -ForegroundColor Cyan
+Write-Host '[4/4] integration - 2 processes, carry / handoff / solo drag' -ForegroundColor Cyan
 
 $scene = 'res://test/integration/carry_session.tscn'
 $host_ = Start-Godot -Name 'host' -GodotArgs @(

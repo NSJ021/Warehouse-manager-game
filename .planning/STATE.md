@@ -16,7 +16,8 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 Phase: 1 of 7 (Storage)
 Plan: none started — **9 plans across 7 waves, planned and verified**
 Status: **Ready to execute** — `/gsd:execute-phase 01`, from a fresh context
-Last activity: 2026-08-17 — storage redesigned around cells (ADR 18), 01-02/01-03 reworked and re-verified
+Last activity: 2026-08-19 — solo drag built and proved (ADR 19); detection and patch maths settled and
+put under test (ADR 20); a `unit/` test layer now exists
 
 Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
 
@@ -45,7 +46,10 @@ constrain upcoming work:
 ### Open
 
 - **Steam join half is unproven** and needs a second machine. `docs/steam-validation-run.md`.
-- **Detection and patch maths are undefined** — the thinnest part of the GDD, and Phase 3 depends on it entirely.
+- ~~Detection and patch maths are undefined~~ — **settled 2026-08-19 (ADR 20)**. Reputation is priced in
+  cash and decays with the lease, which is what makes the right answer move. `CargoCondition` and
+  `Dilemma` are pure and under test; the sweep asserts no dominant strategy. **Nothing is wired to
+  gameplay** — the tape gun, handover and damage sources are still Phase 3.
 - **The storage unit is a 1.0 m cell** (ADR 18, superseding 16). Nothing is modelled yet, and the crate sizes must match exactly before anyone builds art.
 - Plans 01-02 and 01-03 were **reworked for ADR 18's cell model** and re-verified. The
   re-check found two blockers, both caused by the slot → cell rename being a text substitution
@@ -63,7 +67,9 @@ constrain upcoming work:
 
 ## Phase 0 outcome
 
-Complete and verified, except NET-02's join half.
+Complete and verified, except NET-02's join half. **Solo drag closed the last build item on
+2026-08-19** — the Steam join is now the only thing outstanding, and it is blocked on hardware
+rather than on work.
 
 Delivered: transport abstraction with ENet and Steam behind one interface, session
 lifecycle and spawn handshake, client-authoritative first-person capsule, host-simulated
