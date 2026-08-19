@@ -32,6 +32,14 @@ const CRATE_LOG_LIMIT := 12
 ## row, which is what Phase 0 hand-testing wants.
 @export var crate_count := 6
 
+## Host-only. The next id [method spawn_crate_at] mints — one counter shared
+## with the starting batch below, so ids never collide and are never reused.
+## A recycled id would be indistinguishable from a stale reference on a
+## client once the original crate despawned (a racked crate freed and later
+## re-minted must never come back wearing the same name as something a peer
+## still remembers).
+var _next_crate_id := 0
+
 @onready var players: Node3D = $Players
 @onready var spawner: MultiplayerSpawner = $PlayerSpawner
 @onready var spawn_points: Node3D = $SpawnPoints
@@ -76,9 +84,25 @@ func _spawn_crate(data: Variant) -> Node:
 ## before anyone has a body to bump into them with.
 func _spawn_crates() -> void:
 	for i in crate_count:
-		crate_spawner.spawn({"id": i, "spawn": _crate_position(i)})
+		crate_spawner.spawn({"id": _mint_crate_id(), "spawn": _crate_position(i)})
 	if crate_count > CRATE_LOG_LIMIT:
 		print("[world] spawned %d crates" % crate_count)
+
+
+func _mint_crate_id() -> int:
+	var minted := _next_crate_id
+	_next_crate_id += 1
+	return minted
+
+
+## Host-only. Mints a crate with an id no live crate holds and spawns it at
+## [param spawn_position]. Retrieval (01-04) and shedding (01-07) both need to
+## turn stored occupancy data back into a real crate, and both need an id
+## guaranteed not to collide with one already in play.
+func spawn_crate_at(spawn_position: Vector3) -> Crate:
+	if not Net.is_host():
+		return null
+	return crate_spawner.spawn({"id": _mint_crate_id(), "spawn": spawn_position}) as Crate
 
 
 ## Deterministic on purpose: the same index always lands in the same place, so a

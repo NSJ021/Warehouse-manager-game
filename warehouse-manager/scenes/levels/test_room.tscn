@@ -1,7 +1,8 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/levels/test_room.gd" id="1_room"]
 [ext_resource type="Script" path="res://scripts/goods/carry_authority.gd" id="2_carry"]
+[ext_resource type="PackedScene" path="res://scenes/world/rack.tscn" id="3_rack"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -103,6 +104,14 @@ spawn_path = NodePath("../Players")
 
 [node name="CrateSpawner" type="MultiplayerSpawner" parent="."]
 spawn_path = NodePath("../Crates")
+
+[node name="Racks" type="Node3D" parent="."]
+
+[node name="rack_wall" parent="Racks" instance=ExtResource("3_rack")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5, 0, -10)
+
+[node name="rack_island" parent="Racks" instance=ExtResource("3_rack")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5, 0, 1)
 
 [node name="CarryAuthority" type="Node" parent="."]
 script = ExtResource("2_carry")
