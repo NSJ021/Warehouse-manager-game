@@ -4,6 +4,91 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 4 — 2026-08-19
+
+**Phase 0's last build item lands, and the design's two thinnest areas — the dilemma maths and the economy — get settled in one sitting. Four ADRs, and the test suite rejected two of its author's ideas.**
+
+### What was built
+
+**Solo drag (ADR 19).** The last unbuilt item in Phase 0. `F` drags anything; anything too heavy for one person is dragged whether asked or not. A second holder **promotes a drag into a two-player carry**, and letting go drops it back.
+
+It is a hold *mode* rather than a parallel system — same referee, same break distance, same never-parented rule. The mechanism is that the drag spring acts **only on the floor plane**, so gravity is left holding the crate down and nothing ever lifts it. Two properties fall out rather than being built: it **catches on obstacles** with no snagging system, and because the hold point comes from the capsule's **yaw** rather than the camera, **a solo dragger physically cannot rack anything**. The incentive the whole two-player carry trade rests on is now geometry instead of a rule.
+
+The 40% speed penalty is applied by the dragger's own machine, because ADR 7 means the host cannot slow anyone down. That makes the mode something clients must be *told*, so the grant carries it and a targeted RPC announces later changes.
+
+**Cargo recovery.** Anything below the recovery floor returns to its spawn point with holders released first. Not tidiness — supply conservation. An order needs a real number of real crates, so a crate through the floor is stock that can never be delivered on a clock that keeps running. Freeing it would have been the one line of housekeeping that could make a run unwinnable.
+
+**The `unit/` test layer.** Reserved since the harness was built on the grounds that nothing was pure enough to be worth it. That stopped being true when the pillar became arithmetic. No GUT — the `--script` idiom already worked, and a framework to run pure arithmetic is more moving parts than the tests.
+
+### Decisions made
+
+| ADR | Decision | Short reasoning |
+|---|---|---|
+| 19 | Solo drag is a hold mode, not a parallel system | A second attachment model would need every referee rule written twice, and they would drift |
+| 20 | Detection and patch maths; reputation is priced in cash and decays | The hard part was never the curve — cash and reputation are different currencies and needed an exchange rate |
+| 21 | Reputation expires with the run; the crew splits one pot | Written to *protect* ADR 20 from a conflict it had with the GDD |
+| 22 | Orders are manifests; reputation is a market position | Fixes a flaw ADR 21 introduced an hour earlier |
+
+**ADR 20 is the one the session turned on.** GDD §6.5 had described the three forks since session 1 and never said by how much — flagged every session as the thinnest part of the document, with Phase 3 resting on it entirely. The failure mode was never "the numbers are slightly off"; it was that the pillar quietly stops being a decision and nobody notices until the game is being played.
+
+The resolution: **reputation is priced in cash at £90 per point per day of lease remaining, and decays.** Reputation only pays out by gating future contracts, so a point earned on day 1 has thirty days to compound and one earned on the final night has none. Everything follows — the same item with the same damage has the **opposite** correct answer early versus late. Comp early, gamble on the last night.
+
+The framing that made it click: **reputation is an interest rate, not a score.** It never pays you directly, it changes the quality of what you are offered next.
+
+### The conflict that ADR 21 exists to fix
+
+Asked a simple question — *is reputation used as XP between runs?* — and it exposed that GDD §4 said a lease is scored on "profit, **reputation**, and condition record → unlock currency", while ADR 20, written the same day, made reputation worth exactly zero on the final day.
+
+**Both could not be true.** If reputation buys permanent unlocks it never reaches zero value, comping stays defensible on the last night, and ADR 20's late-lease flip quietly stops happening — **without failing anything**, because nothing had connected the two systems. GDD §4 was corrected: meta-progression comes from profit and contract completion.
+
+The rest of ADR 21 followed: money is **one company pot** (rent is a shared fail state), with a per-player **contribution tally** whose job is to be *legible and arguable rather than correct* — if attribution were complete the split could be automatic, and the only reason a human decides is that the numbers cannot tell the whole story. Hence **columns, never a total**, and **not zero-sum** (both carriers of a shared crate get full credit).
+
+At the checkout the **host splits the pot unilaterally**, no vote. The pillar at run scale. It is safe rather than savage only because **a cut buys cosmetics alone** — the two decisions protect each other and neither works on its own.
+
+### ADR 22, and the question that produced it
+
+*What happens when an order physically cannot be completed?*
+
+Two gaps, from one question. The **softlock risk** turned out to be already answered: `DESTROYED` is a condition tier rather than deletion, so nothing removes cargo except handing it to a client, and **confessing is unconditional** — it needs no stock. So `patch → comp → confess` always terminates and a run always reaches an ending. Eviction is a valid ending; stuck is not.
+
+What was undefined was whether an order is atomic. It is not: **the crate is the unit of handover and the order is a manifest.** Part-fulfilment then needs no mechanism at all — it is what happens when you confess on one crate of three — and the all-or-nothing cliff becomes a gradient. Comping requires **like-for-like**, which makes it conditional on what the building contains, so the stock mix becomes an input to the pillar.
+
+The second gap was in ADR 21: reputation was one-dimensional, so **low reputation was purely punishing** and the back half of a damaged run was a death spiral with no counterplay. NJ's fix — *low rep should attract different customers, not fewer* — became the ADR.
+
+**Reputation is now a market position rather than a score**, and the symmetry is the decision: **legit clients punish you in reputation, dodgy ones punish you in cash.** The legit market is forgiving today and unforgiving across a run; the unsavoury market does not care about your history and wants paying tonight.
+
+Three things fall out. Losing reputation moves you sideways into a rougher game that still pays, so the suspicion ratchet finally leads somewhere. **Success is its own pressure** — the reward for a good reputation is more work, and more crates is more chances to break something. And it fixes an endgame hole in ADR 20: reputation-shaped consequences stop biting on the final nights, but **a cash consequence does not decay**.
+
+It was also far cheaper than it looked. GDD §6.6 already had the dodgy personalities, the above-rate pay and the reputational-risk rule. What was new is *gating the mix on reputation*, which is a rule rather than a system.
+
+### The suite rejected two of its author's ideas
+
+**The drag request was stored per crate rather than per holder.** A helper joining a drag inherited it when the original dragger let go, ending up dragging something they had asked to carry. Caught by the integration test the day it was written.
+
+**The first confess band was wrong, and the sweep said so on the first run.** Confessing had been a flat 40% regardless of severity, which made damage invisible on the honest path — a player who had decided to own up was indifferent between scuffing something and obliterating it. The fix scaled it by tier, and the intuitive band (70% for a scuff, on the argument that light damage should be cheap to admit) **collapsed patching from 25 wins to 2**: confessing a scuff became so nearly free the gamble stopped being worth taking. The flat rate had been tuned against scuffs all along, since they are the common case. Final band 40 / 28 / 15, with 40 left exactly where it was.
+
+That check is the reason the unit layer earns its place. It does not test the sums, it tests the **design property** — 192 situations swept, all three forks must win somewhere, none may exceed 75%.
+
+### Also settled
+
+- **Autoloads are a last resort**, written into `docs/project-structure.md` as an ADR 12 convention. There is one (`Net`) and the bar is deliberately high, because an autoload destroys testability *silently*: a `class_name` script that touches one cannot load in a `--script` run. The coming temptations are a day clock, a client roster and an economy ledger. **Keep game rules out of autoloads.**
+- **The rename finished.** ADR 11 renamed the game on 2026-08-16 but two surfaces kept the working title, one of them the **main menu heading**. The GitHub remote is now `nice-little-earner`; folder names deliberately still say otherwise, because `.git/info/exclude` blocks the MCP addon by literal path and a rename without it would silently make it trackable in a public repo.
+- **The sales counter was developed and stayed parked.** It is not one idea but five strands — fencing, short-changing intake, lien sale, buying stock in, and bartering, which is already parked and is now named as excluded so it cannot ride in on a bundle. Framing settled as a **payday loan rather than an escape valve**: selling never saves a run, it defers eviction at ruinous interest. **The buy/sell spread is the interest rate**, which is why the buy side earns its place — and it plugs the hole like-for-like comping opened, so you can buy your way out of a mistake when flush and cannot when broke.
+
+### Open questions
+
+- **The Steam join half** — still blocked on a second machine.
+- **The £90/point/day rate** is calibrated against the other numbers, not a real economy. Item values, rent and day length do not exist yet, and when they do it is the first thing needing re-tuning. Single constant on purpose.
+- **The unsavoury market must not be strictly better.** It pays more and forgives your history; the only brakes are that its goods must not be damaged and that taking the work costs legit standing. If either weakens in tuning, tanking reputation deliberately becomes the optimal opening move.
+- **The dodgy-client cash penalty needs a floor and a ceiling** — big enough to matter, not so big it is an instant-loss button bolted to a physics accident.
+- **The spread**, if the sales counter is ever built. It is the interest rate on the whole mechanic.
+
+### Next steps
+
+**Phase 1, Storage.** `/gsd:execute-phase 01` from a fresh context — nine plans, seven waves, 01-01 the load-bearing unknown. Two things from this session touch it: cargo recovery overlaps 01-01's despawn concerns, and ADR 22's like-for-like comping gives storage a design reason to exist beyond tidiness, since stock mix is now an input to the pillar.
+
+---
+
 ## Session 3 — 2026-08-17
 
 **Phase 0 finishes and gets proven rather than asserted. Five ADRs, a test harness that immediately caught its own author, and a physics budget that changed a design decision's status.**
