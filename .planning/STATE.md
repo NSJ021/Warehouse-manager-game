@@ -14,13 +14,16 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: **01-01 complete** — 8 of 9 plans remaining across 7 waves
-Status: **Executing** — wave 1 (01-01 done; 01-02 running in parallel)
-Last activity: 2026-08-19 — 01-01 executed: `queue_free()` despawn replication proven on both
-peers (no fallback needed), physics layer 4 named `storage` and asserted. Before that: solo
-drag built and proved (ADR 19); detection and patch maths settled and put under test (ADR 20);
-the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched for ADR 19
-before execution
+Plan: **01-01 and 01-02 complete** — wave 1 done, 7 of 9 plans remaining across 7 waves
+Status: **Executing** — wave 1 complete; wave 2 (01-03, rack fixture) unblocked — it
+depended on both 01-01 and 01-02
+Last activity: 2026-08-19 — 01-02 executed: `StorageGrid` cell arithmetic (ADR 18) landed
+test-first, 183 unit checks, wired into the suite's `unit/` stage alongside `dilemma_maths.gd`.
+Before that: 01-01 executed, `queue_free()` despawn replication proven on both peers (no
+fallback needed), physics layer 4 named `storage` and asserted. Before that: solo drag built and
+proved (ADR 19); detection and patch maths settled and put under test (ADR 20); the economy
+settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched for ADR 19 before
+execution
 
 Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
 
@@ -71,6 +74,20 @@ to.**
 > found and fixed along the way: `.planning/phases/01-storage/01-01-SUMMARY.md` (local-only,
 > see the note above on `.planning/phases/`).
 
+> **01-02 resolved 2026-08-19: `StorageGrid` cell arithmetic (ADR 18) landed test-first.**
+> `scripts/world/storage_grid.gd` — pure static functions, no nodes, no state — covers cell
+> count, index↔coords↔centre conversion, out-of-rack detection (`-1`, with the half-open
+> boundary rule asserted on all six faces plus one internal seam), the 2×2×2 Small lattice, and
+> an exact-inverse LIFO fill/remove pair. `test/unit/storage_grid_test.gd` was written and run
+> against nothing first — observed failing by naming the missing script, not crashing — then
+> made to pass: 183 checks, 0 failures. `tools/run-tests.ps1`'s `unit/` stage now enumerates
+> `test/unit/*.gd` rather than one hardcoded path, so the next pure module costs nothing to add.
+> **Coordinate order is non-obvious and documented in the file itself**: `cell_coords()` returns
+> `Vector3i(column, depth, level)`, not world axes — `cell_centre()` is the one place that gets
+> remapped onto Godot's actual x/y/z. 01-03 needs to read that comment before writing rack
+> placement code against it. Full detail: `.planning/phases/01-storage/01-02-SUMMARY.md`
+> (local-only, see the note above on `.planning/phases/`).
+
 ## Accumulated Context
 
 ### Decisions
@@ -95,7 +112,10 @@ constrain upcoming work:
   cash and decays with the lease, which is what makes the right answer move. `CargoCondition` and
   `Dilemma` are pure and under test; the sweep asserts no dominant strategy. **Nothing is wired to
   gameplay** — the tape gun, handover and damage sources are still Phase 3.
-- **The storage unit is a 1.0 m cell** (ADR 18, superseding 16). Nothing is modelled yet, and the crate sizes must match exactly before anyone builds art.
+- **The storage unit is a 1.0 m cell** (ADR 18, superseding 16). The cell arithmetic is now
+  built and under test (`StorageGrid`, 01-02), but no rack fixture, no visible geometry, and no
+  crate-id state exist yet — that is 01-03 — and the crate sizes must still match exactly before
+  anyone builds art.
 - Plans 01-02 and 01-03 were **reworked for ADR 18's cell model** and re-verified. The
   re-check found two blockers, both caused by the slot → cell rename being a text substitution
   rather than a semantic one: 01-04 still enforced one item per cell, and two broadcast methods
