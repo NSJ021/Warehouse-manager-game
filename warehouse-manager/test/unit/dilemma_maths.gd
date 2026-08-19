@@ -262,7 +262,20 @@ func _check_promised_flips() -> void:
 		"but more slowly than getting caught raises it, so the ratchet still tightens",
 	)
 
-	# 6. Comping is the reputation play, and worthless once the lease is over.
+	# 6. Reputation genuinely expires (ADR 21). This is load-bearing rather than
+	#    incidental: reputation only pays out by gating future contracts, so once
+	#    there are no future contracts it is worth nothing. If it ever carried
+	#    over into meta-progression it would keep a residual value, comping would
+	#    stay defensible on the final night, and the late-lease flip above would
+	#    quietly stop happening — without failing anything else.
+	_expect(is_equal_approx(Dilemma.rep_value(0), 0.0), "reputation is worth nothing once the lease is over")
+	_expect(Dilemma.rep_value(1) > 0.0, "and worth something while any day remains")
+	_expect(
+		Dilemma.rep_value(30) > Dilemma.rep_value(10),
+		"a point earned early in a long lease has longer to compound",
+	)
+
+	# 7. Comping is the reputation play, and worthless once the lease is over.
 	_expect(
 		Dilemma.comp_expected_value(500.0, 500.0, 25) > Dilemma.comp_expected_value(500.0, 500.0, 0),
 		"comping is worth far more early in a lease than late",

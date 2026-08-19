@@ -4,6 +4,7 @@ Append-only. Newest at the top. To change course, write a **new** ADR and mark t
 
 | Date | Decision | Status | ADR |
 |---|---|---|---|
+| 2026-08-19 | Reputation expires with the run; the crew splits one pot | Accepted | [two-currencies-and-the-crew-split](2026-08-19-two-currencies-and-the-crew-split.md) |
 | 2026-08-19 | Detection and patch maths; reputation decays with the lease | Accepted | [detection-and-patch-maths](2026-08-19-detection-and-patch-maths.md) |
 | 2026-08-19 | Solo drag is a hold mode, not a parallel system | Accepted | [solo-drag-is-a-hold-mode](2026-08-19-solo-drag-is-a-hold-mode.md) |
 | 2026-08-17 | Storage cells bundle small cargo; a cell is atomic | Accepted | [storage-cells](2026-08-17-storage-cells.md) |

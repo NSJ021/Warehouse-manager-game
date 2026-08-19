@@ -2,7 +2,7 @@
 
 *(working title until 2026-08-16: "Warehouse Manager" — see ADR 11)*
 
-- **Version:** 0.6 — solo drag built and specified (ADR 19); §6.5 detection and patch maths settled, the document's thinnest section closed (ADR 20)
+- **Version:** 0.7 — the two-currency model and the end-of-run crew split settled (ADR 21); §4 corrected, since reputation does *not* feed unlock currency
 - **Date:** 2026-08-19
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
@@ -60,6 +60,7 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 18 | Storage cells bundle small cargo; a cell is atomic | `decisions/2026-08-17-storage-cells.md` |
 | 19 | Solo drag is a hold mode, not a parallel system | `decisions/2026-08-19-solo-drag-is-a-hold-mode.md` |
 | 20 | Detection and patch maths; reputation decays with the lease | `decisions/2026-08-19-detection-and-patch-maths.md` |
+| 21 | Reputation expires with the run; the crew splits one pot | `decisions/2026-08-19-two-currencies-and-the-crew-split.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -79,7 +80,18 @@ A **run** is one warehouse lease. You pick a **map** and a **term**, and you're 
 
 Each lease carries a **contract win condition** beyond survival — e.g. *clear £X net profit*, *finish at 5★ with three named clients*, *move 200 crates with zero damaged deliveries*. The last one deliberately weaponises the fraud system: suddenly patching isn't a shortcut, it's a lie you have to sustain.
 
-**End of lease** → scored on profit, reputation, and condition record → unlock currency → new maps, gear, client tiers.
+**End of lease** → scored on **profit and contract completion** → unlock currency → new maps, gear, client tiers.
+
+> **Reputation is deliberately not in that list (ADR 21).** It gates contract quality and volume *within* a lease and then expires — it is an interest rate, not a score. It never pays you directly; it changes what you're offered next, so a five-star rating handed to you on the final morning is worth nothing. That decay is exactly what ADR 20 prices, and it's what makes gambling on the last night correct. If reputation also bought permanent unlocks it would never reach zero value, and the pillar's late-lease flip would quietly stop happening.
+
+**Then the checkout.** Whatever's left after rent and crew costs is split by the **host, unilaterally** — no vote, no confirmation. It's the pillar at run scale: the game already says whoever holds the item decides alone, and a host deciding Teflon Vin gets five percent is the same joke one level up. **Two tiers of unlock** make that safe rather than savage:
+
+| Tier | Earned by | Applies to |
+|---|---|---|
+| **Crew progression** — maps, gear, client tiers | Run profit and completion | The whole lobby, via the host |
+| **Personal** — cosmetics, outfits, crew characters | Your individual cut | You alone |
+
+A cut buys **cosmetics only**, so being handed five percent stings socially and costs you nothing mechanically. Run-affecting unlocks stay at the crew tier and apply to everyone, so a player who joins having unlocked nothing is never a liability.
 
 *(v1 ships one map and the 10/30 day terms. 90-day and additional maps are post-launch — see §10.)*
 
@@ -98,6 +110,8 @@ SHIFT       Goods IN  — accept deliveries, sign for them, haul them to storage
 
 CLOSE       Rent due. Income banked. Reputation settles.
             Anything not collected today is late — penalty, rep hit.
+            The day's contribution tally goes up (§6.8) — who delivered,
+            who racked, who broke things, who got caught.
 ```
 
 Days are short — target **6–10 minutes**. A 10-day lease is roughly a 90-minute session.
@@ -207,6 +221,39 @@ Reputation gates contract quality and volume — that's the whole loop in v1. Th
 > What *does* vary the money is **value density by cargo type**, and it pays for itself twice: compact high-value goods earn more per cell **and make the dilemma hotter**, because dropping something precious turns patch-or-confess from a shrug into a crisis. Bulky cheap cargo is safe money that eats your warehouse.
 **Out:** daily rent · tape and supplies · rack repairs.
 **Fail:** can't make rent → evicted → run ends.
+
+**Money is one company pot** (ADR 21). Rent is a shared fail state, so the money that pays it is shared — per-player wallets would make the run hostage to whoever's holding cash when they disconnect or decide to be difficult.
+
+**Three axes, and two of them are easy to conflate:**
+
+| | What it is | Scope | Gates |
+|---|---|---|---|
+| **Money** | Hard, spendable, immediate | The run | Rent, tape, repairs, gear. Running out ends the run |
+| **Reputation** | Soft, expiring | The run | Contract quality and volume |
+| **Client trust / suspicion** | Per client, permanent within a run | One client | Whether *that* client catches you patching (§6.5) |
+
+Suspicion is **not** global reputation. Reputation decides what work you're offered; suspicion decides whether a specific client believes you.
+
+### 6.8 The contribution tally
+
+Alongside the pot, the game records what each player did — shown at each day's **CLOSE**, so the final split reads as a judgement rather than a robbery, without being a live HUD that gets optimised against.
+
+**Its job is to be legible and arguable, not correct.** If attribution were fair and complete the split could be automatic; the only reason a human decides is that the numbers *can't* tell the whole story. So: **columns, never a total** — one net figure per player turns the host into someone reading a leaderboard and the judgement disappears. And it's **not zero-sum** — two players who carry a crate together both get full credit, not half each, because being generous on earns is what keeps people helping.
+
+| Earns | Attributed to | | Costs | Attributed to |
+|---|---|---|---|---|
+| Handed over at Goods OUT | whoever handed it over | | Caught patching | whoever made the call |
+| Racked into a cell | whoever placed it | | Damaged | last holder at the time |
+| Signed for at Goods IN | whoever accepted it | | Tape used | whoever patched |
+| Confessed | whoever confessed | | Rack knocked over | whoever hit it |
+
+The first two earns are deliberately in tension: the gate-stander takes full credit for hauling someone else did, which manufactures the best grievance in the game — *"Vin stood at the door all day"* — and the racking column is the counterweight that proves it.
+
+**Caught patching is the strongest rule here.** The dilemma is already unilateral, so its consequence must be too — that's Sid's line, not the crew's.
+
+**Damage is named but never netted off.** It sits in its own column and the host weighs it. Attaching a cash value and subtracting it would make players afraid to touch the glassware, which fights P3 head-on: clumsiness is the comedy.
+
+**Crew costs, pinned on nobody:** rent, racks and gear, and **late deliveries** — a crate nobody could find is a planning failure, and blaming it would need "who buried it three days ago", which is unprovable and would discredit the whole tally.
 
 ---
 
