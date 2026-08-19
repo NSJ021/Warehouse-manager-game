@@ -28,7 +28,7 @@ Four rules it holds to, each of which exists because of something that actually 
 | `api/` | The engine and addon APIs we depend on still exist and behave as assumed | <1s |
 | `smoke/` | Every scene under `res://scenes/` loads *and instances* | ~1s |
 | `integration/` | Two processes: grab, two-player carry, handoff, release, **solo drag and its promotion to a carry**, all agreeing | ~2s |
-| `unit/` | Reserved. Nothing pure enough to be worth it yet | — |
+| `unit/` | The condition model and the dilemma maths, including *no dominant strategy* as an assertion | <1s |
 
 ### api
 
@@ -43,6 +43,16 @@ That last section is the one to extend when an ADR fixes a number. Code drifting
 GodotSteam is checked by **argument count**, not just existence, because the transport runs rarely — a changed signature would otherwise fail on its first line, on a second machine, mid-validation.
 
 Two gotchas it has already hit, both recorded in the file: `ClassDB` property and method lookups take `no_inheritance`, and passing `true` reports inherited members as missing. And referencing a `class_name` statically makes the test compile-depend on that script — which fails in a `--script` run if the script touches an autoload, because autoloads are not registered there. Load at runtime instead.
+
+### unit
+
+`dilemma_maths.gd` covers `CargoCondition` and `Dilemma` — the tape gun, apparent versus actual condition, and the detection and payout maths behind GDD §6.5.
+
+This layer sat empty and marked "reserved" until those two existed, on the stated grounds that nothing in the project was pure enough to be worth testing this way: the risk was all in networked physics, which unit tests are worst at. That is still true of everything else. It stopped being true the moment the game's pillar became arithmetic.
+
+**No GUT.** The suite already has a working `--script` runner idiom, and adding a framework to run pure arithmetic would be more moving parts than the tests themselves. If a future need genuinely wants fixtures and parameterised cases, revisit it then.
+
+The valuable half of this file is not the arithmetic — it is the assertion that **there is no dominant strategy**. GDD §6.5 only works if the right answer changes with the situation, which is a claim about the *shape* of the numbers rather than any one of them, and it is exactly what a later balance tweak breaks silently. So it sweeps 192 situations across item value, damage depth, client suspicion and days remaining, and requires that all three forks win somewhere and none wins more than 75%. It reports the realistic one-tier slice separately, because a uniform sweep can look healthy while the common case has quietly settled.
 
 ### smoke
 
@@ -77,4 +87,4 @@ Two failure modes worth recognising:
 
 Integration tests belong here when they cover something two peers have to agree about. Prefer extending `carry_session.gd` with more asserted steps over adding a second session, since starting processes is most of the runtime.
 
-Anything that can be checked without a session should go in `smoke/`, or in `unit/` once GUT is installed.
+Anything that can be checked without a session goes in `unit/` if it is pure logic, or `smoke/` if it needs a scene.

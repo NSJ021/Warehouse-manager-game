@@ -32,7 +32,7 @@ warehouse-manager/
 └── test/                              See test/README.md
     ├── smoke/                         Every scene loads and instances
     ├── integration/                   Two real processes over real ENet
-    └── unit/                          Reserved — nothing pure enough yet
+    └── unit/                          Pure logic — the condition model and dilemma maths
 ```
 
 The suite is one command, `./tools/run-tests.ps1`, and runs automatically on push via the `pre-push` hook. `tools/hooks/pre-push` is the tracked copy — git only runs hooks from the untracked `.git/hooks/`, so it needs installing once per clone.
@@ -48,6 +48,16 @@ Folders are created **on first use**. Empty directories are not tracked by git a
 **`levels/` versus `world/`:** a level is a whole map you can play. A fixture is a thing placed inside one. The test room is a level; a rack is a fixture.
 
 **Script-only domains are normal.** `net/` and `autoloads/` have no counterpart under `scenes/` and must not be given an empty one.
+
+**Autoloads are a last resort, and there is currently one.** `Net` earns it: session lifecycle is genuinely global and genuinely single. Nothing else has, and the bar is deliberately high — an autoload is global mutable state that also **destroys testability in a way that fails silently**. A script with a `class_name` that touches an autoload cannot be loaded in a `--script` run, because autoloads are not registered there. That has already bitten this project once, and the shape of it is nasty: the test file failed to compile *after* reporting a pass.
+
+So, before adding one, in order:
+
+1. **Pure static functions or a `RefCounted`** — `CargoCondition` and `Dilemma` are this. No tree, no globals, unit-testable in a bare `--script` run.
+2. **A node in the level**, found by group. `CarryAuthority` is this: every level needs exactly one referee, and `add_to_group("carry_authority")` survives the tree being rearranged without a global.
+3. **An autoload**, only if it must outlive every scene *and* be reachable from everywhere.
+
+The coming temptations are a day clock, a client roster and an economy ledger (Phases 3–4). Each is reachable from the level instead. **Keep game rules out of autoloads** — the moment `Dilemma` reads a global, the unit layer stops compiling and says so only by disappearing.
 
 **Scene or plain script?** A scene when the thing needs a node tree — visuals, collision, child nodes — or is instanced more than once at runtime. A plain script when it's pure logic, a base class or interface, or a `Resource` type.
 
