@@ -15,7 +15,7 @@ Damage isn't a fail state — it's a **fork**. When a client turns up for the cr
 | Choice | Cash | Reputation | Risk |
 |---|---|---|---|
 | **Patch & ship** | Full | None *if undetected* | Detection → no pay, heavy rep hit, permanent suspicion |
-| **Confess** | ~40% | Small gain | Thin margins, rent still due |
+| **Confess** | 40 / 28 / 15% by damage | Small gain | Thin margins, rent still due |
 | **Comp a replacement** | Negative | Large gain | The replacement belonged to *another client* |
 
 Detection is a weighted roll, not a menu outcome. The player who broke it can quietly tape it up and ship it before anyone else notices — that unilateral choice is the social engine of the whole game.
@@ -53,10 +53,14 @@ Variety comes from **constraints**, not assets: cold storage bleeds money on ref
 
 ```
 docs/GDD.md                Design document — pitch, systems, scope, build order
+docs/project-structure.md  Where files go and what things are called
+docs/physics-budget.md     Measured limits — how many rigid bodies, and why
+docs/idea-book.md          Developed ideas that are deliberately not in scope
 docs/art-pipeline.md       Art production — build vs generate, tooling, asset register
 docs/conversation-log.md   Session-by-session record of decisions and progress
 decisions/                 Architecture Decision Records (append-only)
   decision-log.md          Index — start here
+tools/run-tests.ps1        The whole test suite, one command
 warehouse-manager/         The Godot project
 ```
 
@@ -64,13 +68,28 @@ warehouse-manager/         The Godot project
 
 ## Status
 
-**Phase 0 in progress — the netcode spine connects.**
+**Phase 0 complete except the Steam join. Phase 1 — storage — is next.**
 
-Godot 4.6, Forward+, Jolt physics backend. The multiplayer spine is built and verified: two processes connect, agree on the roster, and spawn matching player bodies at distinct points with a clean teardown.
+Godot 4.6, Forward+, Jolt. The multiplayer spine is built and proven by an automated suite rather than by hand: two real processes over real networking agree on the roster, spawn matching bodies, and carry, hand off, drag and release a physics crate with both sides agreeing throughout.
 
-Transport sits behind a `NetTransport` abstraction with two implementations. Development runs on **ENet**, because four instances on one machine is the only way to test four players — Steam permits one client per PC. **Steam P2P** via GodotSteam is written and vendored, pending a two-machine validation run.
+**Held cargo is force-driven and never parented.** A held crate stays an awake rigid body pulled toward a hold point by a spring — so it collides with the world for real, sags under its own weight, and renders its own network latency as *weight* rather than as error. Throwing fell out of that for free: swing and release lobs a crate, and there is no throw button, animation or code.
 
-Still ahead in Phase 0: the physics crate, pick up / drop / hand off, and two-player carry. This remains a project gate — if it isn't rock solid, the project stops here rather than building on a broken foundation.
+**Solo drag** hauls anything along the floor at 40% speed. Its spring acts only on the floor plane, so nothing lifts the crate — which makes it catch on obstacles for free, and means a lone player physically cannot reach a high rack slot. A second player grabbing the other end promotes the drag into a carry.
+
+Transport sits behind a `NetTransport` abstraction. Development runs on **ENet**, because four instances on one machine is the only way to test four players — Steam permits one client per PC. **Steam P2P** via GodotSteam is written and vendored; the host half works and the join half is pending a two-machine run.
+
+### Testing
+
+`./tools/run-tests.ps1` — one command, about three seconds, and it runs on every push.
+
+| Layer | What it proves |
+|---|---|
+| `api` | The engine and addon assumptions the project is built on still hold |
+| `unit` | The condition model and the dilemma maths, including *no dominant strategy* as an assertion |
+| `smoke` | Every scene loads **and instances** |
+| `integration` | Two real processes over real networking, driving the real keypress path |
+
+Weighted toward integration deliberately: host authority and held-item handoff are exactly what unit tests cannot reach. It has caught several bugs that reasoning did not, including a two-player carry that a client's HUD would have reported as carrying alone.
 
 See [§13 of the GDD](docs/GDD.md) for the full build order.
 
