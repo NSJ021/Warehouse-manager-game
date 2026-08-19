@@ -1,7 +1,7 @@
 # Detection and patch maths: reputation decays, so the right answer moves
 
 - **Date:** 2026-08-19
-- **Status:** Accepted
+- **Status:** Accepted · **amended 2026-08-19** (confess payout scaled by condition tier — see *Amendment* below)
 - **Deciders:** NJ
 - **Constrains:** Phase 3 in full, and the Phase 4 economy. Supersedes nothing; it fills the gap GDD §6.5 left open.
 
@@ -69,7 +69,7 @@ free; a guaranteed catch removes the gamble at the deep end, and the gamble is t
 |---|---|---|---|
 | **Patch, undetected** | full fee, less tape | — | — |
 | **Patch, detected** | nothing | −0.25 × (0.5 + value_ratio) | **+0.25, permanent** |
-| **Confess** | 40% of fee | +0.05 | **−0.08** |
+| **Confess** | 40% / 28% / 15% of fee by tier | +0.05 | **−0.08** |
 | **Comp** | fee − replacement (≤ 0) | +0.15 | −0.10 |
 
 Tape costs £15 and **12 seconds** per tier. The seconds matter more than the money — the day
@@ -128,6 +128,35 @@ so that the pillar is not being designed for the first time while also being imp
 
 **Rules out:** presenting detection odds to the player, and any design where the tape gun repairs
 actual condition rather than concealing it.
+
+## Amendment — 2026-08-19: confessing scales with how bad it actually is
+
+**What changed:** the confess payout was a flat 40% of the fee. It is now banded by the item's
+*actual* condition — **40% Scuffed, 28% Damaged, 15% Destroyed**.
+
+**Why.** A flat rate made damage severity invisible on the honest path. A player who had already
+decided to own up was indifferent between scuffing something and obliterating it, so being careful
+earned them nothing unless they intended to lie about it. Severity mattered on the patch route
+— one tape application versus three, 15% detection versus 80% — and nowhere else.
+
+Banding it hands each tier a natural default fork, which the other inputs then argue with: a scuff
+is the live gamble, a total loss is where comping earns its place.
+
+**It scales downward from 40% rather than upward toward it, and that was measured rather than
+reasoned.** The first attempt paid 70% for a scuff, on the intuitive argument that light damage
+should be cheap to admit. The sweep rejected it on the first run — patching fell from 25 wins to
+2, because confessing a scuff became so nearly free that the gamble stopped being worth taking.
+The flat 40% had been tuned against scuffs all along, since they are the common case. So 40% stays
+exactly where it was and only the worse tiers move.
+
+**Effect on the sweep:** the one-tier slice is unchanged at 25 / 23 / 16, which is the point. Across
+all tiers, confess falls from 61% to 51% of situations and comping rises to 33% — destroyed items
+now push toward making it right, which is the behaviour the design wanted and did not previously
+have.
+
+**Recorded as an amendment rather than a superseding ADR** because it fills a point this ADR left
+underspecified on the same day, before anything was built on it beyond the module and its tests.
+It does not reverse a decision made here.
 
 ## Alternatives considered
 

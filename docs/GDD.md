@@ -183,7 +183,7 @@ At handover, for any item below Pristine, the player holding it chooses:
 | Choice | Cash | Reputation | Risk |
 |---|---|---|---|
 | **Patch & ship** | Full | None *if undetected* | Detection → no pay, heavy rep hit, client suspicion permanently raised |
-| **Confess** | ~40% | Small gain | Thin margins, rent still due |
+| **Confess** | 40% / 28% / 15% by tier | Small gain | Thin margins, rent still due. Scaled so being careful is worth something even when you intend to own up (ADR 20, amended) |
 | **Comp a replacement** | Negative | Large gain | The replacement belonged to **another client**. The problem moves; it doesn't vanish. |
 
 **The tape gun** raises *apparent* condition by one tier per application. £15 and 12 seconds each — the seconds are the real cost, because the day clock is the pressure. Apparent ≠ actual. **New damage drags apparent back down**, so a patch is a gamble rather than a licence to keep dropping the thing.

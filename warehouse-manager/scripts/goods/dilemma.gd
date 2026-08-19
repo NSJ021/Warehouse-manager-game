@@ -71,8 +71,28 @@ const DETECTION_CEILING := 0.95
 
 # ------------------------------------------------------------- payouts
 
-## Confessing pays about 40% (GDD §6.5). Thin, and rent is still due.
-const CONFESS_PAYOUT := 0.40
+## What confessing pays, indexed by the item's [i]actual[/i] condition tier
+## (Pristine, Scuffed, Damaged, Destroyed). Thin at every tier, and rent is still
+## due.
+##
+## Scaled rather than flat, because a flat rate makes damage severity invisible
+## on the honest path — a player who has already decided to own up would be
+## indifferent between scuffing something and obliterating it, so being careful
+## would earn them nothing. GDD §6.5's "~40%" survives as the middle case, which
+## is the one it was describing.
+##
+## The shape hands each tier a natural default fork: a scuff is the live gamble,
+## a total loss is where comping earns its place. The other inputs — value,
+## suspicion, days remaining — then decide when to deviate from that default.
+##
+## [b]It scales downward from 40%, not upward toward it, and that was measured
+## rather than reasoned.[/b] A first attempt paid 70% for a scuff on the argument
+## that light damage should be cheap to admit. The sweep rejected it immediately:
+## patching fell from 25 wins to 2, because confessing a scuff became so nearly
+## free that the gamble stopped being worth taking. The flat 40% it replaced had
+## been tuned against scuffs all along — they are the common case — so 40% stays
+## exactly where it was and only the worse tiers move.
+const CONFESS_PAYOUT_BY_TIER: Array[float] = [1.0, 0.40, 0.28, 0.15]
 ## Owning up is noticed. Small, because honesty is the baseline expectation
 ## rather than an achievement.
 const CONFESS_REP := 0.05
@@ -160,8 +180,15 @@ static func patch_expected_value(
 	return (1.0 - caught) * item_value + caught * penalty - patch_cost(patch_depth)
 
 
-static func confess_expected_value(item_value: float, days_remaining: int) -> float:
-	return CONFESS_PAYOUT * item_value + CONFESS_REP * rep_value(days_remaining)
+## What fraction of the fee owning up pays, for an item in this real condition.
+static func confess_payout_ratio(actual_tier: int) -> float:
+	return CONFESS_PAYOUT_BY_TIER[clampi(actual_tier, 0, CONFESS_PAYOUT_BY_TIER.size() - 1)]
+
+
+## Takes the item's [i]actual[/i] tier rather than a patch depth: confessing hides
+## nothing, so what matters is how bad it really is.
+static func confess_expected_value(item_value: float, actual_tier: int, days_remaining: int) -> float:
+	return confess_payout_ratio(actual_tier) * item_value + CONFESS_REP * rep_value(days_remaining)
 
 
 ## Comping pays for the delivery but spends stock that belonged to someone else,
@@ -178,15 +205,19 @@ static func comp_expected_value(
 
 ## Rank the three by expected value. Ties break toward honesty, which matters
 ## only for a tutorial hint or an AI, never for the player — the player just picks.
+## [param actual_tier] is the item's real condition, which sets both the confess
+## payout and — because the fork being weighed is hiding the damage *completely* —
+## the patch depth. Patching only part way is available to the player and is a
+## strictly worse version of the same bet, so it is not one of the three.
 static func best_choice(
 	item_value: float,
-	patch_depth: int,
+	actual_tier: int,
 	suspicion: float,
 	days_remaining: int,
 	replacement_value: float,
 ) -> Choice:
-	var patch := patch_expected_value(item_value, patch_depth, suspicion, days_remaining)
-	var confess := confess_expected_value(item_value, days_remaining)
+	var patch := patch_expected_value(item_value, actual_tier, suspicion, days_remaining)
+	var confess := confess_expected_value(item_value, actual_tier, days_remaining)
 	var comp := comp_expected_value(item_value, replacement_value, days_remaining)
 	if confess >= patch and confess >= comp:
 		return Choice.CONFESS

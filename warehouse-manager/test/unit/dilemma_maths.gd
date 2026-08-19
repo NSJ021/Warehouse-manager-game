@@ -157,12 +157,12 @@ func _check_no_dominant_strategy() -> void:
 	var cases := 0
 
 	for value in [50.0, 250.0, 800.0, 2000.0]:
-		for depth in [1, 2, 3]:
+		for tier in [CargoCondition.Tier.SCUFFED, CargoCondition.Tier.DAMAGED, CargoCondition.Tier.DESTROYED]:
 			for suspicion in [0.0, 0.35, 0.7, 1.0]:
 				for days in [0, 3, 10, 25]:
 					# Like-for-like replacement: the honest comparison, since
 					# comping with something cheaper is a different decision.
-					var best: Dilemma.Choice = Dilemma.best_choice(value, depth, suspicion, days, value)
+					var best: Dilemma.Choice = Dilemma.best_choice(value, tier, suspicion, days, value)
 					wins[best] += 1
 					cases += 1
 
@@ -193,7 +193,7 @@ func _check_no_dominant_strategy() -> void:
 	for value in [50.0, 250.0, 800.0, 2000.0]:
 		for suspicion in [0.0, 0.35, 0.7, 1.0]:
 			for days in [0, 3, 10, 25]:
-				shallow[Dilemma.best_choice(value, 1, suspicion, days, value)] += 1
+				shallow[Dilemma.best_choice(value, CargoCondition.Tier.SCUFFED, suspicion, days, value)] += 1
 				shallow_cases += 1
 
 	print("[unit]      (%d one-tier situations: patch %d, confess %d, comp %d)" % [
@@ -213,8 +213,8 @@ func _check_promised_flips() -> void:
 	print("[unit] the promised reversals")
 
 	# 1. The lease clock. Same item, same damage, opposite answer.
-	var late := Dilemma.best_choice(500.0, 1, 0.0, 0, 500.0)
-	var early := Dilemma.best_choice(500.0, 1, 0.0, 25, 500.0)
+	var late := Dilemma.best_choice(500.0, CargoCondition.Tier.SCUFFED, 0.0, 0, 500.0)
+	var early := Dilemma.best_choice(500.0, CargoCondition.Tier.SCUFFED, 0.0, 25, 500.0)
 	_expect(
 		late == Dilemma.Choice.PATCH,
 		"on the last day reputation is worthless, so a shallow patch is the play",
@@ -229,7 +229,7 @@ func _check_promised_flips() -> void:
 	var burned := Dilemma.patch_expected_value(500.0, 1, 0.8, 8)
 	_expect(burned < clean, "patching is worth less to a client you have already burned")
 	_expect(
-		Dilemma.best_choice(500.0, 1, 0.9, 8, 500.0) != Dilemma.Choice.PATCH,
+		Dilemma.best_choice(500.0, CargoCondition.Tier.SCUFFED, 0.9, 8, 500.0) != Dilemma.Choice.PATCH,
 		"and past a point, patching for them is simply off the table",
 	)
 
@@ -240,7 +240,7 @@ func _check_promised_flips() -> void:
 		"hiding three tiers is worth much less than hiding one",
 	)
 	_expect(
-		Dilemma.best_choice(500.0, 3, 0.0, 5, 500.0) != Dilemma.Choice.PATCH,
+		Dilemma.best_choice(500.0, CargoCondition.Tier.DESTROYED, 0.0, 5, 500.0) != Dilemma.Choice.PATCH,
 		"passing a destroyed item off as pristine is never the *sensible* move",
 	)
 
@@ -250,7 +250,7 @@ func _check_promised_flips() -> void:
 	var desperate := Dilemma.detection_chance(3, 500.0, 0.0)
 	_expect(desperate < 1.0, "a three-tier lie can still come off (%.0f%% caught)" % (desperate * 100.0))
 	_expect(
-		Dilemma.confess_expected_value(500.0, 0) < 500.0,
+		Dilemma.confess_expected_value(500.0, CargoCondition.Tier.DESTROYED, 0) < 500.0,
 		"and confessing genuinely cannot cover what patching pays, or there is no fork",
 	)
 
