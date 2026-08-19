@@ -58,6 +58,8 @@ const STAND_HEIGHT := 0.1
 ## A second crate, far enough along the row that the first one falling back to the
 ## floor at the end of the carry scenario cannot interfere with the drag one.
 const DRAG_CRATE_NAME := "crate_3"
+## A crate no other scenario touches, pushed out of the world to prove it returns.
+const LOST_CRATE_NAME := "crate_5"
 ## How long a dragged crate must stay on the floor while its dragger stares at the
 ## ceiling. A carry spring would have hauled it to eye level many times over in
 ## this window, so it separates "dragged" from "carried low" rather than merely
@@ -144,6 +146,8 @@ func _stand_beside(crate: Crate, offset_z: float) -> Vector3:
 
 
 func _run_host(crate: Crate) -> void:
+	await _check_supply_is_conserved()
+
 	_take(_stand_beside(crate, HOST_STAND_OFFSET_Z), crate)
 	if not await _until("host holds it", func() -> bool: return crate.holder_count() == 1):
 		return _finish(false)
@@ -170,6 +174,41 @@ func _run_host(crate: Crate) -> void:
 		return _finish(false)
 
 	await _run_host_drag()
+
+
+## Cargo that leaves the world comes back rather than being freed.
+##
+## This is a supply-conservation check, not a tidiness one. An order needs a real
+## number of real crates, and nothing in v1 removes cargo from the warehouse
+## except handing it to a client — Destroyed is a condition, not deletion. A crate
+## through the floor would therefore be stock that can never be delivered, on a
+## clock that keeps running, and freeing it is the one line of tidy-up that would
+## make a run unwinnable.
+##
+## Host-side, because supply conservation is a host-authoritative invariant: the
+## host owns every rigid body, so if it agrees the crate is back, it is back.
+func _check_supply_is_conserved() -> void:
+	var crate := _crate_named(LOST_CRATE_NAME)
+	if crate == null:
+		_fail("find %s" % LOST_CRATE_NAME, "not present under Crates")
+		return _finish(false)
+
+	var before := _crates().get_child_count()
+	crate.global_position = Vector3(0.0, Crate.RECOVERY_FLOOR_Y - 5.0, 0.0)
+
+	if not await _until("a crate that fell out of the world came back", func() -> bool:
+			return crate.recovery_count > 0):
+		return _finish(false)
+	if not await _until("and came back above the floor", func() -> bool:
+			return crate.global_position.y > Crate.RECOVERY_FLOOR_Y):
+		return _finish(false)
+	# The assertion that actually matters: recovered, not replaced or freed.
+	_expect_now(
+		_crates().get_child_count() == before,
+		"no crate was lost recovering it (%d before, %d after)" % [
+			before, _crates().get_child_count(),
+		],
+	)
 
 
 ## The host's half of the drag scenario. The client does the dragging, so the
@@ -379,6 +418,14 @@ func _stays(label: String, predicate: Callable, window_ms := FLOOR_HOLD_MS) -> b
 		await get_tree().process_frame
 	_pass(label)
 	return true
+
+
+## A one-shot assertion for things already true rather than waited for.
+func _expect_now(condition: bool, label: String) -> void:
+	if condition:
+		_pass(label)
+		return
+	_fail(label, "expected true, was false")
 
 
 func _pass(label: String) -> void:
