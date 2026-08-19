@@ -1,0 +1,184 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/rack.gd" id="1_rack"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_frame"]
+albedo_color = Color(0.5, 0.5, 0.55, 1)
+roughness = 0.8
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cell"]
+size = Vector3(1.0, 1.0, 1.0)
+
+[node name="Rack" type="Node3D"]
+script = ExtResource("1_rack")
+
+[node name="Frame" type="Node3D" parent="."]
+editor_description = "Greybox only - exact dimensions matter more than looks (ADR 18 / art pipeline). Three decks at y=0/1/2 plus four corner uprights, all use_collision=true on the default layer 1 (world), so cargo rests on the decks and players walk into the frame like any other level geometry."
+
+[node name="DeckBottom" type="CSGBox3D" parent="Frame"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1)
+use_collision = true
+size = Vector3(2.0, 0.05, 2.0)
+material = SubResource("StandardMaterial3D_frame")
+
+[node name="DeckMid" type="CSGBox3D" parent="Frame"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1)
+use_collision = true
+size = Vector3(2.0, 0.05, 2.0)
+material = SubResource("StandardMaterial3D_frame")
+
+[node name="DeckTop" type="CSGBox3D" parent="Frame"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 2, 1)
+use_collision = true
+size = Vector3(2.0, 0.05, 2.0)
+material = SubResource("StandardMaterial3D_frame")
+
+[node name="UprightFrontLeft" type="CSGBox3D" parent="Frame"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.05, 1.5, 0.05)
+use_collision = true
+size = Vector3(0.1, 3.0, 0.1)
+material = SubResource("StandardMaterial3D_frame")
+
+[node name="UprightFrontRight" type="CSGBox3D" parent="Frame"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 1.5, 0.05)
+use_collision = true
+size = Vector3(0.1, 3.0, 0.1)
+material = SubResource("StandardMaterial3D_frame")
+
+[node name="UprightBackLeft" type="CSGBox3D" parent="Frame"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.05, 1.5, 1.95)
+use_collision = true
+size = Vector3(0.1, 3.0, 0.1)
+material = SubResource("StandardMaterial3D_frame")
+
+[node name="UprightBackRight" type="CSGBox3D" parent="Frame"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.95, 1.5, 1.95)
+use_collision = true
+size = Vector3(0.1, 3.0, 0.1)
+material = SubResource("StandardMaterial3D_frame")
+
+[node name="CellSensors" type="Node3D" parent="."]
+editor_description = "The aim target, one CellSensor Area3D per cell rather than one covering the whole rack - a single hull would only ever return the front surface to a raycast, which would make a buried back-row cell unaimable even from the far side of an island rack. collision_layer=8 (storage), collision_mask=0, monitoring and monitorable both OFF: hittability by a raycast is independent of both flags (test/api/engine_assumptions.gd), so a rack full of these costs nothing in collision detection."
+
+[node name="CellSensor0" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, 0.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor0"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor1" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.5, 0.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor1"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor2" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, 1.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor2"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor3" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.5, 1.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor3"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor4" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 1.5, 0.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor4"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor5" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1.5, 0.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor5"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor6" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 1.5, 1.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor6"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor7" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1.5, 1.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor7"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor8" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 2.5, 0.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor8"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor9" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 2.5, 0.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor9"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor10" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 2.5, 1.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor10"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="CellSensor11" type="Area3D" parent="CellSensors"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 2.5, 1.5)
+collision_layer = 8
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor11"]
+shape = SubResource("BoxShape3D_cell")
+
+[node name="RackedItems" type="Node3D" parent="."]
+editor_description = "Container the derived racked_item.tscn meshes are built under (Rack._rebuild_cell_visuals). Empty at rest - populated only by occupancy, never authored here."

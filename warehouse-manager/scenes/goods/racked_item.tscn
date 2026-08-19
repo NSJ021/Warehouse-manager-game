@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3]
+
+[sub_resource type="BoxMesh" id="BoxMesh_racked"]
+size = Vector3(0.5, 0.5, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_racked"]
+albedo_color = Color(0.72, 0.55, 0.36, 1)
+roughness = 0.85
+
+[node name="RackedItem" type="MeshInstance3D"]
+editor_description = "Deliberately a bare mesh - no body, no collision, no synchronizer (ADR 14). A rack holding 96 Smalls as such nodes would be two-thirds of the whole physics budget standing still. This is a pure visual consequence of Rack's occupancy data, rebuilt locally on every peer rather than replicated itself - see scripts/world/rack.gd."
+mesh = SubResource("BoxMesh_racked")
+material_override = SubResource("StandardMaterial3D_racked")
