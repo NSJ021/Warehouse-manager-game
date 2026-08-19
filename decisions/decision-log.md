@@ -1,4 +1,4 @@
-# Decision Log — Warehouse Manager
+# Decision Log — Nice Little Earner
 
 Append-only. Newest at the top. To change course, write a **new** ADR and mark the old one `Superseded by <file>`.
 

@@ -41,7 +41,7 @@ theme_override_constants/separation = 8
 
 [node name="Title" type="Label" parent="UI/Menu/Panel/Layout"]
 layout_mode = 2
-text = "Warehouse Manager - Phase 0"
+text = "Nice Little Earner - Phase 0"
 horizontal_alignment = 1
 
 [node name="HostENet" type="Button" parent="UI/Menu/Panel/Layout"]
