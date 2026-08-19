@@ -2,7 +2,7 @@
 
 *(working title until 2026-08-16: "Warehouse Manager" — see ADR 11)*
 
-- **Version:** 0.6 — solo drag built and specified (ADR 19); §6.5 detection and patch maths settled, the document's thinnest section closed (ADR 20)
+- **Version:** 0.8 — orders become manifests and reputation becomes a market position rather than a score (ADR 22); the two-currency model and crew split settled (ADR 21)
 - **Date:** 2026-08-19
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
@@ -60,6 +60,8 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 18 | Storage cells bundle small cargo; a cell is atomic | `decisions/2026-08-17-storage-cells.md` |
 | 19 | Solo drag is a hold mode, not a parallel system | `decisions/2026-08-19-solo-drag-is-a-hold-mode.md` |
 | 20 | Detection and patch maths; reputation decays with the lease | `decisions/2026-08-19-detection-and-patch-maths.md` |
+| 21 | Reputation expires with the run; the crew splits one pot | `decisions/2026-08-19-two-currencies-and-the-crew-split.md` |
+| 22 | Orders are manifests; reputation is a market position | `decisions/2026-08-19-orders-are-manifests-reputation-is-a-market.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -79,7 +81,18 @@ A **run** is one warehouse lease. You pick a **map** and a **term**, and you're 
 
 Each lease carries a **contract win condition** beyond survival — e.g. *clear £X net profit*, *finish at 5★ with three named clients*, *move 200 crates with zero damaged deliveries*. The last one deliberately weaponises the fraud system: suddenly patching isn't a shortcut, it's a lie you have to sustain.
 
-**End of lease** → scored on profit, reputation, and condition record → unlock currency → new maps, gear, client tiers.
+**End of lease** → scored on **profit and contract completion** → unlock currency → new maps, gear, client tiers.
+
+> **Reputation is deliberately not in that list (ADR 21).** It gates contract quality and volume *within* a lease and then expires — it is an interest rate, not a score. It never pays you directly; it changes what you're offered next, so a five-star rating handed to you on the final morning is worth nothing. That decay is exactly what ADR 20 prices, and it's what makes gambling on the last night correct. If reputation also bought permanent unlocks it would never reach zero value, and the pillar's late-lease flip would quietly stop happening.
+
+**Then the checkout.** Whatever's left after rent and crew costs is split by the **host, unilaterally** — no vote, no confirmation. It's the pillar at run scale: the game already says whoever holds the item decides alone, and a host deciding Teflon Vin gets five percent is the same joke one level up. **Two tiers of unlock** make that safe rather than savage:
+
+| Tier | Earned by | Applies to |
+|---|---|---|
+| **Crew progression** — maps, gear, client tiers | Run profit and completion | The whole lobby, via the host |
+| **Personal** — cosmetics, outfits, crew characters | Your individual cut | You alone |
+
+A cut buys **cosmetics only**, so being handed five percent stings socially and costs you nothing mechanically. Run-affecting unlocks stay at the crew tier and apply to everyone, so a player who joins having unlocked nothing is never a liability.
 
 *(v1 ships one map and the 10/30 day terms. 90-day and additional maps are post-launch — see §10.)*
 
@@ -98,6 +111,8 @@ SHIFT       Goods IN  — accept deliveries, sign for them, haul them to storage
 
 CLOSE       Rent due. Income banked. Reputation settles.
             Anything not collected today is late — penalty, rep hit.
+            The day's contribution tally goes up (§6.8) — who delivered,
+            who racked, who broke things, who got caught.
 ```
 
 Days are short — target **6–10 minutes**. A 10-day lease is roughly a 90-minute session.
@@ -169,8 +184,8 @@ At handover, for any item below Pristine, the player holding it chooses:
 | Choice | Cash | Reputation | Risk |
 |---|---|---|---|
 | **Patch & ship** | Full | None *if undetected* | Detection → no pay, heavy rep hit, client suspicion permanently raised |
-| **Confess** | ~40% | Small gain | Thin margins, rent still due |
-| **Comp a replacement** | Negative | Large gain | The replacement belonged to **another client**. The problem moves; it doesn't vanish. |
+| **Confess** | 40% / 28% / 15% by tier | Small gain | Thin margins, rent still due. Scaled so being careful is worth something even when you intend to own up (ADR 20, amended) |
+| **Comp a replacement** | Negative | Large gain | The replacement belonged to **another client**. The problem moves; it doesn't vanish. **Like-for-like only** (ADR 22), so comping is conditional on what the building actually contains |
 
 **The tape gun** raises *apparent* condition by one tier per application. £15 and 12 seconds each — the seconds are the real cost, because the day clock is the pressure. Apparent ≠ actual. **New damage drags apparent back down**, so a patch is a gamble rather than a licence to keep dropping the thing.
 
@@ -186,6 +201,26 @@ At handover, for any item below Pristine, the player holding it chooses:
 
 > **Co-op rule: whoever is holding the item decides.** No vote, no confirmation from the group. The player who broke it can quietly patch and ship it before anyone notices. Do not gate this — the unilateral choice *is* the social engine.
 
+### 6.5a Handover: the crate is the unit, the order is a manifest
+
+**An order is a list, not an all-or-nothing transaction** (ADR 22). Each crate is handed over
+individually and resolves on its own — delivered, patched, confessed or comped — and the order's
+result is the **sum**, plus a **completion bonus** for a clean full delivery.
+
+Part-fulfilment therefore needs no mechanism: it's what happens when you confess on one crate of
+three. The cliff becomes a gradient, and finishing the order still matters because the bonus is real.
+
+**You can hand over the wrong goods, and it's always spotted.** Water when they ordered food gets
+noticed immediately, no roll. The game doesn't stop you being an idiot — that would be
+paternalistic — but it doesn't pretend idiocy might work either. Concealment is the tape gun's job,
+and one concealment axis is enough.
+
+> **There is no softlock, and it's worth knowing why.** `Destroyed` is a condition, not deletion, so
+> nothing removes cargo except handing it to a client — **supply is conserved**, and cargo that
+> falls out of the world is recovered rather than freed. And **confessing is unconditional**: it
+> needs no stock and no replacement. So `patch → comp → confess` always terminates, and a run always
+> reaches an ending. Eviction is a valid ending; stuck is not.
+
 ### 6.6 Clients
 
 A small named roster (4–6 in v1), each with a personality, a **trust** value and a **suspicion** value. Burn one and their contracts dry up. Keep one happy and they bring volume.
@@ -194,7 +229,33 @@ A small named roster (4–6 in v1), each with a personality, a **trust** value a
 
 This needs **no contraband mechanic and no police**. It runs entirely on trust and suspicion: dodgy clients pay far above rate, their goods must not be damaged or examined, and the risk is **reputational with your legitimate clients**. Raids and law enforcement stay parked (§10) — the joke does the work, and it costs one line of dialogue rather than a new system.
 
-Reputation gates contract quality and volume — that's the whole loop in v1. The louder consequences (raids, cut power) are post-launch and are *earned* by burning clients, not rolled randomly.
+**Reputation is a market position, not a score** (ADR 22). High and low aren't more and less of one
+thing — they're different businesses:
+
+| | **High rep** — the legit trade | **Low rep** — the unsavoury end |
+|---|---|---|
+| Pays | Rate. You're one of several warehouses | **Far above rate**, cash, no questions |
+| Volume | Steady, predictable, plannable | Irregular |
+| Inspection | Professional clients have procedures | Harder — goods must not be damaged *or examined* |
+| Your history | Is the whole relationship | Irrelevant to them |
+| Burning them costs | **Reputation** — contracts dry up, slowly | **Cash** — a penalty far exceeding the item, now |
+
+**That symmetry is the design.** Legit clients punish you in reputation; dodgy ones punish you in
+cash. The legit market is forgiving today and unforgiving across a run; the unsavoury market doesn't
+care what you did last week and wants paying tonight.
+
+Three things fall out of it. **Losing reputation stops being a death spiral** — it moves you
+sideways into a rougher game that still pays, so the suspicion ratchet finally leads somewhere.
+**Success is its own pressure**, because the reward for a good reputation is more work, and more
+crates is more chances for a physics comedy to happen to you. And it **fixes an endgame hole in
+ADR 20** — reputation decays to nothing by the final night, so reputation-shaped consequences stop
+biting exactly when recklessness is most tempting, but *a cash consequence doesn't decay*.
+
+It's a **continuum, not tiers** — reputation shifts the mix of work on offer rather than unlocking
+bands at thresholds, because visible thresholds get played to. Climbing back is possible and
+expensive: you have to turn down the best-paying work available and grind lower-margin legitimate
+contracts. And you **can't sustain both ends at once**, which is what stops "take the dodgy money and
+keep the good clients" being strictly optimal. The louder consequences (raids, cut power) are post-launch and are *earned* by burning clients, not rolled randomly.
 
 ### 6.7 Economy
 
@@ -207,6 +268,39 @@ Reputation gates contract quality and volume — that's the whole loop in v1. Th
 > What *does* vary the money is **value density by cargo type**, and it pays for itself twice: compact high-value goods earn more per cell **and make the dilemma hotter**, because dropping something precious turns patch-or-confess from a shrug into a crisis. Bulky cheap cargo is safe money that eats your warehouse.
 **Out:** daily rent · tape and supplies · rack repairs.
 **Fail:** can't make rent → evicted → run ends.
+
+**Money is one company pot** (ADR 21). Rent is a shared fail state, so the money that pays it is shared — per-player wallets would make the run hostage to whoever's holding cash when they disconnect or decide to be difficult.
+
+**Three axes, and two of them are easy to conflate:**
+
+| | What it is | Scope | Gates |
+|---|---|---|---|
+| **Money** | Hard, spendable, immediate | The run | Rent, tape, repairs, gear. Running out ends the run |
+| **Reputation** | Soft, expiring | The run | Contract quality and volume |
+| **Client trust / suspicion** | Per client, permanent within a run | One client | Whether *that* client catches you patching (§6.5) |
+
+Suspicion is **not** global reputation. Reputation decides what work you're offered; suspicion decides whether a specific client believes you.
+
+### 6.8 The contribution tally
+
+Alongside the pot, the game records what each player did — shown at each day's **CLOSE**, so the final split reads as a judgement rather than a robbery, without being a live HUD that gets optimised against.
+
+**Its job is to be legible and arguable, not correct.** If attribution were fair and complete the split could be automatic; the only reason a human decides is that the numbers *can't* tell the whole story. So: **columns, never a total** — one net figure per player turns the host into someone reading a leaderboard and the judgement disappears. And it's **not zero-sum** — two players who carry a crate together both get full credit, not half each, because being generous on earns is what keeps people helping.
+
+| Earns | Attributed to | | Costs | Attributed to |
+|---|---|---|---|---|
+| Handed over at Goods OUT | whoever handed it over | | Caught patching | whoever made the call |
+| Racked into a cell | whoever placed it | | Damaged | last holder at the time |
+| Signed for at Goods IN | whoever accepted it | | Tape used | whoever patched |
+| Confessed | whoever confessed | | Rack knocked over | whoever hit it |
+
+The first two earns are deliberately in tension: the gate-stander takes full credit for hauling someone else did, which manufactures the best grievance in the game — *"Vin stood at the door all day"* — and the racking column is the counterweight that proves it.
+
+**Caught patching is the strongest rule here.** The dilemma is already unilateral, so its consequence must be too — that's Sid's line, not the crew's.
+
+**Damage is named but never netted off.** It sits in its own column and the host weighs it. Attaching a cash value and subtracting it would make players afraid to touch the glassware, which fights P3 head-on: clumsiness is the comedy.
+
+**Crew costs, pinned on nobody:** rent, racks and gear, and **late deliveries** — a crate nobody could find is a planning failure, and blaming it would need "who buried it three days ago", which is unprovable and would discredit the whole tally.
 
 ---
 
@@ -253,7 +347,7 @@ Goods in → grid-snapped storage → goods out · physics carry, two-player car
 Forklift · layout build mode · cleaning & mess system · blackout and police-raid events · price bartering at the door · 90-day term · additional maps · upgrade trees.
 
 ### Proposed, undecided
-Ideas raised during development that are neither in scope nor parked — they have never been decided either way. They live in **[`docs/idea-book.md`](idea-book.md)** so they are neither lost nor quietly built: a named four-character crew with specialties, and the sales counter. Same rule as the Out list — each needs its own ADR to enter v1.
+Ideas raised during development that are neither in scope nor parked — they have never been decided either way. They live in **[`docs/idea-book.md`](idea-book.md)** so they are neither lost nor quietly built: a named crew with specialties, and the sales counter (developed 2026-08-19, still parked). Same rule as the Out list — each needs its own ADR to enter v1.
 
 > **Proximity voice chat moved from Out to In** — see ADR 9. It was already flagged as the first feature back, and two things settled it: the acquisition channel for this game is short-form video, and a physics-comedy clip with no voices in it is not a clip; and the Steam Voice API turned out to already be in the GodotSteam build the project now carries, so it costs integration time rather than a new dependency.
 >

@@ -137,6 +137,18 @@ var sync_basis := Quaternion.IDENTITY
 var sync_holder_a := 0
 var sync_holder_b := 0
 
+## Below this, a crate has left the world and is recovered rather than lost.
+##
+## Supply is conserved by design: nothing removes cargo from the warehouse except
+## handing it to a client. `DESTROYED` is a condition, not deletion. That matters
+## because an order needs a real number of real crates, so a crate that falls
+## through the floor is not a cosmetic bug — it is stock that can never be
+## delivered, on a clock that keeps running.
+##
+## Recovery rather than deletion is the whole point. Freeing it would be the one
+## line of code that makes a run unwinnable while looking like tidy-up.
+const RECOVERY_FLOOR_Y := -20.0
+
 ## Metres this crate has been hauled along the floor, accumulated by the host
 ## while dragged. Phase 3 turns distance dragged into scuffing (GDD §6.1); it is
 ## recorded now because it costs one multiply per frame on cargo that is already
@@ -150,6 +162,13 @@ var _holders: Dictionary = {}
 ## Host-only. What the current hold is, kept so a change can be spotted and
 ## announced rather than recomputed by everyone every frame.
 var _hold_mode := HoldMode.CARRY
+## Where this crate came into the world. Kept so a crate that falls out of it has
+## somewhere valid to come back to — the dock, in a real level.
+var _spawn_point := Vector3.ZERO
+## How many times the host has fished this crate back out of the void. Nonzero is
+## a level bug, so it is counted rather than silently forgiven.
+var recovery_count := 0
+
 ## Host-only. peer_id -> whether that holder asked to drag rather than carry.
 ##
 ## Per holder rather than one flag for the crate, and the distinction is not
@@ -179,6 +198,8 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if global_position.y < RECOVERY_FLOOR_Y:
+		_recover()
 	_apply_shoves()
 	if not _holders.is_empty():
 		_apply_hold_forces(delta)
@@ -288,6 +309,27 @@ func setup(id: int, spawn_point: Vector3) -> void:
 	name = "crate_%d" % id
 	position = spawn_point
 	sync_position = spawn_point
+	_spawn_point = spawn_point
+
+
+## Host-only. Put a crate that has left the world back where it came in.
+##
+## Any holders lose it first: whatever they were carrying is, from their point of
+## view, gone, and leaving the hold attached would spring the crate back through
+## the floor it just fell through.
+func _recover() -> void:
+	for id in _holders.keys():
+		_break_hold(int(id))
+	global_position = _spawn_point
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	sync_position = _spawn_point
+	recovery_count += 1
+	# Printed rather than push_warning'd: the suite fails on any engine warning,
+	# which would make this behaviour impossible to test. [member recovery_count]
+	# is the machine-readable signal, and a level review should treat any nonzero
+	# value as a hole in the geometry.
+	print("[crate] %s fell out of the world and was recovered to %v" % [name, _spawn_point])
 
 
 ## Host-only. Walking into cargo shoves it, at a force the host controls.
