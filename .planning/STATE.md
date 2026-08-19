@@ -23,19 +23,36 @@ plan 01-04 patched for ADR 19 before execution
 Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
-> solo drag existed, and **not one of them mentions it**. One real conflict was found and
-> patched on 2026-08-19:
+> solo drag existed, and **not one of them mentions it**.
 >
-> **01-04** validated `request_place` without checking hold mode, so a solo *dragger* could have
-> filled the top row from the floor — handing back through an RPC exactly what ADR 19 enforces
-> through geometry, and deleting the incentive the two-player carry trade rests on (GDD §6.1).
-> The plan now requires `crate.hold_mode() != DRAG` unless the cell is at floor level.
+> **All nine have now been audited** — 01-04 on 2026-08-19, the other eight immediately after,
+> against ADRs 17 and 19–22 and against what is actually on disk. **The patches live only on this
+> machine**: `.planning/phases/` is in `.git/info/exclude`, so they are not committed and will not
+> survive a fresh clone. This block is the durable record.
 >
-> **The patch lives only on this machine** — `.planning/phases/` is in `.git/info/exclude`, so it
-> is not committed and will not survive a fresh clone. This note is the durable record.
+> **Six conflicts found and patched:**
 >
-> **The other eight plans have not been audited** against ADRs 19–22. 01-04 was the one with an
-> obvious collision; treat the rest as unverified rather than clean.
+> | Plan | Conflict | Patch |
+> |---|---|---|
+> | **01-01** | Despawn probe used `crate_5` — now `LOST_CRATE_NAME`, the supply-conservation crate. Freeing it would have failed the integration layer a few steps later. | Moved to `crate_2`; a crate-name allocation table added so this stops recurring. It had already happened twice. |
+> | **01-02** | Task 3 built the `unit/` layer, renumbered the banners to `[1/4]…[4/4]` and rewrote the README row. **All three already exist** (built 2026-08-19). | Task 3 rewritten: the real work is that the unit stage runs *one hardcoded script*, so it must enumerate `test/unit/*.gd` and require a `PASS` marker from each. |
+> | **01-02** | Objective and house-style reference both assumed `test/unit/` was empty. | Corrected; `dilemma_maths.gd` named as the precedent to follow. |
+> | **01-04** | The ADR 19 patch added the drag rule host-side but never updated the client-side `try_toggle_hold()` branch table. | Two dragging rows added, with the reason spelled out. |
+> | **01-06** | Highlight table says it matches 01-04's "exactly" — and had no drag rows. A dragger would see a top-row cell painted green, then be silently refused, breaking the one invariant this plan exists to protect. | Two dragging rows added; above-floor = BLOCKED, not NONE, because "not noticed" and "refused" must not look alike. |
+> | **01-08** | Presented floor stacking as an open blocking decision. **ADR 17 decided it and 01-09 builds it in the wave before.** Its rack-geometry option also quoted superseded ADR 16 numbers (4 columns, 0.8 m pitch) that contradict ADR 18, and its context block loaded ADR 16 rather than ADR 18. | Stacking fork replaced with a *verification* of ADR 17; geometry option rescoped to the rack frame only; ADR references swapped; ADRs 19–22 flagged as new rows in the log. |
+>
+> **Three interactions flagged rather than patched**, recorded in the plans themselves:
+> **01-05 ↔ 01-09** — the zone probe crate will settle static in wave 6, and if `Area3D` does not
+> report frozen bodies the zone count silently drops to 0 and reads as a 01-09 regression. That
+> is a real design constraint on zones, since Goods OUT must detect stock sat there all day.
+> **01-07** — a dragged crate tops out near 1.7 m/s and can never reach the 4.0 m/s shed
+> threshold; correct, but it should be a conscious call at the gate.
+> **01-09** — checked clean against ADR 19: "never settle while `_holders` is not empty" already
+> covers dragging, and `add_holder()` wakes a settled crate. No special case needed.
+>
+> **Also corrected: `gsd-tools phase-plan-index` reports 01-04 as wave 1.** Its frontmatter and
+> ROADMAP.md both say wave 3, `depends_on: ["01-03"]`. The tool is wrong; trust the frontmatter,
+> or place/retrieve runs before the rack it places into exists.
 
 **Wave 1 starts with 01-01 (prove the spawner despawns a freed crate on both peers, three
 fallbacks ranked) and 01-02 (cell arithmetic, test-first) in parallel. 01-01 is the load-bearing
