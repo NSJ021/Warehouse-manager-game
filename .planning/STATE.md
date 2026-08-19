@@ -14,16 +14,18 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: **01-01 and 01-02 complete** — wave 1 done, 7 of 9 plans remaining across 7 waves
-Status: **Executing** — wave 1 complete; wave 2 (01-03, rack fixture) unblocked — it
-depended on both 01-01 and 01-02
-Last activity: 2026-08-19 — 01-02 executed: `StorageGrid` cell arithmetic (ADR 18) landed
-test-first, 183 unit checks, wired into the suite's `unit/` stage alongside `dilemma_maths.gd`.
-Before that: 01-01 executed, `queue_free()` despawn replication proven on both peers (no
-fallback needed), physics layer 4 named `storage` and asserted. Before that: solo drag built and
-proved (ADR 19); detection and patch maths settled and put under test (ADR 20); the economy
-settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched for ADR 19 before
-execution
+Plan: **01-01, 01-02 and 01-03 complete** — waves 1–2 done, 6 of 9 plans remaining across 5 waves
+Status: **Executing** — wave 2 (01-03, rack fixture) complete; wave 3 (01-04, place/retrieve)
+unblocked — it depended on 01-03
+Last activity: 2026-08-19 — 01-03 executed: `Rack` (12-cell occupancy, atomic by kind, LIFO,
+visuals derived from state) landed against ADR 18, with a greybox scene, twelve per-cell aim
+volumes, a zero-cost `racked_item.tscn`, two racks placed in the test room, and host-side crate
+minting. Before that: 01-02 executed: `StorageGrid` cell arithmetic (ADR 18) landed test-first,
+183 unit checks, wired into the suite's `unit/` stage alongside `dilemma_maths.gd`. Before that:
+01-01 executed, `queue_free()` despawn replication proven on both peers (no fallback needed),
+physics layer 4 named `storage` and asserted. Before that: solo drag built and proved (ADR 19);
+detection and patch maths settled and put under test (ADR 20); the economy settled (ADRs 21–22);
+a `unit/` test layer now exists; plan 01-04 patched for ADR 19 before execution
 
 Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
 
@@ -88,6 +90,25 @@ to.**
 > placement code against it. Full detail: `.planning/phases/01-storage/01-02-SUMMARY.md`
 > (local-only, see the note above on `.planning/phases/`).
 
+> **01-03 resolved 2026-08-19: the rack fixture landed against ADR 18.** `Rack`
+> (`scripts/world/rack.gd`) holds 12 cells as `{kind, ids}`, delegating every dimension to
+> `StorageGrid` (12 `StorageGrid.` calls, zero direct `CELL_SIZE` arithmetic — both grepped).
+> `can_accept()` enforces atomicity; `add_to_cell`/`remove_from_cell` are LIFO; `apply_cell_filled`/
+> `apply_cell_cleared` are the broadcast entry points 01-04's host-authoritative RPCs will call.
+> `rack.tscn` is a CSG greybox with **twelve** individual `CellSensor` `Area3D` volumes — one per
+> cell rather than one covering the whole rack, because a single hull would only ever return its
+> front surface to a raycast and a buried back-row cell would be permanently unaimable.
+> `racked_item.tscn` is a bare `MeshInstance3D` — no body, no collision, no synchronizer, grepped
+> at 0. Two racks (`rack_wall`, `rack_island`) are in the test room, named exactly as the plan
+> specified since 01-04 resolves a rack over the wire by group and name. `TestRoom.spawn_crate_at()`
+> mints from a monotonic counter shared with the starting batch; `Crate` gained `id`/`kind`.
+> **One deviation, caught by the integration suite doing its job**: the wall rack's first placement
+> (against the north wall, centred near the crate row) collided with the drag scenario's step-back
+> point — the dragged crate hit the rack's own frame and the test timed out. Fixed by moving both
+> racks to the room's east side; no test code changed. Full detail:
+> `.planning/phases/01-storage/01-03-SUMMARY.md` (local-only, see the note above on
+> `.planning/phases/`).
+
 ## Accumulated Context
 
 ### Decisions
@@ -104,6 +125,7 @@ constrain upcoming work:
 | 13 — force-driven held items | Never freeze or reparent a held crate; it deletes throwing |
 | 14 — physics budget of ~150 | Floor clutter, rack shedding volume, items per day |
 | 15 — GSD wraps the build order | This file, and everything else in `.planning/` |
+| 18 — 1.0 m cell, atomic, LIFO | The rack's whole occupancy model (01-03 onward). `Rack` delegates all arithmetic to `StorageGrid` — nothing downstream should recompute it |
 
 ### Open
 
@@ -112,10 +134,11 @@ constrain upcoming work:
   cash and decays with the lease, which is what makes the right answer move. `CargoCondition` and
   `Dilemma` are pure and under test; the sweep asserts no dominant strategy. **Nothing is wired to
   gameplay** — the tape gun, handover and damage sources are still Phase 3.
-- **The storage unit is a 1.0 m cell** (ADR 18, superseding 16). The cell arithmetic is now
-  built and under test (`StorageGrid`, 01-02), but no rack fixture, no visible geometry, and no
-  crate-id state exist yet — that is 01-03 — and the crate sizes must still match exactly before
-  anyone builds art.
+- **The storage unit is a 1.0 m cell** (ADR 18, superseding 16). The cell arithmetic
+  (`StorageGrid`, 01-02) and the rack fixture itself (`Rack`, greybox scene, two racks placed,
+  01-03) are both built and under test. **Nothing is wired to the actual place/retrieve
+  interaction yet** — every rack starts and stays empty, since no RPC calls `apply_cell_filled`
+  — that is 01-04. Crate sizes must still match exactly before anyone builds art.
 - Plans 01-02 and 01-03 were **reworked for ADR 18's cell model** and re-verified. The
   re-check found two blockers, both caused by the slot → cell rename being a text substitution
   rather than a semantic one: 01-04 still enforced one item per cell, and two broadcast methods
