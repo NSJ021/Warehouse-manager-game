@@ -129,83 +129,105 @@ Not in v1's In list, and it is not on the parked list either — it is new. If i
 
 ## The sales counter
 
-**Raised:** 2026-08-17 (NJ) · **Developed:** 2026-08-19 · **Status:** proposal, not in v1 scope · needs an ADR
+**Raised:** 2026-08-17 (NJ) · **Developed:** 2026-08-19 · **Revised:** 2026-08-19 after ADR 22 · **Status:** proposal, not in v1 scope · needs an ADR
 
 ### The idea
 
-Two halves, as originally raised: **sell the cargo you are meant to be storing**, and **short-change depositors at intake** — accept forty crates, record thirty-eight, keep the difference.
+Two halves, as originally raised: **sell the cargo you are meant to be storing**, and **short-change depositors at intake** — accept forty crates, record thirty-eight, keep the difference. A third, **buying stock back in**, was added on 2026-08-19 and turns out to be the piece that makes the rest work.
 
 It converges hard with the name. [ADR 11](../decisions/2026-08-16-game-name.md) already notes that *Nice Little Earner* "implies actively making money in ways you would rather not itemise", which is this proposal described exactly.
 
-### Four strands, and separating them is the whole point
+### It is a payday loan, not an escape valve
 
-"The sales counter" is not one idea, and treating it as one is how parked scope gets in through the side door. It is at least four, with different costs and different scope status:
+The framing, settled 2026-08-19 and built on NJ's original *borrowing, not stealing*: **selling never saves a run. It defers eviction at ruinous interest.**
 
-| # | Strand | What it is | Scope status |
+You sell tomorrow's stock to pay today's rent, and tomorrow arrives anyway — now short of goods you have promised to someone. Eviction stays exactly as frightening as it was; you have simply chosen a worse death. That is thematically native to a leased warehouse, and it is the only version that does not defang the rent clock the whole design is built around.
+
+**The buy/sell spread is the interest rate**, and that is why buying matters. Sell below value, buy back above it. Without a buy side, fencing is a one-way conversion with a vague penalty bolted on. With one, the cost is legible, self-inflicted and countable: *sold for £60, costs £140 to replace before Thursday.* A pawnbroker, not a shop.
+
+### Five strands, and separating them is the whole point
+
+"The sales counter" is not one idea, and treating it as one is how parked scope gets in through the side door.
+
+| # | Strand | What it is | Status |
 |---|---|---|---|
-| 1 | **Fencing** | Sell a client's stored crate for cash today | **New scope.** The core proposal |
-| 2 | **Short-changing intake** | Under-record what arrived, pocket the difference | **New scope.** Independent of 1 |
-| 3 | **Lien sale** | Sell stock the client abandoned past its store-until date | **New scope**, and the only strand that is not fraud |
-| 4 | **Bartering at the door** | Haggling on price | **Parked** — explicitly on the ADR 6 Out list |
+| 1 | **Fencing** | Sell a client's stored crate for cash today | Core. Worth taking |
+| 2 | **Short-changing intake** | Under-record what arrived, pocket the difference | Worth taking. Least designed |
+| 3 | **Lien sale** | Sell stock the client abandoned past its store-until date | Worth taking. The only strand that is not fraud |
+| 5 | **Buying stock in** | Cash back into goods, at a worse rate | Worth taking. Makes 1 legible |
+| 4 | **Bartering at the door** | Haggling on price | **Excluded.** Parked under ADR 6 and stays parked |
 
-Strand 4 is the trap. It is already parked, and a "sales counter" that quietly includes haggling adopts parked scope without a superseding ADR. **Any ADR that takes this on must say which strands it takes**, and strand 4 needs its own reasoning or its own explicit exclusion.
+Strand 4 is the trap, and it is named here so it cannot ride in as part of a bundle. It is already parked, and a "sales counter" that quietly includes haggling adopts parked scope without a superseding ADR.
 
-Strand 3 is the surprise. Selling uncollected goods to recover storage costs is real, legal warehousing practice, and it is the one version that adds a decision **without** adding fraud. It also solves a problem the design currently has no answer for — what to do with stock whose store-until date has passed and whose owner never came.
+Strand 3 is the surprise. Selling uncollected goods to recover storage costs is real, legal warehousing practice, and it adds a decision **without** adding fraud. It also answers something the design currently has no answer for — what to do with stock whose store-until date passed and whose owner never came. Cheapest of the five, and the sensible first build.
 
-### The framing that makes it work: borrowing, not stealing
+### What ADR 22 changed, and it changed a lot
 
-NJ's framing from the day it was raised, and it is the thing that stops this being a different game: **cash now, a certain reckoning on collection day.**
+Three things, all of which strengthen the proposal:
 
-You are not stealing a crate, you are *borrowing against* it. The client's collection day is already in the design (§6.1's store-until date), so the debt has a fixed maturity written into the item itself. When they turn up, it is not there, and you are back at the fork — comp it from someone else's stock, or confess.
+**The fire-sale risk is largely solved.** The version of this entry written earlier flagged the endgame fire-sale as the thing that would kill it — reputation decays to nothing by the final night ([ADR 21](../decisions/2026-08-19-two-currencies-and-the-crew-split.md)), so on day 29 you could sell the whole warehouse and every reputation hit would land when reputation was worthless. [ADR 22](../decisions/2026-08-19-orders-are-manifests-reputation-is-a-market.md) established that **dodgy clients punish in cash, and cash consequences do not decay.** That was mitigation #1 on the old list; it is now a design principle rather than a proposal. The fire-sale prices itself out.
 
-That is why it is worth considering at all: **it manufactures more dilemmas rather than replacing them.** A mechanic that let you cash out cleanly would compete with the pillar. This one feeds it.
+**The consequence is proportional now.** Orders are manifests, so selling one crate of three is part-fulfilment rather than a failed order. Fencing becomes a dial rather than a detonator — sell one crate to make rent and eat a proportional hit.
 
-### The risk that would kill it — and it is new since ADR 21
+**And it has a home instead of being bolted on.** Who buys stolen warehouse goods? Not legit clients — the unsavoury end. And selling stock drops your reputation, which shifts your client mix toward the unsavoury end. **The buyer and the consequence are the same people.** Fencing is not a new system; it is the transaction connecting two things ADR 22 already created — your stock, and the low-reputation market.
 
-**The endgame fire-sale.**
+```
+sell → cannot fulfil → order fails → reputation drops
+     → mix shifts unsavoury → more buyers, more above-rate work → sell
+```
 
-[ADR 21](../decisions/2026-08-19-two-currencies-and-the-crew-split.md) settled that reputation is an interest rate that decays to nothing as the lease runs out. That is correct and load-bearing for the dilemma — but it means the cost of a reputation hit *falls every day*. Point that at a mechanic that converts stock into cash and the consequence is immediate:
+A feedback loop, so it needs a brake, and it has one: dodgy clients punish in cash and their goods must not be damaged, so the deeper in you go the more brutal failure gets. Self-limiting.
 
-> On day 29 of 30, sell the entire warehouse. Every reputation hit lands when reputation is nearly worthless. Bank the cash, split it at the checkout, walk away rich.
+That also shrinks the cost — if the low-reputation market exists, the buyer already exists, and what remains is a place to sell, a price and the reckoning. **Honest caveat: ADR 22 is decided, not built.** Both are Phase 4. This makes them one system rather than two; it does not make either free.
 
-That is a dominant endgame strategy and it would hollow out the last third of every run. Three mitigations, all of which need deciding rather than assuming:
+### Buying, and why it earns its place
 
-1. **The reckoning must be denominated in cash, not only reputation.** Failing to produce a crate on collection day should cost its full value plus a penalty. Then selling is a loan with interest rather than free money, and the fire-sale prices itself out.
-2. **Contract win conditions already exist** (§4) and are the natural counter — *"move 200 crates with zero damaged deliveries"* is failed by a fire-sale automatically.
-3. **Cap what is sellable.** Restricting clean sales to strand 3 — genuinely abandoned stock — removes the exploit entirely, at the cost of most of the fun.
+Cash back into goods, at a worse rate than you sold at.
 
-**This risk did not exist when the idea was raised.** It is a consequence of ADR 21, and it is the single strongest argument for keeping the whole thing parked until the economy is real enough to test the fire-sale against actual numbers.
+It plugs a hole ADR 22 opened. Comping requires like-for-like, so if nobody stored matching goods you simply cannot comp. Buying converts that into *cannot comp without cash* — **so you can buy your way out of a mistake when you are flush and cannot when you are broke.** The dilemma gets hardest exactly when you are struggling, which is when it should be.
+
+**The risk to design against:** buying must never trivialise the fork. If a replacement is always purchasable, every damaged item becomes "pay to make it go away" and the pillar is bypassed rather than fed. The price has to make it worse than confessing in most situations — it is the option for when reputation matters more than cash, which is early in a lease and with a client you cannot afford to lose.
+
+**Out of scope even if this comes in:** buying stock to trade for profit. That is a merchant game and a different one — the warehouse would become a trading floor, and P2 is order under pressure, not market speculation. Buying exists to replace what you owe, not to speculate.
+
+### Short-changing intake, which was listed but never thought about
+
+Sign for thirty-eight when forty arrived. The least designed of the five, but it has a genuinely distinct risk profile that makes it worth keeping separate from fencing:
+
+- **Fenced stock has a reckoning with a date.** The client is coming for it on a known day.
+- **Skimmed stock was never on the books**, so there is no collection day and nothing to explain — unless the discrepancy itself is spotted.
+
+So fencing is high-volume with a guaranteed reckoning, and skimming is low-volume with uncertain detection. You can only take a little before the count is obviously wrong. It is a **paperwork lie rather than a physical one**, which makes it the natural counterpart to the tape gun, and it produces **untraceable stock** — exactly what comping needs. Strand 2 quietly feeds strand 1 and the comp mechanic both.
 
 ### Two things it would fill that are currently empty
 
-- **The rent clock has no escape valve.** Today, "cannot make rent" has exactly one answer: should have played better three days ago. A sales counter is the desperate lever — a bad decision available at the worst moment, which is a better failure state than arithmetic.
+- **The rent clock has no lever at all.** Today, "cannot make rent" has exactly one answer: should have played better three days ago. A payday loan is a bad decision available at the worst moment, which is a better failure than arithmetic.
 - **Expired stock has no purpose.** Cargo past its store-until date currently just sits there being a spoilage penalty.
-
-The honest counter-argument to the first one: **the game may not want an escape valve.** Eviction being final is part of what makes rent frightening, and a lever that softens it could defang the clock the whole run is built around. Unresolved, and it should be resolved before this is built rather than discovered afterwards.
 
 ### Constraints it must not break
 
-1. **It must feed the dilemma, never bypass it.** The moment selling becomes a clean alternative to patch/confess/comp, it competes with the pillar instead of supplying it.
+1. **It must feed the dilemma, never bypass it.** The moment selling or buying becomes a clean alternative to patch/confess/comp, it competes with the pillar instead of supplying it.
 2. **It must not be the optimal default.** If selling stored cargo beats storing it, the game is about fencing and the warehouse is set dressing.
 3. **It must stay a decision, not a routine.** Once per crisis is a story; a sales loop every morning is a second job.
+4. **It must never save a run.** See the payday-loan framing. The moment it becomes a comeback mechanic, the rent clock stops being frightening.
 
 ### The cheap version
 
 **No counter, no NPC, no haggling UI — a bloke in a van round the back.**
 
-A dead drop: a marked spot by the loading door. Put a crate there, it is gone by morning, cash appears. That removes the shop fixture, the buyer character, the price negotiation and — crucially — strand 4 entirely, which is the parked half. It is also funnier and more in keeping with the tone than a shopfront, and it costs one trigger volume and one audio cue.
+A dead drop: a marked spot by the loading door. Put a crate there, it is gone by morning, cash appears. Want something, order it the night before and it turns up. That removes the shop fixture, the buyer character, the price negotiation and — crucially — strand 4 entirely, which is the parked half. It is funnier and more in keeping with the tone than a shopfront, and it costs a trigger volume and an audio cue.
 
-If this ever enters scope, it should enter as the van, not as the counter.
+If this ever enters scope, it should enter as the van, not as the counter. The name of the idea is the most misleading thing about it.
 
 ### Where it sits with the other parked ideas
 
-It reinforces the crew and is reinforced by it — **Half-Inch Del** and **Gaz the Gap** are already in the name pool as characters whose entire joke is stock quietly going missing. Neither idea needs the other, but if either lands the second gets cheaper and funnier.
+It reinforces the crew and is reinforced by it — **Half-Inch Del** and **Gaz the Gap** are already in the name pool as characters whose entire joke is stock quietly going missing, and **Clipboard Brenda**'s laminated competence is the obvious counterweight to strand 2's paperwork lie. Neither idea needs the other, but if either lands the second gets cheaper and funnier.
 
 It also gets a **free evidence trail** from ADR 21's contribution tally: *"sold 3 of other people's crates"* is a column, and it is the most damning line the host could read at the split.
 
 ### Open questions
 
-- **Does a sale show up on the day's tally, or only at the final reckoning?** ADR 21 posts the tally at each day's CLOSE, which would make secret selling impossible. Hiding it until the checkout fits the unilateral-decision pillar better and is considerably funnier, but it is an explicit exception to a rule just made.
-- **Who can sell?** If any player can fence any crate, one person can bankrupt the crew's reputation alone. That is consistent with the pillar — and it is a far bigger unilateral act than patching one item.
+- **Does a sale show up on the day's tally, or only at the final reckoning?** ADR 21 posts the tally at each day's CLOSE, which makes a sale **unilateral in the moment but accountable by nightfall** — you can hide it for an afternoon, not for a run. That is probably the right balance and consistent with the pillar, but it is worth confirming rather than assuming.
+- **Who can sell?** Consistent with the pillar, any player. But one person fencing the warehouse is a far bigger unilateral act than patching one crate, and the tally is the only thing holding it accountable.
 - **Does the client find out it was sold, or only that it is missing?** Different reputation consequences, and the second is more interesting because it leaves room for a lie.
-- **Strand 2 (short-changing intake) has had no design at all.** It is listed here because it was raised, not because it has been thought about.
+- **What is the spread?** The single most important number if this is ever built, because it is the interest rate on the whole mechanic and it decides whether the loan is tempting or absurd.
