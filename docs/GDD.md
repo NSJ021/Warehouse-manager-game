@@ -2,7 +2,7 @@
 
 *(working title until 2026-08-16: "Warehouse Manager" — see ADR 11)*
 
-- **Version:** 0.7 — the two-currency model and the end-of-run crew split settled (ADR 21); §4 corrected, since reputation does *not* feed unlock currency
+- **Version:** 0.8 — orders become manifests and reputation becomes a market position rather than a score (ADR 22); the two-currency model and crew split settled (ADR 21)
 - **Date:** 2026-08-19
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
@@ -61,6 +61,7 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 19 | Solo drag is a hold mode, not a parallel system | `decisions/2026-08-19-solo-drag-is-a-hold-mode.md` |
 | 20 | Detection and patch maths; reputation decays with the lease | `decisions/2026-08-19-detection-and-patch-maths.md` |
 | 21 | Reputation expires with the run; the crew splits one pot | `decisions/2026-08-19-two-currencies-and-the-crew-split.md` |
+| 22 | Orders are manifests; reputation is a market position | `decisions/2026-08-19-orders-are-manifests-reputation-is-a-market.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -184,7 +185,7 @@ At handover, for any item below Pristine, the player holding it chooses:
 |---|---|---|---|
 | **Patch & ship** | Full | None *if undetected* | Detection → no pay, heavy rep hit, client suspicion permanently raised |
 | **Confess** | 40% / 28% / 15% by tier | Small gain | Thin margins, rent still due. Scaled so being careful is worth something even when you intend to own up (ADR 20, amended) |
-| **Comp a replacement** | Negative | Large gain | The replacement belonged to **another client**. The problem moves; it doesn't vanish. |
+| **Comp a replacement** | Negative | Large gain | The replacement belonged to **another client**. The problem moves; it doesn't vanish. **Like-for-like only** (ADR 22), so comping is conditional on what the building actually contains |
 
 **The tape gun** raises *apparent* condition by one tier per application. £15 and 12 seconds each — the seconds are the real cost, because the day clock is the pressure. Apparent ≠ actual. **New damage drags apparent back down**, so a patch is a gamble rather than a licence to keep dropping the thing.
 
@@ -200,6 +201,26 @@ At handover, for any item below Pristine, the player holding it chooses:
 
 > **Co-op rule: whoever is holding the item decides.** No vote, no confirmation from the group. The player who broke it can quietly patch and ship it before anyone notices. Do not gate this — the unilateral choice *is* the social engine.
 
+### 6.5a Handover: the crate is the unit, the order is a manifest
+
+**An order is a list, not an all-or-nothing transaction** (ADR 22). Each crate is handed over
+individually and resolves on its own — delivered, patched, confessed or comped — and the order's
+result is the **sum**, plus a **completion bonus** for a clean full delivery.
+
+Part-fulfilment therefore needs no mechanism: it's what happens when you confess on one crate of
+three. The cliff becomes a gradient, and finishing the order still matters because the bonus is real.
+
+**You can hand over the wrong goods, and it's always spotted.** Water when they ordered food gets
+noticed immediately, no roll. The game doesn't stop you being an idiot — that would be
+paternalistic — but it doesn't pretend idiocy might work either. Concealment is the tape gun's job,
+and one concealment axis is enough.
+
+> **There is no softlock, and it's worth knowing why.** `Destroyed` is a condition, not deletion, so
+> nothing removes cargo except handing it to a client — **supply is conserved**, and cargo that
+> falls out of the world is recovered rather than freed. And **confessing is unconditional**: it
+> needs no stock and no replacement. So `patch → comp → confess` always terminates, and a run always
+> reaches an ending. Eviction is a valid ending; stuck is not.
+
 ### 6.6 Clients
 
 A small named roster (4–6 in v1), each with a personality, a **trust** value and a **suspicion** value. Burn one and their contracts dry up. Keep one happy and they bring volume.
@@ -208,7 +229,33 @@ A small named roster (4–6 in v1), each with a personality, a **trust** value a
 
 This needs **no contraband mechanic and no police**. It runs entirely on trust and suspicion: dodgy clients pay far above rate, their goods must not be damaged or examined, and the risk is **reputational with your legitimate clients**. Raids and law enforcement stay parked (§10) — the joke does the work, and it costs one line of dialogue rather than a new system.
 
-Reputation gates contract quality and volume — that's the whole loop in v1. The louder consequences (raids, cut power) are post-launch and are *earned* by burning clients, not rolled randomly.
+**Reputation is a market position, not a score** (ADR 22). High and low aren't more and less of one
+thing — they're different businesses:
+
+| | **High rep** — the legit trade | **Low rep** — the unsavoury end |
+|---|---|---|
+| Pays | Rate. You're one of several warehouses | **Far above rate**, cash, no questions |
+| Volume | Steady, predictable, plannable | Irregular |
+| Inspection | Professional clients have procedures | Harder — goods must not be damaged *or examined* |
+| Your history | Is the whole relationship | Irrelevant to them |
+| Burning them costs | **Reputation** — contracts dry up, slowly | **Cash** — a penalty far exceeding the item, now |
+
+**That symmetry is the design.** Legit clients punish you in reputation; dodgy ones punish you in
+cash. The legit market is forgiving today and unforgiving across a run; the unsavoury market doesn't
+care what you did last week and wants paying tonight.
+
+Three things fall out of it. **Losing reputation stops being a death spiral** — it moves you
+sideways into a rougher game that still pays, so the suspicion ratchet finally leads somewhere.
+**Success is its own pressure**, because the reward for a good reputation is more work, and more
+crates is more chances for a physics comedy to happen to you. And it **fixes an endgame hole in
+ADR 20** — reputation decays to nothing by the final night, so reputation-shaped consequences stop
+biting exactly when recklessness is most tempting, but *a cash consequence doesn't decay*.
+
+It's a **continuum, not tiers** — reputation shifts the mix of work on offer rather than unlocking
+bands at thresholds, because visible thresholds get played to. Climbing back is possible and
+expensive: you have to turn down the best-paying work available and grind lower-margin legitimate
+contracts. And you **can't sustain both ends at once**, which is what stops "take the dodgy money and
+keep the good clients" being strictly optimal. The louder consequences (raids, cut power) are post-launch and are *earned* by burning clients, not rolled randomly.
 
 ### 6.7 Economy
 
