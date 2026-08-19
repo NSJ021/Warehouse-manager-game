@@ -16,10 +16,26 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 Phase: 1 of 7 (Storage)
 Plan: none started — **9 plans across 7 waves, planned and verified**
 Status: **Ready to execute** — `/gsd:execute-phase 01`, from a fresh context
-Last activity: 2026-08-19 — solo drag built and proved (ADR 19); detection and patch maths settled and
-put under test (ADR 20); a `unit/` test layer now exists
+Last activity: 2026-08-19 — solo drag built and proved (ADR 19); detection and patch maths settled
+and put under test (ADR 20); the economy settled (ADRs 21–22); a `unit/` test layer now exists;
+plan 01-04 patched for ADR 19 before execution
 
 Progress: [█░░░░░░░░░] Phase 0 complete bar one blocked item
+
+> **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
+> solo drag existed, and **not one of them mentions it**. One real conflict was found and
+> patched on 2026-08-19:
+>
+> **01-04** validated `request_place` without checking hold mode, so a solo *dragger* could have
+> filled the top row from the floor — handing back through an RPC exactly what ADR 19 enforces
+> through geometry, and deleting the incentive the two-player carry trade rests on (GDD §6.1).
+> The plan now requires `crate.hold_mode() != DRAG` unless the cell is at floor level.
+>
+> **The patch lives only on this machine** — `.planning/phases/` is in `.git/info/exclude`, so it
+> is not committed and will not survive a fresh clone. This note is the durable record.
+>
+> **The other eight plans have not been audited** against ADRs 19–22. 01-04 was the one with an
+> obvious collision; treat the rest as unverified rather than clean.
 
 **Wave 1 starts with 01-01 (prove the spawner despawns a freed crate on both peers, three
 fallbacks ranked) and 01-02 (cell arithmetic, test-first) in parallel. 01-01 is the load-bearing
