@@ -33,8 +33,11 @@ func _ready() -> void:
 		Net.player_left.connect(_on_player_left)
 
 
+## [param want_drag] is what the player asked for by pressing drag rather than
+## interact. The host may overrule it either way — cargo too heavy to lift is
+## dragged whether or not it was asked for, and a second holder always lifts.
 @rpc("any_peer", "call_local", "reliable")
-func request_grab(crate_name: String) -> void:
+func request_grab(crate_name: String, want_drag: bool) -> void:
 	if not Net.is_host():
 		return
 
@@ -51,14 +54,20 @@ func request_grab(crate_name: String) -> void:
 		return
 	if holder.camera_pivot.global_position.distance_to(crate.global_position) > GRAB_REACH:
 		return
-	if not crate.add_holder(peer_id, holder):
+	if not crate.add_holder(peer_id, holder, want_drag):
 		return
 
 	_held[peer_id] = crate
 	if not crate.hold_broken.is_connected(_on_hold_broken):
 		crate.hold_broken.connect(_on_hold_broken)
-	print("[carry] peer %d grabbed %s (%d holding)" % [peer_id, crate_name, crate.holder_count()])
-	_answer_grant(peer_id, crate_name)
+	if not crate.hold_mode_changed.is_connected(_on_hold_mode_changed):
+		crate.hold_mode_changed.connect(_on_hold_mode_changed)
+	var mode := crate.hold_mode()
+	print("[carry] peer %d %s %s (%d holding)" % [
+		peer_id, "dragged" if mode == Crate.HoldMode.DRAG else "grabbed",
+		crate_name, crate.holder_count(),
+	])
+	_answer_grant(peer_id, crate_name, mode)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -100,11 +109,11 @@ func _local_carrier() -> Carrier:
 
 
 ## Host-side. Delivers the verdict to the asker, whether or not that is the host.
-func _answer_grant(peer_id: int, crate_name: String) -> void:
+func _answer_grant(peer_id: int, crate_name: String, mode: Crate.HoldMode) -> void:
 	if peer_id == 1:
-		_hold_granted(crate_name)
+		_hold_granted(crate_name, mode)
 	else:
-		_hold_granted.rpc_id(peer_id, crate_name)
+		_hold_granted.rpc_id(peer_id, crate_name, mode)
 
 
 func _answer_revoke(peer_id: int) -> void:
@@ -114,11 +123,20 @@ func _answer_revoke(peer_id: int) -> void:
 		_hold_revoked.rpc_id(peer_id)
 
 
+## Host-side. Tells a holder their hold changed under them — someone grabbed the
+## other end of what they were dragging, or let go of what they were carrying.
+func _answer_mode(peer_id: int, mode: Crate.HoldMode) -> void:
+	if peer_id == 1:
+		_hold_mode_set(mode)
+	else:
+		_hold_mode_set.rpc_id(peer_id, mode)
+
+
 @rpc("authority", "reliable")
-func _hold_granted(crate_name: String) -> void:
+func _hold_granted(crate_name: String, mode: Crate.HoldMode) -> void:
 	var carrier := _local_carrier()
 	if carrier != null:
-		carrier.on_hold_granted(crates.get_node_or_null(crate_name) as Crate)
+		carrier.on_hold_granted(crates.get_node_or_null(crate_name) as Crate, mode)
 
 
 @rpc("authority", "reliable")
@@ -128,9 +146,20 @@ func _hold_revoked() -> void:
 		carrier.on_hold_released()
 
 
+@rpc("authority", "reliable")
+func _hold_mode_set(mode: Crate.HoldMode) -> void:
+	var carrier := _local_carrier()
+	if carrier != null:
+		carrier.on_hold_mode_changed(mode)
+
+
 func _on_hold_broken(peer_id: int) -> void:
 	_held.erase(peer_id)
 	_answer_revoke(peer_id)
+
+
+func _on_hold_mode_changed(peer_id: int, mode: Crate.HoldMode) -> void:
+	_answer_mode(peer_id, mode)
 
 
 func _on_player_left(peer_id: int) -> void:

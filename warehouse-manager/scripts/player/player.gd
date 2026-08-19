@@ -46,6 +46,8 @@ var _pitch := 0.0
 @onready var camera: Camera3D = $CameraPivot/Camera
 @onready var body_mesh: MeshInstance3D = $BodyMesh
 @onready var name_label: Label3D = $NameLabel
+## Only the authority reads this — a puppet runs no movement code at all.
+@onready var _carrier: Carrier = $Carrier
 
 
 func _enter_tree() -> void:
@@ -99,7 +101,12 @@ func _physics_process(delta: float) -> void:
 	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back") if can_act else Vector2.ZERO
 	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
 	var speed := SPRINT_SPEED if (can_act and Input.is_action_pressed("sprint")) else WALK_SPEED
-	var target := direction * speed
+	# Dragging is slow, and it has to be enforced here rather than by the host:
+	# this capsule is client-authoritative (ADR 7), so nothing else can slow it
+	# down. Applied after the sprint choice on purpose — sprinting while hauling
+	# a crate should be faster than walking while hauling it, and still far
+	# slower than walking with your hands free.
+	var target := direction * speed * _carrier.speed_scale()
 	var accel := ACCELERATION if is_on_floor() else AIR_ACCELERATION
 
 	velocity.x = move_toward(velocity.x, target.x, accel * delta)

@@ -257,12 +257,14 @@ func _check_decided_invariants() -> void:
 		return
 	var crate := crate_scene.instantiate()
 
-	# ADR 16: the grid module is 0.5 m and grid-critical geometry matches it
-	# EXACTLY. Getting this wrong is a snapping problem, not a visual one.
+	# ADR 18: a Small is exactly a 0.5 m cube, eight to a 1.0 m cell. Grid-critical
+	# geometry matches EXACTLY — getting this wrong is a snapping problem, not a
+	# visual one. (ADR 16 set the same number for the superseded 0.5 m module; the
+	# figure survived the supersession, the reasoning behind it did not.)
 	var shape := crate.get_node("Collision").shape as BoxShape3D
 	_expect(
 		shape != null and shape.size.is_equal_approx(Vector3(0.5, 0.5, 0.5)),
-		"ADR 16 - the crate is exactly 0.5 m on the grid module (got %s)" % (shape.size if shape else "no shape"),
+		"ADR 18 - a Small crate is exactly 0.5 m, 8 to a cell (got %s)" % (shape.size if shape else "no shape"),
 	)
 
 	# ADR 14: 20 Hz on-change replication is what took host upstream from
@@ -277,6 +279,25 @@ func _check_decided_invariants() -> void:
 	# back the bulldozing: a puppet capsule shoving cargo with unlimited force.
 	_expect(crate.collision_layer == 4, "cargo is on the cargo layer (got %d)" % crate.collision_layer)
 	_expect(crate.collision_mask == 5, "cargo collides with world and cargo only (got %d)" % crate.collision_mask)
+
+	# GDD 6.1: solo drag runs at about 40% of walking pace. That penalty is the
+	# entire reason two-player carry is worth organising, so it is a balance
+	# number rather than a feel one - tune it knowingly, not by drift.
+	_expect(
+		is_equal_approx(crate.drag_speed_scale, 0.4),
+		"GDD 6.1 - dragging still costs ~60%% of your speed (got %s)" % crate.drag_speed_scale,
+	)
+	# A Small must stay light enough for one person to lift, or the size classes
+	# stop meaning anything: drag is meant to be the answer to Large, not to
+	# everything. Checked as a relationship rather than two loose numbers, so
+	# raising crate mass fails here instead of silently making Smalls undraggable.
+	var crate_script := load("res://scripts/goods/crate.gd") as GDScript
+	var constants: Dictionary = crate_script.get_script_constant_map() if crate_script != null else {}
+	var solo_limit := float(constants.get("SOLO_CARRY_MASS_LIMIT", -1.0))
+	_expect(
+		solo_limit > 0.0 and crate.mass < solo_limit,
+		"a Small is light enough to carry solo (mass %s vs limit %s)" % [crate.mass, solo_limit],
+	)
 	crate.free()
 
 	var player_scene := load("res://scenes/player/player.tscn") as PackedScene
@@ -302,8 +323,6 @@ func _check_decided_invariants() -> void:
 	# autoload — and autoloads are not registered in a `--script` run, so the whole
 	# file failed to compile *after* reporting a pass. Loading at runtime is what
 	# the smoke layer does, for the same reason.
-	var crate_script := load("res://scripts/goods/crate.gd") as GDScript
-	var constants: Dictionary = crate_script.get_script_constant_map() if crate_script != null else {}
 	_expect(
 		int(constants.get("MAX_HOLDERS", -1)) == 2,
 		"two holders remains the carry ceiling (got %s)" % constants.get("MAX_HOLDERS", "missing"),

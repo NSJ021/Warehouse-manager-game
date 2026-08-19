@@ -10,9 +10,10 @@
                    paths after a move, and a new class_name the editor has not
                    registered yet.
       integration  Two real processes over real ENet, driving the real keypress
-                   path: grab, two-player carry, handoff, release. This is the
-                   layer that matters, because host authority and held-item
-                   handoff are exactly what unit tests cannot reach.
+                   path: grab, two-player carry, handoff, release, then solo
+                   drag and its promotion back into a carry. This is the layer
+                   that matters, because host authority and held-item handoff
+                   are exactly what unit tests cannot reach.
 
     Fails loudly and prints the failing steps plus both sides' state, so a red run
     tells you what disagreed without rerunning anything.
@@ -231,7 +232,7 @@ if ($SmokeOnly) {
 # ---------------------------------------------------------- integration
 
 Write-Host ''
-Write-Host '[3/3] integration - 2 processes, grab / two-player carry / handoff' -ForegroundColor Cyan
+Write-Host '[3/3] integration - 2 processes, carry / handoff / solo drag' -ForegroundColor Cyan
 
 $scene = 'res://test/integration/carry_session.tscn'
 $host_ = Start-Godot -Name 'host' -GodotArgs @(
