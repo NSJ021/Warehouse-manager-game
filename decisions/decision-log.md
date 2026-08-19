@@ -4,6 +4,7 @@ Append-only. Newest at the top. To change course, write a **new** ADR and mark t
 
 | Date | Decision | Status | ADR |
 |---|---|---|---|
+| 2026-08-19 | Solo drag is a hold mode, not a parallel system | Accepted | [solo-drag-is-a-hold-mode](2026-08-19-solo-drag-is-a-hold-mode.md) |
 | 2026-08-17 | Storage cells bundle small cargo; a cell is atomic | Accepted | [storage-cells](2026-08-17-storage-cells.md) |
 | 2026-08-17 | Settled cargo becomes solid; disturbed cargo wakes | Accepted | [settled-clutter-is-solid](2026-08-17-settled-clutter-is-solid.md) |
 | 2026-08-17 | The storage grid module is 0.5 m | **Superseded** by ADR 18 | [storage-grid-module](2026-08-17-storage-grid-module.md) |

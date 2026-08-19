@@ -122,6 +122,8 @@ Every item carries:
 
 **The drag mechanic:** any item, any size, can be dragged along the floor by one player — slowly, noisily, with a scuff chance. This is the solo player's answer to Large cargo, and it is funny. Keep it bad but possible.
 
+**Built, and it is a hold *mode* rather than a separate system** (ADR 19). `F` drags anything; anything too heavy for one person to lift is dragged whether or not you asked. The drag spring acts only on the floor plane, so gravity holds the crate down and nothing ever lifts it — which is what makes it catch on obstacles, and what makes racking impossible for a lone player, since the hold point follows your *body*, not where you are looking. **A mate grabbing the other end promotes a drag into a two-player carry**, and it drops back when they let go.
+
 **Two-player carry is always optional, never required.** Nothing in the game is gated behind having a second player. Teamwork is rewarded by being *better*, not by being mandatory:
 
 | | Two-player carry | Solo drag |
