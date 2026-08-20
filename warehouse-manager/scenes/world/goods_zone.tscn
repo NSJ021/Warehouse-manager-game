@@ -1,0 +1,34 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/goods_zone.gd" id="1_zone"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_zone"]
+size = Vector3(3.0, 2.0, 3.0)
+
+[sub_resource type="BoxMesh" id="BoxMesh_zone"]
+size = Vector3(3.0, 2.0, 3.0)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_zone"]
+transparency = 1
+albedo_color = Color(0.35, 0.75, 0.45, 0.18)
+
+[node name="GoodsZone" type="Area3D"]
+collision_layer = 0
+collision_mask = 4
+monitoring = true
+monitorable = false
+script = ExtResource("1_zone")
+
+[node name="Volume" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 0)
+shape = SubResource("BoxShape3D_zone")
+
+[node name="Marker" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 0)
+mesh = SubResource("BoxMesh_zone")
+material_override = SubResource("StandardMaterial3D_zone")
+
+[node name="Label" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.3, 0)
+billboard = 1
+text = "GOODS IN"
