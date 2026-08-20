@@ -14,20 +14,27 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: **01-01, 01-02 and 01-03 complete** — waves 1–2 done, 6 of 9 plans remaining across 5 waves
-Status: **Executing** — wave 2 (01-03, rack fixture) complete; wave 3 (01-04, place/retrieve)
-unblocked — it depended on 01-03
-Last activity: 2026-08-19 — 01-03 executed: `Rack` (12-cell occupancy, atomic by kind, LIFO,
-visuals derived from state) landed against ADR 18, with a greybox scene, twelve per-cell aim
-volumes, a zero-cost `racked_item.tscn`, two racks placed in the test room, and host-side crate
-minting. Before that: 01-02 executed: `StorageGrid` cell arithmetic (ADR 18) landed test-first,
-183 unit checks, wired into the suite's `unit/` stage alongside `dilemma_maths.gd`. Before that:
-01-01 executed, `queue_free()` despawn replication proven on both peers (no fallback needed),
-physics layer 4 named `storage` and asserted. Before that: solo drag built and proved (ADR 19);
-detection and patch maths settled and put under test (ADR 20); the economy settled (ADRs 21–22);
-a `unit/` test layer now exists; plan 01-04 patched for ADR 19 before execution
+Plan: **01-01, 01-02, 01-03 and 01-05 complete** — waves 1–2 done, wave 3 half done (01-05
+landed; 01-04 still executing in parallel), 5 of 9 plans remaining
+Status: **Executing** — wave 3: 01-05 (Goods IN/OUT zones) complete; 01-04 (place/retrieve)
+still in progress in a parallel session against the same working tree
+Last activity: 2026-08-20 — 01-05 executed: `GoodsZone` (Area3D, zero networking machinery,
+kind IN/OUT with the difference derived locally) landed, with `GoodsIn`/`GoodsOut` placed in the
+test room and both peers independently proven to agree on a zone's contents over real ENet. Two
+real bugs found and fixed only by running the suite repeatedly rather than trusting one green
+run — see the 01-05 block below. Before that: 01-03 executed: `Rack` (12-cell occupancy, atomic
+by kind, LIFO, visuals derived from state) landed against ADR 18, with a greybox scene, twelve
+per-cell aim volumes, a zero-cost `racked_item.tscn`, two racks placed in the test room, and
+host-side crate minting. Before that: 01-02 executed: `StorageGrid` cell arithmetic (ADR 18)
+landed test-first, 183 unit checks, wired into the suite's `unit/` stage alongside
+`dilemma_maths.gd`. Before that: 01-01 executed, `queue_free()` despawn replication proven on
+both peers (no fallback needed), physics layer 4 named `storage` and asserted. Before that: solo
+drag built and proved (ADR 19); detection and patch maths settled and put under test (ADR 20);
+the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched for ADR 19
+before execution
 
-Progress: [██░░░░░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-2 of 7 done (3/9 plans)
+Progress: [███░░░░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-2 of 7 done, wave 3
+half done (4/9 plans)
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -61,17 +68,21 @@ Progress: [██░░░░░░░░] Phase 0 complete bar one blocked item
 > ROADMAP.md both say wave 3, `depends_on: ["01-03"]`. The tool is wrong; trust the frontmatter,
 > or place/retrieve runs before the rack it places into exists.
 
-**Next session: resume at wave 3** — `/gsd:execute-phase 1` from a fresh context. It skips the
-three plans that have SUMMARYs and picks up at **01-04 (place and retrieve) and 01-05 (Goods IN /
-Goods OUT zones)**, which run in parallel.
+**Next session: finish wave 3, then continue to wave 4.** 01-05 (Goods IN/OUT zones) is complete.
+01-04 (place and retrieve) was still executing in a parallel session against the same working
+tree as of 01-05's completion — check for its SUMMARY before resuming; if absent, `/gsd:execute-phase 1`
+from a fresh context should pick it up (it depends only on 01-03, already complete).
 
-Two things to carry in, both from the audit above rather than from any plan:
+Three things to carry in, from the audit above and from 01-05's own execution:
 
 - **`gsd-tools phase-plan-index` still misreports 01-04 as wave 1.** It depends on 01-03. Read
   the frontmatter, not the tool.
 - **01-04 is the first plan to touch the referee**, and the drag rule now lives in two places:
   host-side validation in `request_place`, and the client-side branch table that 01-06 copies.
   Both were patched; keep them saying the same thing.
+- **The integration harness's `_take()` helper is deliberately unawaited at every call site** —
+  tried awaiting it, made a different failure worse (see the 01-05 block below). If a future plan
+  is tempted to "fix" this, read that block and `_take()`'s own docstring first.
 
 > **01-01 resolved 2026-08-19: `queue_free()` despawn replication holds, no fallback needed.**
 > A despawn probe in `carry_session.gd` has the host free a crate spawned through the level's
@@ -114,6 +125,34 @@ Two things to carry in, both from the audit above rather than from any plan:
 > point — the dragged crate hit the rack's own frame and the test timed out. Fixed by moving both
 > racks to the room's east side; no test code changed. Full detail:
 > `.planning/phases/01-storage/01-03-SUMMARY.md` (local-only, see the note above on
+> `.planning/phases/`).
+
+> **01-05 resolved 2026-08-20: Goods IN / Goods OUT zones landed with zero networking machinery.**
+> `GoodsZone` (`scripts/world/goods_zone.gd`) is a plain `Area3D` — no `MultiplayerSpawner`, no
+> `MultiplayerSynchronizer`, no `@rpc`, grepped at 0 — because every peer loads the same static
+> level content and evaluates it against cargo transforms `Crate` already replicates itself. One
+> scene serves both `IN`/`OUT` kinds, tint and label derived locally per instance exactly as
+> `player.gd` colours a capsule from `peer_id`. `GoodsIn`/`GoodsOut` are placed in the test room
+> and the integration suite proves both peers independently agree on a zone's contents over real
+> ENet, not merely that the host believes it.
+> **Two real bugs, both caught only by running the suite repeatedly rather than trusting one green
+> pass**: the zone probe crate was landed exactly on the zone's floor-level origin (y=0), half-
+> burying a Small and — combined with the plan's `sleeping = false` — leaving it unable to settle
+> back asleep, so it jittered indefinitely and eventually fell out of the level over a full run
+> (fixed: land it at rest height, +0.25m, not on the floor plane itself); and that same
+> perpetually-awake crate, still replicating during the carry/handoff scenario that immediately
+> follows in the suite, was intermittently enough to collapse a two-holder state out of a single
+> 20 Hz replication tick before the client observed it (fixed: wait, host-only, for the probe to
+> settle back to sleep before the zone check returns). **A third avenue was tried and reverted**:
+> awaiting every `_take()` call site in the harness fixed one narrow, independently-reproduced race
+> but made the replication-collapse failure worse by serialising the carry/handoff sequence: this
+> is a real property of the existing harness, and `_take()`'s docstring now records why it stays
+> deliberately unawaited rather than leaving that discovery to be re-made later.
+> **Placement also moved off the plan's literal coordinates**: the plan's `(7,-7)`/`(7,7)` puts
+> both zones on the *same* side of the room as the racks (both at positive x) and overlaps
+> `rack_wall`'s footprint by 0.5m — moved to x=-7 (the room's west side), which is both actually
+> clear and actually opposite the racks, as the plan's own prose intended. Full detail:
+> `.planning/phases/01-storage/01-05-SUMMARY.md` (local-only, see the note above on
 > `.planning/phases/`).
 
 ## Accumulated Context
