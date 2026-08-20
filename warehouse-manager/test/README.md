@@ -27,7 +27,7 @@ Four rules it holds to, each of which exists because of something that actually 
 |---|---|---|
 | `api/` | The engine and addon APIs we depend on still exist and behave as assumed | <1s |
 | `smoke/` | Every scene under `res://scenes/` loads *and instances* | ~1s |
-| `integration/` | Two processes: grab, two-player carry, handoff, release, **solo drag and its promotion to a carry**, all agreeing | ~2s |
+| `integration/` | Two processes: grab, two-player carry, handoff, release, **solo drag and its promotion to a carry**, then a second scenario for **storage** -- place, refuse, place, retrieve, LIFO -- all agreeing | ~3s |
 | `unit/` | The condition model and the dilemma maths, including *no dominant strategy* as an assertion; and the storage cell arithmetic (ADR 18) | <1s |
 
 ### api
@@ -77,6 +77,16 @@ The two roles hand over through replicated state rather than a clock: the host w
 That last scenario found a bug the day it was written. The drag request was stored per crate rather than per holder, so when a helper joined a drag and the original dragger let go, the helper inherited a drag they had never asked for.
 
 It uses port **27099**, deliberately not 27015, so running the suite never collides with someone playing.
+
+### storage_session
+
+`storage_session.tscn` runs the same two-process, `--role=` shape as `carry_session`, on its own port (**27097**, so it can never collide with `carry_session`'s 27099 or a live game's 27015) and its own instance of `test_room.tscn`.
+
+It asserts, in order: the host racks a crate into a rack cell and the crate's rigid body leaves the world **on the client's own copy too**, not just the host's; a second crate racked into the *same* cell brings its count to two rather than being refused (ADR 18 — a cell is eight Smalls, not one slot); a cell filled to capacity refuses a further placement **without dropping** what the asker was holding; a **dragged** crate is refused from a cell that is not floor level (ADR 19) while a *carried* crate reaches that same cell earlier in the run without issue; and finally two retrievals from the first cell come back in the exact reverse of the order they were placed in (LIFO), leaving the cell — and its derived visual — empty, independently confirmed on both peers.
+
+The "cell filled to capacity" setup goes through the referee's own `_cell_filled` broadcast directly, with synthetic ids that were never real crates, rather than eight real grab-and-place round trips — it is setup, not the thing under test, but it still travels the real wire, so both peers agree the cell is genuinely full rather than the host merely asserting so.
+
+A handful of this scenario's exact numbers (crate counts, which cell ends up holding what) do not match a literal reading of the plan that first specified it — filling a cell to eight and asserting it empty two steps later does not reconcile with itself once actually simulated. Every property named in the plan is still proven; see `storage_session.gd`'s own header comment and `01-04-SUMMARY.md` for what changed and why.
 
 ## When it fails
 

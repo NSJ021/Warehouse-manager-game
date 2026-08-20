@@ -15,6 +15,18 @@ class AimResult:
 	var rack: Rack = null
 	var cell_index := -1
 
+## How far past a raycast's own collision point to nudge before resolving a
+## cell from it. Not cosmetic: a ray's collision point sits exactly ON the
+## surface it hit, by definition — and for the outermost reachable row of any
+## rack, that surface exactly coincides with the rack's own outer boundary.
+## StorageGrid.cell_index_at()'s half-open rule deliberately excludes that
+## boundary (built for resolving where a body's *centre* sits, where "exactly
+## on the surface" should read as outside) — so an un-nudged point resolves
+## every straight-on aim at a rack to -1, unconditionally, for every rack.
+## Small next to a 1 m cell; found by 01-04's integration test timing out
+## solid rather than by reasoning about it in advance.
+const CELL_RESOLVE_NUDGE := 0.01
+
 var _held: Crate = null
 ## What the host says this hold is. Only meaningful while [member _held] is set.
 ## The host owns this decision and can change it mid-carry, so it is stored rather
@@ -192,7 +204,11 @@ func _aim() -> AimResult:
 	if rack == null:
 		return result
 	result.rack = rack
-	result.cell_index = rack.cell_at_point(_ray.get_collision_point())
+
+	# Nudged past the surface before resolving — see CELL_RESOLVE_NUDGE.
+	var hit := _ray.get_collision_point()
+	var into := (hit - _ray.global_position).normalized() * CELL_RESOLVE_NUDGE
+	result.cell_index = rack.cell_at_point(hit + into)
 	return result
 
 
