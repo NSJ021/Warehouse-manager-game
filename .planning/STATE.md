@@ -68,9 +68,13 @@ Progress: [████░░░░░░] Phase 0 complete bar one blocked item
 > **01-09** — checked clean against ADR 19: "never settle while `_holders` is not empty" already
 > covers dragging, and `add_holder()` wakes a settled crate. No special case needed.
 >
-> **Also corrected: `gsd-tools phase-plan-index` reports 01-04 as wave 1.** Its frontmatter and
-> ROADMAP.md both say wave 3, `depends_on: ["01-03"]`. The tool is wrong; trust the frontmatter,
-> or place/retrieve runs before the rack it places into exists.
+> **Resolved 2026-08-20: the `phase-plan-index` wave misreport was a CRLF bug, now patched.**
+> The audit patch had saved 01-04-PLAN.md with Windows line endings, and the tool's frontmatter
+> parser anchored on `^---\n` — a CRLF file parsed as having *no frontmatter*, so `wave`
+> defaulted to 1 and, worse, `autonomous` defaulted to true, which would strip a checkpoint plan
+> of its human gate. Patched locally in the tool (CRLF-tolerant parsing, plus `files_modified`
+> now reads the underscore key the template actually uses); verified against all nine plans.
+> The patch is machine-local and a tool update overwrites it — re-verify after any update.
 
 **Next session: wave 3 is complete, resume at wave 4.** Both 01-04 (place/retrieve) and 01-05
 (Goods IN/OUT zones) landed. `/gsd:execute-phase 1` from a fresh context will skip the five plans
@@ -222,6 +226,7 @@ constrain upcoming work:
 | 14 — physics budget of ~150 | Floor clutter, rack shedding volume, items per day |
 | 15 — GSD wraps the build order | This file, and everything else in `.planning/` |
 | 18 — 1.0 m cell, atomic, LIFO | The rack's whole occupancy model (01-03 onward). `Rack` delegates all arithmetic to `StorageGrid` — nothing downstream should recompute it |
+| 23 — Early Access, same bar | Phase 6 (store page + wishlists before the date) and Phase 7 (the gate now means "EA-shippable", unchanged in content). Public roadmap sells axes, never parked features |
 
 ### Open
 
@@ -245,6 +250,15 @@ constrain upcoming work:
   were called but never defined. Both fixed. **A cell now holds a stack of crate ids rather than
   a count**, so LIFO is observable through the real player path rather than only in a unit test.
 - **Feel tuning is provisional.** Hold stiffness 2400 / damping 460 came from one play session. All exported and tunable live.
+- **A first-pass economy model exists** (`tools/economy-sim.js` + `tools/economy-scenarios.js`,
+  committed 2026-08-20) — candidate rents, value densities and the invoice-at-handover frame,
+  embedding ADR 20's constants verbatim and calibrated to its £50–£2000 sweep envelope. Input to
+  the Phase 4 ADR, not a decision. Its one load-bearing guess — ~15 moves per player per
+  8-minute day — should be timed with a real carry loop at the Phase 1 gate.
+- **`rack_wall`'s back row is permanently unaimable** (flagged by 01-04): the front row's
+  sensors block the ray, the wall blocks the other side — wall racks are effectively 6 cells.
+  Needs a design ruling; belongs with the gate's "does 2-deep read as one unit" question.
+  01-06 mirrors as-built behaviour and must not invent a fix.
 
 ### Constraints learned the hard way
 

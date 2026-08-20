@@ -62,6 +62,7 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 20 | Detection and patch maths; reputation decays with the lease | `decisions/2026-08-19-detection-and-patch-maths.md` |
 | 21 | Reputation expires with the run; the crew splits one pot | `decisions/2026-08-19-two-currencies-and-the-crew-split.md` |
 | 22 | Orders are manifests; reputation is a market position | `decisions/2026-08-19-orders-are-manifests-reputation-is-a-market.md` |
+| 23 | Early Access, not straight to 1.0 — same bar, two launch beats | `decisions/2026-08-20-early-access-launch.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 

@@ -4,6 +4,55 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 6 — 2026-08-20
+
+**Wave 3 built the heart of the phase; the waiting time built the economy's first model; and the launch strategy stopped being an open question.**
+
+### What was built
+
+Waves stopped deliberately at the wave-3 boundary — five of nine plans done, session ended cleanly with nothing mid-flight.
+
+**Place and retrieve (01-04, ~82 min).** `CarryAuthority.request_place` / `request_retrieve` extend the Phase 0 referee — a client asks, the host answers by deleting the crate's rigid body and broadcasting three numbers, and late joiners get the full cell state on arrival. `Carrier` resolves one aim ray to either a crate or a rack cell, with the ADR 19 drag rule enforced in both the host-side validation and the client-side branch table. Proven by a second integration scene (`storage_session.gd`, 728 lines) across two real processes.
+
+**The find that justified the whole harness philosophy, a third time:** the aim ray was structurally broken for the outermost row of every rack in the game. A raycast's hit point lands exactly on the surface it struck, and for the outer reachable row that surface *is* the rack boundary — which `StorageGrid.cell_index_at()`'s half-open rule excludes by design (correct for "where is a body's centre", wrong for a ray hit). Every rack, every approach direction, silent in real play. Fixed with an inward nudge before resolving. It was caught only because the test drives the real keypress path over real ENet; calling the referee directly would have passed.
+
+**Goods IN / Goods OUT (01-05, ~40 min).** `GoodsZone` is static level content with zero networking machinery — every peer evaluates the same volume against already-replicated cargo. Both peers proven to agree on a zone's contents. The executor moved the zones off the plan's literal coordinates, which would have overlapped a rack — the "fixtures move, tests don't" trade, exactly as predicted in session 5's audit. Two real physics/timing bugs found and fixed by running the suite repeatedly rather than trusting one green run.
+
+The full suite ended the session green across five consecutive runs: api 87, unit 239, smoke 7, both integration scenarios on both peers.
+
+### The tool bug that had bitten twice, root-caused
+
+`gsd-tools phase-plan-index` misreporting 01-04's wave was never a wave bug — the 2026-08-19 audit patch saved that one plan file with Windows line endings, and the tool's frontmatter parser anchors on `^---\n`, so a CRLF file parses as having *no frontmatter at all*. Every field then defaults: `wave` to 1, and — the dangerous half — `autonomous` to true, which would silently strip a checkpoint plan of its human gate. Patched locally (the parser now tolerates CRLF, and `files_modified` reads the key the template actually uses — the hyphenated key it read before never exists, so the field was empty for every plan in every project). The patch survives tool updates via the local-patches backup; re-verify after any update.
+
+### Decisions made
+
+**ADR 23 — Early Access, not straight to 1.0.** The shelf's breakouts are EA natives, ADR 20 says in writing that the economy needs live-play data, and two launch beats beat one for a game with no marketing spend. Four clauses make it safe rather than soft: the EA gate is Phase 7's bar unchanged; Steam P2P validation and a Steam Playtest precede any date; the public roadmap sells axes, never parked features (un-parking still requires a superseding ADR); and 1.0 ships a headline, not a label change. Pricing stays ADR 10's domain, which already anticipated the EA exit.
+
+### Design work done while the waves ran
+
+**The economy has its first model.** A simulation embedding ADR 20's constants verbatim, producing candidate numbers calibrated to the dilemma's proven £50–£2000 envelope: value density £8/18/35/70 per cell-day by class, a 30% intake advance, rent £900/£550 per day (10/30-day, 4-player) escalating 0.7×→1.3× across the lease. Three structural findings worth more than the numbers: settle-at-handover starves the opening days (fixed by the advance, opening stock inherited from the previous leaseholder, and the escalating rent — whose expensive final days also push toward ADR 20's late-lease gamble); the ADR 20 flip appears at run scale unprompted (always-patch wins the 10-day, loses the 30-day by ~25%); and on a fixed map, crew size stops mattering on long leases unless manifests skew bigger crews toward churn. The scripts are committed at `tools/economy-sim.js` / `tools/economy-scenarios.js`. The single most load-bearing guess: ~15 moves per player per 8-minute day — time a real carry loop at the gate.
+
+**Gate prep is done ahead of the gate.** The wave-7 crib sheet records the built frame numbers (5 cm decks at y=0/1/2, 10 cm corner uprights), the judging yardsticks, and a tension written down nowhere else: ADR 18's cells are exactly 1.0 m and the frame occupies space *inside* that envelope — a full Small lattice interpenetrates the decks by ~2.5 cm by arithmetic. The geometry ADR must name the resolution (inset visuals, thinner decks, or open beams) because the hand-modelled rack inherits it.
+
+**Both parked ideas were stress-tested** and the idea book updated: the sales counter gained a newly-spotted coupling (fencing a damaged crate is a *fourth dilemma fork* — evidence disposal — unless the spread sits below the worst confession band), and the crew entry gained NJ's trait-picker proposal — cosmetic models with a debuff-weighted points system and generated nicknames — with the fixed cast preserved as curated presets for marketing. Neither idea enters v1; both now have specific shelves on the EA arc rather than "someday".
+
+### Housekeeping
+
+- Wave 3 ran its two plans in parallel in one working tree without conflict — executors were briefed to commit only their own files and to treat port-27099 integration failures as possible suite collisions before chasing them as real. Neither hazard fired.
+- ADR 23 committed with its decision-log row; publishing hooks clean.
+
+### Open questions
+
+- **`rack_wall`'s back row is permanently unaimable** — the front row's sensor volumes block the ray and the wall blocks the other approach, so wall racks are effectively 6 cells, not 12. Flagged by 01-04 for a design ruling; it belongs with the gate's "does 2-deep read as one unit" question. 01-06 should mirror the as-built behaviour, not invent a fix.
+- **If the sales counter ever lands, its spread and ADR 20's confession bands are co-calibrated constants** — and "gone missing" needs a consequence at least as harsh as a failed order, or the van becomes evidence disposal.
+- Everything from session 5 still stands: the Area3D-versus-frozen-bodies question lands in wave 6, the shed threshold call lands at the gate, the Steam join needs a second machine.
+
+### Next steps
+
+Resume with `/gsd:execute-phase 1` from a fresh context — wave 4 (01-06, aim feedback and the snap), then 01-07, 01-09, and the gate. The gate prep — built frame numbers, judging yardsticks, the cell-clipping tension, and the carry-loop timing ask — is recorded in the session notes and should be re-read when wave 7 arrives.
+
+---
+
 ## Session 5 — 2026-08-19
 
 **Phase 1 starts building. The nine plans were audited against the decisions made the day before first — six were wrong, and one of them would have failed the suite on the opening task.**
