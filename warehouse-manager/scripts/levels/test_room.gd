@@ -53,6 +53,12 @@ func _ready() -> void:
 	spawner.spawn_function = _spawn_player
 	crate_spawner.spawn_function = _spawn_crate
 
+	# CarryAuthority finds a crate minter by group rather than by name, so it
+	# never has to name TestRoom or any other level script (it is not
+	# level-specific — see its class doc). Every level that wants retrieval
+	# to work joins this group; a level that does not simply never grants one.
+	add_to_group("crate_source")
+
 	if Net.is_host():
 		Net.player_ready_for_spawn.connect(_on_player_ready_for_spawn)
 		Net.player_left.connect(_on_player_left)

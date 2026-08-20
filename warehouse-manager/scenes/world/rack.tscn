@@ -57,127 +57,125 @@ use_collision = true
 size = Vector3(0.1, 3.0, 0.1)
 material = SubResource("StandardMaterial3D_frame")
 
-[node name="CellSensors" type="Node3D" parent="."]
-editor_description = "The aim target, one CellSensor Area3D per cell rather than one covering the whole rack - a single hull would only ever return the front surface to a raycast, which would make a buried back-row cell unaimable even from the far side of an island rack. collision_layer=8 (storage), collision_mask=0, monitoring and monitorable both OFF: hittability by a raycast is independent of both flags (test/api/engine_assumptions.gd), so a rack full of these costs nothing in collision detection."
-
-[node name="CellSensor0" type="Area3D" parent="CellSensors"]
+[node name="CellSensor0" type="Area3D" parent="."]
+editor_description = "The aim target, one CellSensor Area3D per cell rather than one covering the whole rack - a single hull would only ever return its front surface to a raycast, which would make a buried back-row cell unaimable even from the far side of an island rack. Direct children of the rack root, not grouped under an intermediate node: a RayCast3D that hits an Area3D returns the area itself, never its parent, so the aim code (Carrier._aim) does exactly one get_parent() to reach the Rack - engine_assumptions.gd pins this. collision_layer=8 (storage), collision_mask=0, monitoring and monitorable both OFF: hittability by a raycast is independent of both flags (test/api/engine_assumptions.gd), so a rack full of these costs nothing in collision detection."
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, 0.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor0"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor0"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor1" type="Area3D" parent="CellSensors"]
+[node name="CellSensor1" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.5, 0.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor1"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor1"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor2" type="Area3D" parent="CellSensors"]
+[node name="CellSensor2" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0.5, 1.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor2"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor2"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor3" type="Area3D" parent="CellSensors"]
+[node name="CellSensor3" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.5, 1.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor3"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor3"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor4" type="Area3D" parent="CellSensors"]
+[node name="CellSensor4" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 1.5, 0.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor4"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor4"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor5" type="Area3D" parent="CellSensors"]
+[node name="CellSensor5" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1.5, 0.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor5"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor5"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor6" type="Area3D" parent="CellSensors"]
+[node name="CellSensor6" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 1.5, 1.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor6"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor6"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor7" type="Area3D" parent="CellSensors"]
+[node name="CellSensor7" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 1.5, 1.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor7"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor7"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor8" type="Area3D" parent="CellSensors"]
+[node name="CellSensor8" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 2.5, 0.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor8"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor8"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor9" type="Area3D" parent="CellSensors"]
+[node name="CellSensor9" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 2.5, 0.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor9"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor9"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor10" type="Area3D" parent="CellSensors"]
+[node name="CellSensor10" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 2.5, 1.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor10"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor10"]
 shape = SubResource("BoxShape3D_cell")
 
-[node name="CellSensor11" type="Area3D" parent="CellSensors"]
+[node name="CellSensor11" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 2.5, 1.5)
 collision_layer = 8
 collision_mask = 0
 monitoring = false
 monitorable = false
 
-[node name="Shape" type="CollisionShape3D" parent="CellSensors/CellSensor11"]
+[node name="Shape" type="CollisionShape3D" parent="CellSensor11"]
 shape = SubResource("BoxShape3D_cell")
 
 [node name="RackedItems" type="Node3D" parent="."]

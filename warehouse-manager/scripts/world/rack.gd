@@ -74,12 +74,16 @@ func occupied_count(cell: int) -> int:
 	return _ids(cell).size()
 
 
-## The crate id on top of the cell's stack, 0 when empty. An id rather than a
+## The crate id on top of the cell's stack, -1 when empty. An id rather than a
 ## kind, both so "occupied" and "empty" are one comparison apart, and so LIFO
 ## order is something a caller outside this file can actually check.
+##
+## -1 rather than 0: crate ids are minted from 0 (see
+## [code]TestRoom._next_crate_id[/code]), so 0 is a real crate, not "nothing
+## here". StorageGrid's own convention for "no answer" is -1 — this follows it.
 func occupant(cell: int) -> int:
 	var ids := _ids(cell)
-	return ids.back() if not ids.is_empty() else 0
+	return ids.back() if not ids.is_empty() else -1
 
 
 func cell_kind(cell: int) -> StringName:
@@ -88,6 +92,15 @@ func cell_kind(cell: int) -> StringName:
 
 func is_cell_empty(cell: int) -> bool:
 	return occupied_count(cell) == 0
+
+
+## True when every cell is empty. Late-joiner sync (01-04) reads this to skip
+## sending a snapshot for a rack that has nothing in it yet.
+func is_empty() -> bool:
+	for cell in _cells:
+		if not (cell["ids"] as Array).is_empty():
+			return false
+	return true
 
 
 ## 01-07's shed reads this. The top level is the one nothing reaches except by
@@ -148,12 +161,13 @@ func add_to_cell(cell: int, kind: StringName, crate_id: int) -> int:
 	return sub_index
 
 
-## Pops the top id and returns it — LIFO — or 0 if the cell was already empty.
+## Pops the top id and returns it — LIFO — or -1 if the cell was already
+## empty. See the note on [method occupant] for why -1 rather than 0.
 func remove_from_cell(cell: int) -> int:
 	var data := _cells[cell]
 	var ids := data["ids"] as Array
 	if ids.is_empty():
-		return 0
+		return -1
 	var crate_id: int = ids.pop_back()
 	if ids.is_empty():
 		data["kind"] = &""
@@ -174,6 +188,23 @@ func apply_cell_filled(cell: int, crate_id: int, _from_position: Vector3) -> voi
 func apply_cell_cleared(cell: int) -> void:
 	remove_from_cell(cell)
 	_rebuild_cell_visuals(cell)
+
+
+## Replaces this rack's occupancy wholesale and rebuilds every cell's visuals
+## from it — the late-joiner path (01-04). A peer that was not present for
+## earlier placements has to be brought up to date in one shot rather than by
+## replaying every [method apply_cell_filled] since the rack was last empty.
+## Duplicated on the way in for the same reason [method occupancy_snapshot]
+## duplicates on the way out: this rack's state must not alias the dictionary
+## the caller handed over.
+func apply_occupancy_snapshot(snapshot: Array) -> void:
+	for cell in snapshot.size():
+		var data := snapshot[cell] as Dictionary
+		_cells[cell] = {
+			"kind": data.get("kind", &""),
+			"ids": (data.get("ids", []) as Array).duplicate(),
+		}
+		_rebuild_cell_visuals(cell)
 
 
 # ---------------------------------------------------------------- visuals
