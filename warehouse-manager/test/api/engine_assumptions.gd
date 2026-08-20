@@ -317,12 +317,67 @@ func _check_decided_invariants() -> void:
 	_expect(player.collision_mask == 3, "players collide with world and players, NOT cargo (got %d)" % player.collision_mask)
 
 	var ray := player.get_node("CameraPivot/GrabRay") as RayCast3D
-	_expect(ray != null and ray.collision_mask == 4, "the grab ray still looks for cargo only")
+	# 12 = 4 (cargo) | 8 (storage): the grab ray looks for cargo AND rack cell
+	# sensors from 01-04 onward, one ray resolving either kind of target.
+	_expect(
+		ray != null and ray.collision_mask == 12,
+		"the grab ray looks for cargo and rack cell sensors (got %s)" % (ray.collision_mask if ray else "no ray"),
+	)
+	_expect(ray != null and ray.collide_with_areas, "the grab ray still sees Area3D cell volumes")
 	_expect(
 		ray != null and ray.hit_from_inside,
 		"the grab ray still reports crates it starts inside - players walk through cargo",
 	)
 	player.free()
+
+	# 01-04: the rack's cell sensors are the aim target for storage, and the
+	# aim code (Carrier._aim) resolves one via exactly one get_parent() call
+	# on whatever Area3D the ray hit.
+	var rack_scene := load("res://scenes/world/rack.tscn") as PackedScene
+	if rack_scene == null:
+		_fail("the rack scene will not load, so its invariants cannot be checked")
+	else:
+		var rack := rack_scene.instantiate()
+		var sensor := rack.get_node_or_null("CellSensor0") as Area3D
+		_expect(
+			sensor != null and sensor.get_parent() == rack,
+			"CellSensor0 is a direct child of the rack root (Carrier._aim does one get_parent())",
+		)
+		_expect(
+			sensor != null and sensor.collision_layer == 8,
+			"rack cell sensors are on the storage layer (got %s)" % (sensor.collision_layer if sensor else "no sensor"),
+		)
+		_expect(
+			sensor != null and not sensor.monitoring and not sensor.monitorable,
+			"rack cell sensors have monitoring and monitorable both off - " +
+			"raycast hittability was measured independent of both, so 150+ " +
+			"cell volumes cost nothing in overlap detection",
+		)
+		_expect(
+			rack.get_node_or_null("RackedItems") != null,
+			"the rack has a RackedItems container for its derived visuals",
+		)
+		rack.free()
+
+	# 01-04: a racked item must stay a bare mesh (ADR 14) - this is the
+	# assertion that stops it quietly growing a body and reopening the cost a
+	# rack of 96 Smalls as rigid bodies would be.
+	var racked_item_scene := load("res://scenes/goods/racked_item.tscn") as PackedScene
+	if racked_item_scene == null:
+		_fail("the racked item scene will not load, so its invariants cannot be checked")
+	else:
+		var racked_item := racked_item_scene.instantiate()
+		var has_collision := false
+		for child in racked_item.get_children():
+			if child is CollisionShape3D:
+				has_collision = true
+		_expect(not has_collision, "a racked item still has no CollisionShape3D of its own")
+		var mesh := (racked_item as MeshInstance3D).mesh as BoxMesh
+		_expect(
+			mesh != null and mesh.size.is_equal_approx(Vector3(0.5, 0.5, 0.5)),
+			"ADR 18 - a racked item's box is exactly 0.5 m, matching the Small it represents (got %s)" % (mesh.size if mesh else "no mesh"),
+		)
+		racked_item.free()
 
 	# Two is the two-player carry ceiling, expressed in the data shape.
 	#
