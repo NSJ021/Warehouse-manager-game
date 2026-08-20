@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/levels/test_room.gd" id="1_room"]
 [ext_resource type="Script" path="res://scripts/goods/carry_authority.gd" id="2_carry"]
 [ext_resource type="PackedScene" path="res://scenes/world/rack.tscn" id="3_rack"]
+[ext_resource type="PackedScene" path="res://scenes/world/goods_zone.tscn" id="4_zone"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -112,6 +113,16 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5, 0, -10)
 
 [node name="rack_island" parent="Racks" instance=ExtResource("3_rack")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5, 0, 1)
+
+[node name="Zones" type="Node3D" parent="."]
+
+[node name="GoodsIn" parent="Zones" instance=ExtResource("4_zone")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, -7)
+kind = 0
+
+[node name="GoodsOut" parent="Zones" instance=ExtResource("4_zone")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, 7)
+kind = 1
 
 [node name="CarryAuthority" type="Node" parent="."]
 script = ExtResource("2_carry")

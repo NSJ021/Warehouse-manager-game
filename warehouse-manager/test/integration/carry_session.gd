@@ -48,7 +48,7 @@ const STEP_TIMEOUT_MS := 15000
 ## | crate_1 | free                                                     |
 ## | crate_2 | DESPAWN_PROBE_NAME - the queue_free() replication probe |
 ## | crate_3 | DRAG_CRATE_NAME - solo drag and its promotion (ADR 19)  |
-## | crate_4 | reserved for plan 01-05's Goods IN zone probe           |
+## | crate_4 | ZONE_PROBE_NAME - Goods IN / Goods OUT zone detection   |
 ## | crate_5 | LOST_CRATE_NAME - supply conservation                   |
 const CRATE_NAME := "crate_0"
 const EXPECTED_PLAYERS := 2
@@ -81,6 +81,16 @@ const SPAWN_SETTLE_MS := 500
 const DRAG_CRATE_NAME := "crate_3"
 ## A crate no other scenario touches, pushed out of the world to prove it returns.
 const LOST_CRATE_NAME := "crate_5"
+## The Goods IN / Goods OUT probe. Teleported into GoodsIn by the host and
+## then left standing still, so both peers can independently ask their own
+## [GoodsZone] whether it agrees.
+const ZONE_PROBE_NAME := "crate_4"
+const ZONE_PATH := "Zones/GoodsIn"
+const ZONE_OUT_PATH := "Zones/GoodsOut"
+## Half a Small's height (0.5 m cube, ADR 18). Landing the zone probe here
+## rather than at the zone's own floor-level origin keeps it resting on top
+## of the floor instead of embedded in it.
+const CRATE_REST_HEIGHT := 0.25
 ## How long a dragged crate must stay on the floor while its dragger stares at the
 ## ceiling. A carry spring would have hauled it to eye level many times over in
 ## this window, so it separates "dragged" from "carried low" rather than merely
@@ -189,6 +199,9 @@ func _run() -> void:
 			return _crates().get_node_or_null(DESPAWN_PROBE_NAME) == null and _crates().get_child_count() == EXPECTED_CRATES - 1):
 		return _finish(false)
 
+	if not await _check_goods_zones():
+		return _finish(false)
+
 	if not await _until("own body spawned", func() -> bool: return _me() != null):
 		return _finish(false)
 
@@ -202,6 +215,76 @@ func _run() -> void:
 		await _run_host(crate)
 	else:
 		await _run_client(crate)
+
+
+## Both peers run this before the role split (01-05). The host teleports the
+## probe crate into GoodsIn — the same determinism trick [method _take] uses
+## on players — and both peers then ask their [i]own[/i] [GoodsZone] whether
+## it agrees, rather than only proving the host's opinion.
+##
+## ⚠ The probe crate is teleported in and then left standing still, which is
+## harmless in Phase 1 but not forever: once 01-09 (wave 6) lands, a crate
+## left standing still SETTLES — frozen, FREEZE_MODE_STATIC, moved onto the
+## world layer (ADR 17) — on the [i]host[/i] too, not only on a client's
+## puppet. If [method GoodsZone.count] ever silently drops to 0 once that
+## lands, this is why: Area3D overlap has to keep reporting a settled crate,
+## because Goods OUT must detect stock that has sat there all day. That is a
+## design constraint on [GoodsZone], not a test artefact — report it rather
+## than working around it if it turns out not to hold.
+func _check_goods_zones() -> bool:
+	var goods_in := _world.get_node_or_null(ZONE_PATH) as GoodsZone
+	var goods_out := _world.get_node_or_null(ZONE_OUT_PATH) as GoodsZone
+	if goods_in == null or goods_out == null:
+		_fail("find zones", "%s or %s not present under %s" % [ZONE_PATH, ZONE_OUT_PATH, _world.name])
+		return false
+
+	if _role == "host":
+		var probe := _crate_named(ZONE_PROBE_NAME)
+		if probe == null:
+			_fail("find %s" % ZONE_PROBE_NAME, "not present under Crates")
+			return false
+		# Teleporting a body for determinism - the same trick _take() uses on
+		# players. Raised by CRATE_REST_HEIGHT rather than dropped exactly on
+		# [member GoodsZone.global_position]: the zone's own origin sits at
+		# floor level (y=0), and a Small's centre needs to be at its own
+		# half-height to rest on top of the floor rather than embedded in it.
+		# Found the hard way: landing it exactly at y=0 half-buries the crate,
+		# and because [member RigidBody3D.sleeping] is forced false below, it
+		# never settles quietly enough to fall back asleep on its own — it
+		# jitters against the floor indefinitely, which is what actually
+		# carried it off the level over the course of a full run rather than
+		# any zone-detection code being at fault.
+		probe.global_position = goods_in.global_position + Vector3(0.0, CRATE_REST_HEIGHT, 0.0)
+		probe.linear_velocity = Vector3.ZERO
+		probe.angular_velocity = Vector3.ZERO
+		probe.sleeping = false
+
+	if not await _until("GoodsIn sees exactly one crate", func() -> bool:
+			return goods_in.count() == 1):
+		return false
+	if not await _until("GoodsIn names the right crate", func() -> bool:
+			var found := goods_in.contents()
+			return found.size() == 1 and String(found[0].name) == ZONE_PROBE_NAME):
+		return false
+	# A detector that reports everything is not a detector.
+	if not await _until("GoodsOut stays empty", func() -> bool:
+			return goods_out.count() == 0):
+		return false
+
+	# Host-only: let the probe settle back to sleep before the carry scenario
+	# starts. It was placed exactly at rest height with zero velocity, so this
+	# is normally immediate — but skipping it left a still-awake, still-
+	# replicating crate active on the exact frames the carry/handoff sequence
+	# runs, which was enough to disturb that scenario's own timing (found
+	# 2026-08-20). Nothing here reads [member Crate.sleeping] from a client:
+	# clients never simulate cargo (only the host runs [method
+	# Crate._physics_process]), so only the host has anything to wait for.
+	if _role == "host":
+		var probe := _crate_named(ZONE_PROBE_NAME)
+		if not await _until("zone probe settled", func() -> bool:
+				return probe != null and probe.sleeping):
+			return false
+	return true
 
 
 func _stand_beside(crate: Crate, offset_z: float) -> Vector3:
@@ -424,6 +507,19 @@ func _run_client_drag() -> void:
 ## *replicated* position, which eases toward the teleport over a few frames. A
 ## fixed wait would be a flake waiting to happen; retrying until the state changes
 ## is deterministic in outcome.
+##
+## [b]Deliberately called without `await`.[/b] Every call site fires the
+## request synchronously (the loop's first iteration runs before its first
+## internal `await`) and then leaves this to keep retrying as a detached
+## coroutine while the caller moves on to its own state-based `_until` polls —
+## which is what actually decides pass or fail. Tried awaiting every call site
+## instead (2026-08-20, in case of an interaction with 01-05's zone probe) and
+## it made things worse: serialising all four calls stretched the carry/handoff
+## sequence enough to occasionally collapse the two-holder state out of a
+## single 20 Hz replication tick before the client ever observed it. Reverted;
+## the two things that actually needed fixing were the zone probe embedding
+## itself in the floor and never settling (below), and letting it stay awake
+## and replicating into the timing-sensitive carry scenario that follows.
 func _take(stand: Vector3, crate: Crate, want_drag := false) -> void:
 	var me := _me()
 	me.teleport_to(stand)
@@ -515,6 +611,13 @@ func _report_state() -> void:
 		print("[test] state %s holders=%d (a=%d b=%d) pos=%v" % [
 			CRATE_NAME, crate.holder_count(), crate.sync_holder_a, crate.sync_holder_b,
 			crate.global_position,
+		])
+	if _world != null:
+		var goods_in := _world.get_node_or_null(ZONE_PATH) as GoodsZone
+		var goods_out := _world.get_node_or_null(ZONE_OUT_PATH) as GoodsZone
+		print("[test] state GoodsIn.count=%d GoodsOut.count=%d" % [
+			goods_in.count() if goods_in != null else -1,
+			goods_out.count() if goods_out != null else -1,
 		])
 	var me := _me()
 	if me != null:
