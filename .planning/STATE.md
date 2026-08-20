@@ -14,27 +14,31 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: **01-01, 01-02, 01-03 and 01-05 complete** — waves 1–2 done, wave 3 half done (01-05
-landed; 01-04 still executing in parallel), 5 of 9 plans remaining
-Status: **Executing** — wave 3: 01-05 (Goods IN/OUT zones) complete; 01-04 (place/retrieve)
-still in progress in a parallel session against the same working tree
-Last activity: 2026-08-20 — 01-05 executed: `GoodsZone` (Area3D, zero networking machinery,
-kind IN/OUT with the difference derived locally) landed, with `GoodsIn`/`GoodsOut` placed in the
-test room and both peers independently proven to agree on a zone's contents over real ENet. Two
-real bugs found and fixed only by running the suite repeatedly rather than trusting one green
-run — see the 01-05 block below. Before that: 01-03 executed: `Rack` (12-cell occupancy, atomic
-by kind, LIFO, visuals derived from state) landed against ADR 18, with a greybox scene, twelve
-per-cell aim volumes, a zero-cost `racked_item.tscn`, two racks placed in the test room, and
-host-side crate minting. Before that: 01-02 executed: `StorageGrid` cell arithmetic (ADR 18)
-landed test-first, 183 unit checks, wired into the suite's `unit/` stage alongside
-`dilemma_maths.gd`. Before that: 01-01 executed, `queue_free()` despawn replication proven on
-both peers (no fallback needed), physics layer 4 named `storage` and asserted. Before that: solo
-drag built and proved (ADR 19); detection and patch maths settled and put under test (ADR 20);
-the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched for ADR 19
-before execution
+Plan: **01-01, 01-02, 01-03, 01-04 and 01-05 complete** — waves 1–3 done, 4 of 9 plans remaining
+across waves 4–7
+Status: **Executing** — wave 3 (01-04 place/retrieve, 01-05 Goods IN/OUT zones, run in parallel)
+complete; wave 4 unblocked
+Last activity: 2026-08-20 — 01-04 executed: `CarryAuthority.request_place`/`request_retrieve`
+landed, host-validated and ADR 19-aware, with `Carrier` resolving one aim ray to either a crate or
+a rack cell and the full place/refuse/retrieve branch table. The integration test that proves it
+found and fixed a structural bug in the aim mechanism itself — see the 01-04 block below, and
+read it before touching rack aiming again. Before that: 01-05 executed: `GoodsZone` (Area3D, zero
+networking machinery, kind IN/OUT with the difference derived locally) landed, with
+`GoodsIn`/`GoodsOut` placed in the test room and both peers independently proven to agree on a
+zone's contents over real ENet. Two real bugs found and fixed only by running the suite repeatedly
+rather than trusting one green run — see the 01-05 block below. Before that: 01-03 executed:
+`Rack` (12-cell occupancy, atomic by kind, LIFO, visuals derived from state) landed against ADR
+18, with a greybox scene, twelve per-cell aim volumes, a zero-cost `racked_item.tscn`, two racks
+placed in the test room, and host-side crate minting. Before that: 01-02 executed: `StorageGrid`
+cell arithmetic (ADR 18) landed test-first, 183 unit checks, wired into the suite's `unit/` stage
+alongside `dilemma_maths.gd`. Before that: 01-01 executed, `queue_free()` despawn replication
+proven on both peers (no fallback needed), physics layer 4 named `storage` and asserted. Before
+that: solo drag built and proved (ADR 19); detection and patch maths settled and put under test
+(ADR 20); the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched
+for ADR 19 before execution
 
-Progress: [███░░░░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-2 of 7 done, wave 3
-half done (4/9 plans)
+Progress: [████░░░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-3 of 7 done
+(5/9 plans)
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -68,21 +72,31 @@ half done (4/9 plans)
 > ROADMAP.md both say wave 3, `depends_on: ["01-03"]`. The tool is wrong; trust the frontmatter,
 > or place/retrieve runs before the rack it places into exists.
 
-**Next session: finish wave 3, then continue to wave 4.** 01-05 (Goods IN/OUT zones) is complete.
-01-04 (place and retrieve) was still executing in a parallel session against the same working
-tree as of 01-05's completion — check for its SUMMARY before resuming; if absent, `/gsd:execute-phase 1`
-from a fresh context should pick it up (it depends only on 01-03, already complete).
+**Next session: wave 3 is complete, resume at wave 4.** Both 01-04 (place/retrieve) and 01-05
+(Goods IN/OUT zones) landed. `/gsd:execute-phase 1` from a fresh context will skip the five plans
+with SUMMARYs and pick up wave 4.
 
-Three things to carry in, from the audit above and from 01-05's own execution:
+Things to carry in, from the audit above and from 01-04's and 01-05's own execution:
 
 - **`gsd-tools phase-plan-index` still misreports 01-04 as wave 1.** It depends on 01-03. Read
-  the frontmatter, not the tool.
-- **01-04 is the first plan to touch the referee**, and the drag rule now lives in two places:
-  host-side validation in `request_place`, and the client-side branch table that 01-06 copies.
-  Both were patched; keep them saying the same thing.
+  the frontmatter, not the tool. (Now moot for 01-04 itself, but the tool is presumably still
+  wrong for others.)
+- **`gsd-tools state advance-plan` / `state update-progress` cannot parse this project's
+  hand-authored STATE.md** — both errored ("Cannot parse Current Plan or Total Plans", "Progress
+  field not found") when tried for 01-04. STATE.md was updated by hand instead, matching the
+  existing block style. Don't spend time retrying the tool here; it wants a format this file
+  doesn't use.
 - **The integration harness's `_take()` helper is deliberately unawaited at every call site** —
   tried awaiting it, made a different failure worse (see the 01-05 block below). If a future plan
   is tempted to "fix" this, read that block and `_take()`'s own docstring first.
+- **A rack backed against a wall has a permanently unaimable back row**, independent of
+  occupancy — flagged in detail in the 01-04 block below. **01-06 (cell highlighting) copies
+  01-04's branch table verbatim and needs to know this before it paints a highlight on a cell
+  nobody can reach.**
+- **`Carrier._aim()`'s `CELL_RESOLVE_NUDGE` is load-bearing for every rack interaction, not just
+  01-04's.** Without it, no rack anywhere is aimable at all — see the 01-04 block. Any future
+  raycast-based rack code should call `Carrier._aim()` rather than reimplementing
+  collision-point-to-cell resolution.
 
 > **01-01 resolved 2026-08-19: `queue_free()` despawn replication holds, no fallback needed.**
 > A despawn probe in `carry_session.gd` has the host free a crate spawned through the level's
@@ -155,6 +169,42 @@ Three things to carry in, from the audit above and from 01-05's own execution:
 > `.planning/phases/01-storage/01-05-SUMMARY.md` (local-only, see the note above on
 > `.planning/phases/`).
 
+> **01-04 resolved 2026-08-20: place and retrieve landed, host-validated and ADR 19-aware.**
+> `CarryAuthority` gained `request_place`/`request_retrieve` (validated in order: holding what's
+> claimed, ADR 19's drag-can't-reach-above-floor rule, rack/cell resolution, ADR 18 atomicity,
+> reach), the three broadcast RPCs, and late-joiner rack snapshots. `Carrier._aim()` resolves one
+> ray to either a `Crate` or a `(Rack, cell_index)` pair, and `try_toggle_hold()` implements the
+> full eight-row branch table. A second integration scenario, `storage_session.gd` (port 27097),
+> proves the whole round trip over real ENet: place, a cell taking more than one, a full cell
+> refusing without a drop, a dragged crate refused above the floor row while a carried one
+> reaches it, LIFO retrieval (proven through `Rack.occupant()`'s own bookkeeping, not the id of
+> whatever crate a retrieval hands back — `request_retrieve` always mints a fresh one, since
+> placing one freed its body outright), and the body-cost budget.
+> **Eight deviations, six of them real pre-existing bugs the integration test caught rather than
+> introduced**: `Rack.occupant()`'s empty sentinel (`0`) collided with a real crate id (crate ids
+> mint from 0) — changed to `-1`; the `crate_source` group the plan's own retrieval code depends
+> on never existed — added; `rack.tscn`'s `CellSensor` volumes were nested under an intermediate
+> node, which broke the aim code's one `get_parent()` call for every rack, not just this plan's —
+> flattened. **The significant one**: a raycast's collision point always sits exactly on the
+> surface it hit, and for the outermost reachable row of any rack that surface *is* the rack's own
+> boundary — which `StorageGrid.cell_index_at()`'s half-open rule (correct for a body's centre,
+> wrong for this) excludes. Every straight-on aim at any rack resolved to `-1`, unconditionally,
+> until `Carrier._aim()` started nudging the point a centimetre inward first
+> (`CELL_RESOLVE_NUDGE`) — load-bearing for every future rack interaction, not just this one. The
+> remaining two were bugs in the test harness itself (a held crate teleported in one jump snaps
+> its own hold; `queue_free()`'s deferred removal races a one-shot check, and one of those races
+> was silently absorbed by `_expect_now` never failing the overall result).
+> **One finding flagged rather than fixed, needs a design decision**: `rack_wall`'s depth=0 row
+> (cells 0,1,4,5,8,9) is permanently unaimable, independent of occupancy — it's backed onto the
+> room's wall, so the only approachable side is the depth=1 row's own side, and that row's
+> `CellSensor` volumes physically block the ray to the row behind them no matter what either row
+> holds. Not specific to this plan's original cell choice (moved from 5/4 to 7/6 to work around
+> it); a property of any multi-deep rack against a wall under the current aim scheme. **01-06
+> (cell highlighting) copies this plan's branch table verbatim and will need to account for
+> it** — a highlighted cell nobody can actually reach is exactly the promise-versus-behaviour gap
+> that plan exists to prevent. Full detail: `.planning/phases/01-storage/01-04-SUMMARY.md`
+> (local-only, see the note above on `.planning/phases/`).
+
 ## Accumulated Context
 
 ### Decisions
@@ -180,11 +230,15 @@ constrain upcoming work:
   cash and decays with the lease, which is what makes the right answer move. `CargoCondition` and
   `Dilemma` are pure and under test; the sweep asserts no dominant strategy. **Nothing is wired to
   gameplay** — the tape gun, handover and damage sources are still Phase 3.
-- **The storage unit is a 1.0 m cell** (ADR 18, superseding 16). The cell arithmetic
-  (`StorageGrid`, 01-02) and the rack fixture itself (`Rack`, greybox scene, two racks placed,
-  01-03) are both built and under test. **Nothing is wired to the actual place/retrieve
-  interaction yet** — every rack starts and stays empty, since no RPC calls `apply_cell_filled`
-  — that is 01-04. Crate sizes must still match exactly before anyone builds art.
+- **The storage unit is a 1.0 m cell** (ADR 18, superseding 16), and place/retrieve is now fully
+  wired (01-04): `CarryAuthority.request_place`/`request_retrieve` call `apply_cell_filled`/
+  `apply_cell_cleared` over the real keypress path, proven over real ENet. **Not yet built**: any
+  visual feedback for which cell is aimed at, or a tween on the snap (01-06); the shed test for
+  the top row (01-07). Crate sizes must still match exactly before anyone builds art.
+- **A rack backed against a wall (`rack_wall`) has a permanently unaimable back row** (found by
+  01-04), independent of occupancy — see the 01-04 block above. Needs a design decision before
+  01-06 or any future rack placement: island-only racks, a redesigned aim scheme for buried
+  cells, or an explicit acceptance that wall racks only expose their front row.
 - Plans 01-02 and 01-03 were **reworked for ADR 18's cell model** and re-verified. The
   re-check found two blockers, both caused by the slot → cell rename being a text substitution
   rather than a semantic one: 01-04 still enforced one item per cell, and two broadcast methods
@@ -195,6 +249,17 @@ constrain upcoming work:
 ### Constraints learned the hard way
 
 - Headless Godot runs uncapped, so frame counts are useless as timeouts. Use wall-clock deadlines.
+  This applies to more than just top-level test timeouts: a fixed frame count used as a
+  "let physics settle" pause between two teleports (01-04) bought almost no real physics time and
+  silently dropped a held item — pace anything physics-dependent by `Time.get_ticks_msec()`.
+- A raycast's collision point sits exactly ON the surface it hit. Feeding that directly into a
+  half-open boundary test (`StorageGrid.cell_index_at`) fails for the outermost reachable layer of
+  any bounded volume, because that surface coincides with the volume's own boundary, which the
+  rule excludes by design. Nudge the point a little further along the ray first
+  (`Carrier.CELL_RESOLVE_NUDGE`, 01-04).
+- `queue_free()` defers the actual node removal. A check against `get_child_count()` or
+  `get_node_or_null()` immediately after calling it can still see the old state — poll for the
+  change, don't assert it once (01-04, 01-05 both hit this independently).
 - A new `class_name` is invisible to headless runs until the editor rescans.
 - One Godot editor at a time — the MCP bridge grabs port 9080 and will silently edit the wrong project.
 - Close the editor before any branch switch that touches `addons/`; it holds the Steam DLLs open.
