@@ -39,6 +39,34 @@ enum Highlight { NONE, ACTIONABLE, BLOCKED }
 ## judged with a crate in hand, not derived from anything.
 @export var snap_time := 0.16
 
+## How fast an incoming crate has to be moving, on the host's own
+## [member RigidBody3D.linear_velocity], to shed the top row (01-07, STORE-05).
+## Below this you bumped it; above, you hit it — ADR 4 wants racks stable, not
+## fragile, so this is a threshold for recklessness, not ambient noise.
+##
+## 4.0 sits above the player's own 4.2 m/s walk speed only barely, which
+## sounds close until you note a *carried* crate trails the holder rather than
+## matching them exactly (the hold spring's own lag), so ordinary carrying
+## stays under it with real margin. What it comfortably cannot reach is a solo
+## drag: ADR 19's drag spring tops out near 1.7 m/s (softer stiffness, and the
+## floor-plane-only force never gets to add a vertical throw), so a dragged
+## crate can never shed a rack by itself, no matter how hard the corner is
+## cut. That is correct — two-player carry is the only way to hit something
+## hard enough to matter — but it is a conscious call, not a coincidence, and
+## the wave 7 gate should see this comment before either number moves.
+## Confirmed with a thrown crate only; a human check with one actually in
+## hand is still owed (01-08).
+@export var shed_impact_speed := 4.0
+## Seconds between sheds. Without it, one crate settling and bouncing once
+## inside the sensor would fire the referee repeatedly for what is really one
+## impact.
+@export var shed_cooldown := 1.5
+
+@onready var _impact_sensor: Area3D = $ImpactSensor
+## Far enough in the past that the very first real impact is never blocked by
+## a cooldown that never actually happened.
+var _last_shed_ms := -1000000
+
 ## One entry per cell: `{ "kind": StringName, "ids": Array[int] }`. `ids` is a
 ## stack, last in first out, so [method occupied_count] is just its size and
 ## the two can never disagree. `kind` is `&""` when the cell is empty.
@@ -58,6 +86,53 @@ func _ready() -> void:
 	for i in _cells.size():
 		_cells[i] = { "kind": &"", "ids": [] }
 	add_to_group("racks")
+
+	# Only the host acts on impacts, same split as Crate's own PushSensor - a
+	# client running detection it never reads is pure waste, and that waste
+	# multiplies by rack count the same way it did by crate count in the
+	# physics budget measurement (ADR 14).
+	if not Net.is_host():
+		_impact_sensor.monitoring = false
+		return
+	_impact_sensor.body_entered.connect(_on_impact)
+
+
+# ------------------------------------------------------------------ impact
+
+## Host-only, connected in [method _ready]. [param body] is whatever
+## physically entered [member _impact_sensor] - checked for actually being
+## cargo before anything else, since mask 4 also lets a [i]held[/i] crate
+## trigger this (see [member _impact_sensor]'s own description for why that
+## is deliberate) and nothing guarantees an overlapping body is a [Crate].
+##
+## No replication trick is needed here, unlike [method Crate._apply_shoves],
+## which has to read a player's [i]replicated[/i] velocity because a puppet
+## capsule runs no physics of its own. A crate - held or loose - is always
+## simulated for real on the host, so [member RigidBody3D.linear_velocity] is
+## ground truth right here. Do not "fix" this into reading a synced velocity
+## instead; that is solving a problem this code does not have.
+func _on_impact(body: Node3D) -> void:
+	var crate := body as Crate
+	if crate == null:
+		return
+	if crate.linear_velocity.length() < shed_impact_speed:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _last_shed_ms < int(shed_cooldown * 1000.0):
+		return
+	if is_empty():
+		return
+
+	_last_shed_ms = now
+
+	# Resolved at the moment of impact, not cached in _ready(): sidesteps any
+	# question of which node enters the "carry_authority" group first, the
+	# same lazy lookup Carrier._authority() already uses. Do not "optimise"
+	# this into a stored reference - it would be null on the first frame on
+	# some peers.
+	var referee := get_tree().get_first_node_in_group("carry_authority")
+	if referee != null and referee.has_method("shed_top_row"):
+		referee.shed_top_row(self)
 
 
 # ---------------------------------------------------------------- geometry
