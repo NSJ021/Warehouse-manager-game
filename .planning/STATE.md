@@ -14,10 +14,16 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: **01-01 through 01-07 complete** — waves 1–5 done, 2 of 9 plans remaining across waves 6–7
-Status: **Executing** — wave 5 (01-07 shedding) complete; wave 6 (01-09 settled cargo) unblocked;
-wave 7 (01-08, the human gate) waits on it
-Last activity: 2026-08-21 — 01-07 executed: `Rack` gained a host-only `ImpactSensor` (`Area3D`,
+Plan: **01-01 through 01-07 and 01-09 complete** — waves 1–6 done, 1 of 9 plans remaining (wave 7,
+the human gate)
+Status: **Executing** — wave 6 (01-09 settled cargo) complete; wave 7 (01-08, the human gate) is
+the last plan in the phase
+Last activity: 2026-08-21 — 01-09 executed: `Crate` gained ADR 17's settle/wake state machine — a
+crate at rest for half a second freezes to real `FREEZE_MODE_STATIC` world geometry and blocks
+players client-side, wakes on a shove or a grab, proven on two real processes across four
+assertions (settle, block, wake, never-while-held), four engine assumptions pinned, and the physics
+budget re-measured to confirm it improved rather than regressed. Full detail in the resolved block
+below and `01-09-SUMMARY.md`. Before that: 01-07 executed: `Rack` gained a host-only `ImpactSensor` (`Area3D`,
 mask 4/cargo, speed-thresholded, cooldown-limited) and `CarryAuthority` gained `shed_top_row`,
 which clears exactly the occupied top-row cells over the existing `_cell_cleared` broadcast and
 spawns each as a real falling crate with an outward-and-up impulse, bounded three ways against
@@ -64,8 +70,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 (ADR 20); the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched
 for ADR 19 before execution
 
-Progress: [██████░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-5 of 7 done
-(7/9 plans)
+Progress: [████████░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-6 of 7 done
+(8/9 plans)
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -87,9 +93,11 @@ Progress: [██████░░░░] Phase 0 complete bar one blocked item
 > | **01-08** | Presented floor stacking as an open blocking decision. **ADR 17 decided it and 01-09 builds it in the wave before.** Its rack-geometry option also quoted superseded ADR 16 numbers (4 columns, 0.8 m pitch) that contradict ADR 18, and its context block loaded ADR 16 rather than ADR 18. | Stacking fork replaced with a *verification* of ADR 17; geometry option rescoped to the rack frame only; ADR references swapped; ADRs 19–22 flagged as new rows in the log. |
 >
 > **Three interactions flagged rather than patched**, recorded in the plans themselves:
-> **01-05 ↔ 01-09** — the zone probe crate will settle static in wave 6, and if `Area3D` does not
-> report frozen bodies the zone count silently drops to 0 and reads as a 01-09 regression. That
-> is a real design constraint on zones, since Goods OUT must detect stock sat there all day.
+> **01-05 ↔ 01-09 — resolved 2026-08-21.** The zone probe crate does settle static, and `Area3D`
+> *does* still report it (verified, both in `engine_assumptions.gd` and in `carry_session.gd`'s own
+> live zone check) — the actual bug turned out to be one line away: the *wait* that gated the check
+> read `Crate.sleeping`, which a frozen body never reports true on its own, so the wait hung rather
+> than the zone losing the crate. Fixed by checking `sync_settled` too. See the 01-09 block below.
 > **01-07** — a dragged crate tops out near 1.7 m/s and can never reach the 4.0 m/s shed
 > threshold; correct, but it should be a conscious call at the gate.
 > **01-09** — checked clean against ADR 19: "never settle while `_holders` is not empty" already
@@ -103,9 +111,13 @@ Progress: [██████░░░░] Phase 0 complete bar one blocked item
 > now reads the underscore key the template actually uses); verified against all nine plans.
 > The patch is machine-local and a tool update overwrites it — re-verify after any update.
 
-**Next session: wave 5 is complete, resume at wave 6.** 01-07 (shedding) landed.
-`/gsd:execute-phase 1` from a fresh context will skip the seven plans with SUMMARYs and pick up
-wave 6 (01-09, settled cargo) — the last autonomous plan before wave 7's human gate (01-08).
+**Next session: wave 6 is complete, resume at wave 7 — the human gate.** 01-09 (settled cargo)
+landed. `/gsd:execute-phase 1` from a fresh context will skip the eight plans with SUMMARYs and
+land directly on wave 7's checkpoint plan (01-08), the last plan in Phase 1. The wave 7 gate crib
+sheet (memory: `wave7-gate-crib-sheet`) is still the prep document; add to it, from this plan, that
+settled cargo now blocks other cargo too (a dragged crate can be wedged by a settled neighbour —
+found in the test harness, but it is real gameplay behaviour), and that the physics budget's ~150
+figure now means "actively moving," not "total in the world."
 
 Things to carry in, from the audit above and from 01-04's and 01-05's own execution:
 
@@ -314,6 +326,48 @@ Things to carry in, from the audit above and from 01-04's and 01-05's own execut
 > `.planning/phases/01-storage/01-07-SUMMARY.md` (local-only, see the note above on
 > `.planning/phases/`).
 
+> **01-09 resolved 2026-08-21: settled cargo turns static and blocks players, proven on two
+> peers.** `Crate` gained ADR 17's settle/wake state machine: a crate at rest for `settle_frames`
+> (0.5s) freezes to `FREEZE_MODE_STATIC` and ORs the world layer bit into `collision_layer` — never
+> replacing the cargo bit, so a `GoodsZone` still sees it — replicating `sync_settled` so every peer
+> agrees without a round trip; blocking then resolves client-side, the puppet's own capsule against
+> real static geometry (ADR 7 unchanged — no new authority question). A qualifying shove or being
+> grabbed wakes it (`_wake()`), and `add_holder()` wakes on grab so the hold spring never pulls
+> against a static body. `storage_session.gd` proves settle/block/wake/never-while-held on two real
+> processes; `engine_assumptions.gd` pins the four engine behaviours this rests on (frozen body
+> blocks and cannot be displaced; `Area3D` overlap detection works both as a child sensor and as an
+> external observer of a frozen body — the latter is what closes the 01-05 ↔ 01-09 flag below). The
+> physics budget was re-measured, not assumed: it improved (awake-mode solo cost down 24-35%, the
+> awake/400-crate network figure down from 270 to 35 kb/s), because a genuinely-static body is
+> cheaper than a merely-not-sleeping one — full numbers and the "why" in `docs/physics-budget.md`.
+> **The ~150 body ceiling does not move, but now means "bodies actively moving," not "bodies in the
+> world"** — settled floor stock is close to free once frozen, worth carrying into the Phase 4
+> economy work.
+> **Four deviations, one a real game-code bug and three pre-existing test-harness fragility that
+> settling's timing shift exposed rather than caused** — the settle machine itself worked on the
+> first run; nearly all execution time went into telling these two categories apart. (1) `_wake()`
+> set `freeze = false` but not `sleeping = false`, so an unfrozen crate under an active hold spring
+> could sit motionless — indistinguishable from a broken hold — until distance-break kicked in;
+> fixed by setting `sleeping = false` explicitly. (2) `storage_session.gd`'s drag-attempt step drags
+> a crate straight past two others sitting untouched in the same row, which now settle to real,
+> immovable geometry within half a second and physically wedge the drag short of its target — **this
+> is ADR 17 working as designed** (settled cargo blocks other cargo, not just players), fixed with a
+> detour around the row for that one call site, not a game-code change. (3)
+> `carry_session.gd`'s zone-probe wait read `Crate.sleeping`, which a frozen body was measured to
+> never report true on its own — switched to `sync_settled` with `sleeping` kept as a fallback,
+> closing the flag below. (4) `carry_session.gd`'s unawaited `_take()` retry helper has a genuine
+> pre-existing race — a stale press can land up to six frames (real, variable wall-clock time under
+> headless) after the press that actually succeeded, and settling's timing shift made it land badly
+> (silently re-grabbing a crate the test had already released) far more often than before. **Two
+> alternative fixes to `_take()`'s own retry cadence were tried and reverted** — both closed this
+> race but caused a second, independently-reproducible flake in the solo-drag scenario, confirmed
+> unrelated to settling by disabling `settle_frames` and reproducing it anyway. Fixed instead by
+> checking both the replicated holder count and the carrier's own local state before trusting
+> "released," plus a 500ms margin after the join is confirmed, comfortably longer than any observed
+> six-frame span. 15 consecutive clean runs of the carry scenario alone, plus 5 consecutive clean
+> full-suite runs, after the final fix. Full detail: `.planning/phases/01-storage/01-09-SUMMARY.md`
+> (local-only, see the note above on `.planning/phases/`).
+
 ## Accumulated Context
 
 ### Decisions
@@ -328,8 +382,9 @@ constrain upcoming work:
 | 7 — client owns its capsule only | Every interaction. A client asks; the host decides |
 | 12 — project structure | Where every new file goes. Racks are `world/`, cargo is `goods/` |
 | 13 — force-driven held items | Never freeze or reparent a held crate; it deletes throwing |
-| 14 — physics budget of ~150 | Floor clutter, rack shedding volume, items per day |
+| 14 — physics budget of ~150 | Floor clutter, rack shedding volume, items per day. Re-measured post-01-09: the ceiling now specifically means bodies actively moving, not total bodies in the world |
 | 15 — GSD wraps the build order | This file, and everything else in `.planning/` |
+| 17 — settled cargo turns static | Built and verified 01-09. Every future crate interaction (a new hold type, a new sensor) must account for the frozen/world-layer state, not just held/loose |
 | 18 — 1.0 m cell, atomic, LIFO | The rack's whole occupancy model (01-03 onward). `Rack` delegates all arithmetic to `StorageGrid` — nothing downstream should recompute it |
 | 23 — Early Access, same bar | Phase 6 (store page + wishlists before the date) and Phase 7 (the gate now means "EA-shippable", unchanged in content). Public roadmap sells axes, never parked features |
 
@@ -352,6 +407,11 @@ constrain upcoming work:
   in transit (a held crate collides with a stack for real), not true for an empty-handed player
   (`player.tscn` deliberately has no cargo bit in its mask — see the 3.39 m vs 0.01 m bulldozing
   measurement `crate.gd` records). Two costed options in `01-07-SUMMARY.md`, needs the wave 7 gate.
+  **01-09 does not resolve this fork** — settling makes clutter genuinely solid *once it settles*,
+  but does not touch the players/cargo mask split the fork is actually about. What 01-09 adds: a
+  settled crate now also blocks *other cargo*, not just players — a dragged crate can be physically
+  wedged by a settled neighbour, found in `storage_session.gd`'s own drag-attempt step and real
+  gameplay behaviour, not a test artefact. Worth a mention at the gate alongside the fork itself.
 - **The drag-speed/shed-threshold tension flagged before 01-07 was executed is confirmed correct,
   not a gap**: a dragged crate's ADR 19 ceiling (~1.7 m/s) can never reach the 4.0 m/s shed
   threshold, verified with a thrown crate in the integration suite. A human check with one
@@ -401,6 +461,21 @@ constrain upcoming work:
   editor already open, close it first (two processes writing the same `.godot/` cache is asking
   for trouble), run `godot --headless --path warehouse-manager --import` once, verify both
   artefacts exist, then reopen the editor (01-06).
+- **Unfreezing a `RigidBody3D` (`freeze = false`) does not by itself guarantee the solver treats it
+  as awake.** `sleeping` is an independent flag, and a hold spring applying real force to a body
+  that never actually reactivates looks identical to a broken hold from the outside — the crate
+  sits motionless while its holder walks away until distance-break kicks in. Set `sleeping = false`
+  explicitly on every wake path, not just on the shove path that already did (01-09).
+- **`Time.get_ticks_msec()` around a `for _i in N: await get_tree().process_frame` block can vary by
+  an order of magnitude run to run** — measured 6 frames taking anywhere from under a millisecond to
+  ~40ms depending on process contention. A retry loop that waits N frames then re-checks a network
+  response has a real, variable-width blind window, not a fixed handful of milliseconds — don't
+  budget races against "6 frames" as if it were a constant (01-09, `carry_session.gd`'s `_take()`).
+- **Settled cargo (ADR 17) blocks other cargo, not just players.** A crate dragged past another that
+  has settled can be physically wedged by it, same as a player would be — real gameplay behaviour,
+  found in `storage_session.gd`'s drag-attempt step once two other crates in the same row settled
+  mid-scenario (01-09). Worth remembering when laying out future levels with clutter near a path
+  cargo needs to travel.
 
 ## Phase 0 outcome
 
