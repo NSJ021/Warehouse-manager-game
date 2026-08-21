@@ -483,6 +483,15 @@ func _check_decided_invariants() -> void:
 		ray != null and ray.hit_from_inside,
 		"the grab ray still reports crates it starts inside - players walk through cargo",
 	)
+	# Wave 7 gate ruling, 2026-08-21 (NJ, after it came up in two separate gate
+	# sessions): the whole reach chain read too long in play, shortened
+	# 2.5 -> 2.0 m. GRAB_REACH and PLACE_REACH in carry_authority.gd move with
+	# this number — see PLACE_REACH's own doc comment for the re-derived
+	# arithmetic.
+	_expect(
+		ray != null and ray.target_position.is_equal_approx(Vector3(0.0, 0.0, -2.0)),
+		"the grab ray reaches 2.0 m, not the original 2.5 (got %s)" % (ray.target_position if ray else "no ray"),
+	)
 	player.free()
 
 	# 01-04: the rack's cell sensors are the aim target for storage, and the

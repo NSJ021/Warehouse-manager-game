@@ -102,12 +102,17 @@ const CELL_B := 6
 ## the camera) would sit inside the rack's own deck, breaking the hold for
 ## reasons that look like a physics bug rather than a bad stand position. At
 ## 2.0 m the held crate clears the deck face, the camera sits about 2.05 m
-## from the cell centre — inside both the 2.5 m GrabRay and the referee's
-## 3.5 m PLACE_REACH — and aiming at rack.cell_to_global_position(i) resolves
+## from the cell centre — inside both the 2.0 m GrabRay and the referee's
+## 3.0 m PLACE_REACH — and aiming at rack.cell_to_global_position(i) resolves
 ## back to cell i. If an assertion below ever fails, re-check this first.
 ## (PLACE_REACH was 2.6 until the wave 7 gate found it too tight for a
 ## ray-limited aim near the ray's own edge — see MAX_RANGE_STAND_OFFSET_Z's
-## own doc comment below, and carry_authority.gd's.)
+## own doc comment below, and carry_authority.gd's. The whole reach chain —
+## GrabRay, GRAB_REACH, PLACE_REACH — was shortened again at the wave 7 gate,
+## 2026-08-21 (NJ): 2.5 m ray / 2.5 m GRAB_REACH / 3.5 m PLACE_REACH each
+## became 2.0 / 2.0 / 3.0. This constant's own 2.0 m needed no change — it was
+## already the closer, deck-clearance-driven number — only the numbers it is
+## compared against here moved.)
 const RACK_STAND_OFFSET_Z := 2.0
 ## Two different lateral offsets so host and client never occupy the exact
 ## same point when both are near the rack in the same window — the same
@@ -116,7 +121,25 @@ const RACK_STAND_OFFSET_Z := 2.0
 const HOST_LATERAL := 0.4
 const CLIENT_LATERAL := -0.4
 ## How far along Z a player stands from the crate row to grab a loose crate.
-const GRAB_STAND_OFFSET_Z := 1.5
+##
+## Re-derived at the wave 7 gate (2026-08-21) when GRAB_REACH shortened
+## 2.5 -> 2.0 m — this is a GRAB_REACH check (carry_authority.gd's
+## request_grab measures camera -> crate.global_position directly), not a
+## PLACE_REACH one, so it has no half-diagonal margin to lean on the way a
+## cell placement does. [method _grab] stands the player level with the
+## crate on X, so this is the only horizontal component — but the vertical
+## drop is what actually eats the budget: CameraPivot sits 1.6 m above
+## STAND_HEIGHT (1.7 m up), and a crate that spawned at the row's y=0.6 has
+## long since fallen and settled to its real rest height, y=0.25 (floor top
+## at y=0.0, a Small's own half-height 0.25 - see carry_session.gd's
+## LIFT_MIN_Y doc for the same number confirmed independently). That is a
+## fixed 1.45 m vertical leg regardless of how close this offset stands the
+## player, so sqrt(offset^2 + 1.45^2) <= 2.0 caps offset at about 1.38 m with
+## NO margin. 1.5 cleared the old 2.5 m GRAB_REACH by 0.41 m; 1.15 clears the
+## new 2.0 m by about 0.15 m (distance ~1.85 m) — comparable margin, closer
+## stand. Every crate this file grabs (crate_0 through the max-range probe)
+## sits at this same row height, so this one number covers all of them.
+const GRAB_STAND_OFFSET_Z := 1.15
 const STAND_HEIGHT := 0.1
 ## How long the host waits, after its own last network-relevant action,
 ## before quitting. get_tree().quit() does not flush a pending reliable send
@@ -245,22 +268,36 @@ const STACK_SETTLED_MIN_Y := 0.45
 ##       try_toggle_hold path — not by calling anything lower-level.
 ##   12. A genuine maximum-range aim: PLACE_REACH used to measure
 ##       camera → cell CENTRE against a reach barely past GrabRay's own 2.5 m
-##       camera → hit-point limit, so a real aim near the ray's own edge could
-##       paint the highlight green and then be silently refused.
-##       MAX_RANGE_STAND_OFFSET_Z stands the player far enough back that
-##       camera → cell face lands around 2.3-2.45 m while camera → cell
-##       centre lands past the OLD 2.6 m PLACE_REACH — this placement would
-##       have failed before the fix and must succeed now.
+##       camera → hit-point limit (both numbers as they stood at the time),
+##       so a real aim near the ray's own edge could paint the highlight
+##       green and then be silently refused. MAX_RANGE_STAND_OFFSET_Z stands
+##       the player far enough back that camera → cell face lands near the
+##       ray's own edge while camera → cell centre lands past the OLD, buggy
+##       2.6 m PLACE_REACH — this placement would have failed before the fix
+##       and must succeed now. Re-derived at the wave 7 gate (2026-08-21,
+##       NJ) when the whole reach chain shortened again — ray and
+##       GRAB_REACH 2.5 → 2.0 m, PLACE_REACH 3.5 → 3.0 m — see
+##       MAX_RANGE_STAND_OFFSET_Z's own doc comment below for the new
+##       numbers this regression now proves against.
 
 ## Regression 12's stand offset, deliberately farther back than
 ## RACK_STAND_OFFSET_Z's comfortable 2.0 m. Solved the same way
 ## RACK_STAND_OFFSET_Z's own doc comment was: numerically, from the
-## stand → camera → face/centre geometry, not guessed. At 2.85 m: camera to
-## the cell's own face lands at ≈2.38 m (comfortably inside GrabRay's 2.5 m
-## reach, so the ray still connects) while camera to the cell CENTRE — what
-## PLACE_REACH actually checks — lands at ≈2.88 m: past the old, buggy 2.6 m
-## PLACE_REACH, and comfortably inside the fixed 3.5 m.
-const MAX_RANGE_STAND_OFFSET_Z := 2.85
+## stand → camera → face/centre geometry, not guessed.
+##
+## Re-derived at the wave 7 gate (2026-08-21) for the new 2.0 m ray / 3.0 m
+## PLACE_REACH (was 2.85 m, for the old 2.5 m ray / 3.5 m PLACE_REACH — see
+## the "12." bullet above). At 2.35 m: camera to the cell's own face lands at
+## ≈1.89 m — just inside the new 2.0 m GrabRay, the same "near the ray's own
+## edge" band the original 2.85 m targeted (then 2.3-2.45 m out of a 2.5 m
+## ray; now 1.8-1.95 m out of a 2.0 m one) — so the ray still connects, but
+## barely, which is the point. Camera to the cell CENTRE — what PLACE_REACH
+## actually checks — lands at ≈2.38 m: comfortably inside the new 3.0 m
+## PLACE_REACH, which alone would tolerate up to the ray's own 2.87 m worst
+## case (PLACE_REACH's own doc comment). The binding constraint at this
+## offset is the ray actually reaching the cell at all, not PLACE_REACH —
+## exactly the case this regression exists to prove.
+const MAX_RANGE_STAND_OFFSET_Z := 2.35
 
 const CRATE_GATE_TOP_A_NAME := "crate_6"
 const CRATE_GATE_TOP_B_NAME := "crate_7"
@@ -285,6 +322,26 @@ const GATE_PARK_POINT := Vector3(9.5, STAND_HEIGHT, 2.5)
 ## client's own replicated view needs at least one 20 Hz sync tick to see
 ## the hold before it ends again.
 const GATE_HOLD_CONFIRM_MS := 500
+
+## Step 11's own approach offset, added at the wave 7 gate (2026-08-21) when
+## GRAB_REACH shortened 2.5 -> 2.0 m. RACK_STAND_OFFSET_Z's default is tuned
+## for a PLACE_REACH check against the cell's mathematical CENTRE — fine for
+## every placement/retrieval in this file, but step 11 grabs a real crate
+## (a GRAB_REACH check, camera -> crate.global_position), and this crate did
+## not stay at the centre: it fell out of CELL_A's own sensor volume and
+## settled on the rack's DeckMid shelf below (local/world y=1.025, from
+## rack.tscn — a Small's own half-height, 0.25, puts its resting centre at
+## y≈1.275), 0.225 m below the cell's mathematical centre (y=1.5) that
+## RACK_STAND_OFFSET_Z's own margin was computed against. That extra vertical
+## drop, combined with CameraPivot sitting 1.7 m up (STAND_HEIGHT + 1.6) and
+## HOST_LATERAL's 0.4 m sideways offset, pushed camera -> crate to ≈2.08 m at
+## the default 2.0 m offset — inside the OLD 2.5 m GRAB_REACH with room to
+## spare, but past the new 2.0 m one. At 1.7 m: sqrt(0.4² + 0.425² + 1.7²) ≈
+## 1.80 m, comfortably inside the new GRAB_REACH with margin — and still well
+## clear of the rack's own accessible face (world z=3.0 for this cell; this
+## stands the player at world z=4.2), so it does not put the capsule inside
+## the frame.
+const STRANDED_STAND_OFFSET_Z := 1.7
 
 var _role := "host"
 var _world: Node = null
@@ -647,7 +704,15 @@ func _run_host(rack: Rack, rack2: Rack) -> void:
 	if not await _until("host holds %s" % CRATE_GATE_TOP_A_NAME, func() -> bool:
 			return crate_gate_a.holder_count() == 1):
 		return _finish(false)
-	await _place(rack2, CELL_TOP_A, HOST_LATERAL)
+	# avoid_rack_island=true: see RACK_ISLAND_CORNER_WAYPOINT's own doc
+	# comment — a direct walk from the row crosses this rack's own footprint.
+	# Not load-bearing for crate_6 itself (the rack is still empty, so
+	# Rack._on_impact's own is_empty() guard would absorb any spurious
+	# impact here regardless), but the waypoint costs almost nothing over the
+	# direct path, so this stays consistent with crate_7's own approach below
+	# rather than leaving a latent version of the same hazard for whichever
+	# crate goes into this cell if the step order ever changes.
+	await _place(rack2, CELL_TOP_A, HOST_LATERAL, RACK_STAND_OFFSET_Z, true)
 	if not await _until("%s racked into rack_island cell %d" % [CRATE_GATE_TOP_A_NAME, CELL_TOP_A], func() -> bool:
 			return rack2.occupant(CELL_TOP_A) != -1):
 		return _finish(false)
@@ -662,7 +727,10 @@ func _run_host(rack: Rack, rack2: Rack) -> void:
 	if not await _until("host holds %s" % CRATE_GATE_TOP_B_NAME, func() -> bool:
 			return crate_gate_b.holder_count() == 1):
 		return _finish(false)
-	await _place(rack2, CELL_TOP_B, HOST_LATERAL)
+	# avoid_rack_island=true: see RACK_ISLAND_CORNER_WAYPOINT's own doc
+	# comment. Load-bearing here specifically — this is the placement whose
+	# direct walk sheds cell 10 out from under crate_7's own approach.
+	await _place(rack2, CELL_TOP_B, HOST_LATERAL, RACK_STAND_OFFSET_Z, true)
 	if not await _until("%s racked into rack_island cell %d" % [CRATE_GATE_TOP_B_NAME, CELL_TOP_B], func() -> bool:
 			return rack2.occupant(CELL_TOP_B) != -1):
 		return _finish(false)
@@ -718,7 +786,11 @@ func _run_host(rack: Rack, rack2: Rack) -> void:
 			return crate_stranded.sync_settled):
 		return _finish(false)
 
-	await _approach_cell(rack2, CELL_A, HOST_LATERAL)
+	# STRANDED_STAND_OFFSET_Z, not the default RACK_STAND_OFFSET_Z — this grab
+	# checks against the crate's own settled (lower) position, not the cell's
+	# mathematical centre, and needs its own closer stand point to still clear
+	# GRAB_REACH. See that constant's own doc comment for the arithmetic.
+	await _approach_cell(rack2, CELL_A, HOST_LATERAL, false, STRANDED_STAND_OFFSET_Z)
 	var me := _me()
 	var carrier: Carrier = me.get_node("Carrier")
 	# Aimed at the crate's own resting position rather than the cell's
@@ -1090,6 +1162,40 @@ func _walk_to(destination: Vector3) -> void:
 ## needed for [param avoid_row] in [method _approach_cell] below.
 const ROW_DETOUR_Z := -3.0
 
+## A single waypoint, just outside rack_island's own footprint (world x < 6.5;
+## its ImpactSensor's own x-span is [6.4, 8.6], z-span [1.55, 2.45] — this
+## clears the wider figure with margin on the approach side that matters).
+## Only needed for [param avoid_rack_island] in [method _approach_cell] below.
+##
+## Added at the wave 7 gate (2026-08-21) when GRAB_STAND_OFFSET_Z shortened
+## alongside the rest of the reach chain (2.5 -> 2.0 m). A held crate walked
+## straight from the crate row to rack_island's own top-row cells crosses
+## this rack's footprint partway through the journey — harmless while
+## rack_island holds nothing yet (Rack._on_impact's own is_empty() guard
+## skips it outright), but once crate_6 already occupies cell 10, the same
+## crossing sheds it back out from under crate_7's own placement moments
+## later: request_retrieve then finds cell 10 already empty, try_toggle_hold
+## resolves the loose shed crate sitting in the way instead of the cell, and
+## the retrieval "succeeds" on a plain grab that never mints a new body —
+## read as a hang on "the retrieval spent exactly one new body". Reproduced
+## with GRAB_REACH, PLACE_REACH and the ray all held at their OLD values and
+## only GRAB_STAND_OFFSET_Z moved, so this is specifically about where the
+## walk starts, not about any of the reach distance checks.
+##
+## Deliberately not the same shape as [param avoid_row]'s two-axis-aligned-
+## legs detour (via [constant ROW_DETOUR_Z]) — that shape adds roughly 6.5 m
+## to this particular walk, which blew the client's own 15 s wait for the
+## replicated placement to land (found running this fix the first time).
+## This point instead hugs the ImpactSensor's own near corner from outside:
+## the first leg holds x < 6.4 throughout (this point's own x is left of the
+## sensor entirely, so a straight line from anywhere further left/south never
+## crosses into it), and the second leg holds z > 2.45 throughout (this
+## point's own z already clears the sensor, and both top-row cells sit
+## further north in z again, so z only rises from here) — safe by
+## construction on both legs, for a two-segment path barely longer than the
+## direct one it replaces (measured ~15.9 m against the direct ~15.8 m).
+const RACK_ISLAND_CORNER_WAYPOINT := Vector3(6.1, STAND_HEIGHT, 2.75)
+
 ## Walk to a cell and aim at its centre. Shared by every cell interaction.
 ##
 ## [param avoid_row] routes via [constant ROW_DETOUR_Z] first rather than
@@ -1110,13 +1216,20 @@ const ROW_DETOUR_Z := -3.0
 ## 12 (below) is the one caller that passes something else
 ## ([constant MAX_RANGE_STAND_OFFSET_Z]), to stand deliberately near the edge
 ## of GrabRay's own reach rather than well inside it.
+## [param avoid_rack_island] is a different shape to [param avoid_row] — a
+## single corner-hugging waypoint rather than two axis-aligned legs, because
+## the two-leg shape cost too much real time for this particular walk. See
+## [constant RACK_ISLAND_CORNER_WAYPOINT]'s own doc comment for both the
+## hazard and why the shape differs.
 func _approach_cell(rack: Rack, cell_index: int, lateral: float, avoid_row := false,
-		stand_offset_z := RACK_STAND_OFFSET_Z) -> Vector3:
+		stand_offset_z := RACK_STAND_OFFSET_Z, avoid_rack_island := false) -> Vector3:
 	var me := _me()
 	var target := rack.cell_to_global_position(cell_index)
 	if avoid_row:
 		await _walk_to(Vector3(me.global_position.x, STAND_HEIGHT, ROW_DETOUR_Z))
 		await _walk_to(Vector3(target.x + lateral, STAND_HEIGHT, ROW_DETOUR_Z))
+	if avoid_rack_island:
+		await _walk_to(RACK_ISLAND_CORNER_WAYPOINT)
 	await _walk_to(Vector3(target.x + lateral, STAND_HEIGHT, target.z + stand_offset_z))
 	me.aim_at(target)
 	return target
@@ -1127,10 +1240,10 @@ func _approach_cell(rack: Rack, cell_index: int, lateral: float, avoid_row := fa
 ## refusal would spin this to its timeout, which is what [method _attempt_place]
 ## is for instead.
 func _place(rack: Rack, cell_index: int, lateral: float,
-		stand_offset_z := RACK_STAND_OFFSET_Z) -> void:
+		stand_offset_z := RACK_STAND_OFFSET_Z, avoid_rack_island := false) -> void:
 	var me := _me()
 	var carrier: Carrier = me.get_node("Carrier")
-	var target := await _approach_cell(rack, cell_index, lateral, false, stand_offset_z)
+	var target := await _approach_cell(rack, cell_index, lateral, false, stand_offset_z, avoid_rack_island)
 
 	var deadline := Time.get_ticks_msec() + STEP_TIMEOUT_MS
 	while Time.get_ticks_msec() < deadline:

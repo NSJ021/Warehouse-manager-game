@@ -70,7 +70,24 @@ const LIFT_MIN_Y := 0.55
 ## positions stayed put, the crate moved six metres, and every grab silently
 ## failed the reach check. Approached along Z on purpose — a small crate count
 ## lays out as a row along X, so nothing sits between the player and the target.
-const HOST_STAND_OFFSET_Z := 1.6
+##
+## HOST_STAND_OFFSET_Z re-derived at the wave 7 gate (2026-08-21) when
+## GRAB_REACH shortened 2.5 -> 2.0 m: [method _take] stands the player level
+## with the crate on X, no lateral component, so distance is purely
+## sqrt(offset² + dy²). dy is fixed at 1.45 m (CameraPivot 1.7 m up —
+## STAND_HEIGHT + 1.6 — above a settled crate's own y=0.25, per LIFT_MIN_Y's
+## own doc comment above) regardless of offset, which leaves at most
+## sqrt(2.0² - 1.45²) ≈ 1.38 m of Z offset before GRAB_REACH refuses outright.
+## 1.6 cleared the old 2.5 m GRAB_REACH by 0.34 m (distance ≈2.16 m, itself
+## now past the NEW 2.0 m — this offset was broken until this change); 1.15
+## clears the new 2.0 m by about the same proportion (distance ≈1.85 m,
+## margin 0.15 m). Applies to every host-side [method _take] in this file —
+## crate_0's own grab and both re-grabs in [method _run_host_drag] — since
+## all of them find their crate on the floor at that same rest height.
+## CLIENT_STAND_OFFSET_Z needed no change: its smaller magnitude already
+## cleared the new reach with margin (distance ≈1.88 m) even against this
+## same worst-case floor height.
+const HOST_STAND_OFFSET_Z := 1.15
 const CLIENT_STAND_OFFSET_Z := -1.2
 const STAND_HEIGHT := 0.1
 
