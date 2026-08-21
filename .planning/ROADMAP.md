@@ -99,7 +99,28 @@ Plans:
   3. A day runs morning → shift → close in 6–10 minutes
   4. Items have a store-until date, and being late costs something
 
-Plans: TBD
+**Plans:** 11 plans in 7 waves — planned 2026-08-21, none executed.
+
+> The three items carried in from the Phase 1 gate are each answered by a plan, not by a note:
+> **Large orientation** by 02-01 (the ADR) and 02-08 (the code, both orientations, player-chosen);
+> **STORE-07's data shape** by 02-02 (the record) and 02-06 (the wire path, proven field-for-field
+> on two peers); **cell plaques** by 02-09. Every locked decision in the phase's design discussion
+> is either built by a plan or explicitly routed to its owning phase — the offer sheet, money,
+> rent and phone events to Phase 4, damage and scuffing to Phase 3, the pallet and drag audio to
+> Phase 6.
+
+Plans:
+- [ ] 02-01-PLAN.md — The Phase 2 decisions become an ADR; GOODS-03's spoilage wording is fixed *(wave 1, checkpoint)*
+- [ ] 02-02-PLAN.md — Cargo taxonomy and the round-trip crate record, test-first *(wave 1)*
+- [ ] 02-03-PLAN.md — The day clock and the dock door that is its face *(wave 1)*
+- [ ] 02-04-PLAN.md — Medium and Large cargo, with weight deciding the hold *(wave 2)*
+- [ ] 02-05-PLAN.md — The rack holds three sizes and remembers whole records *(wave 3)*
+- [ ] 02-06-PLAN.md — STORE-07: a racked crate's whole record survives the round trip *(wave 4)*
+- [ ] 02-07-PLAN.md — Scripted days: the manifest and the morning delivery *(wave 3)*
+- [ ] 02-08-PLAN.md — A Large takes two cells, and the player picks which two *(wave 5)*
+- [ ] 02-09-PLAN.md — The placement ghost and the cell plaque *(wave 6)*
+- [ ] 02-10-PLAN.md — Collections at door-down, and what being late costs *(wave 6)*
+- [ ] 02-11-PLAN.md — The gate: a human judges whether the loop closes *(wave 7, checkpoint)*
 
 ### Phase 3: The dilemma
 **Goal:** Damage, condition tiers, the tape gun, and the patch / confess / comp choice.
