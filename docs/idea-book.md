@@ -202,6 +202,7 @@ You sell tomorrow's stock to pay today's rent, and tomorrow arrives anyway — n
 | 2 | **Short-changing intake** | Under-record what arrived, pocket the difference | Worth taking. Least designed |
 | 3 | **Lien sale** | Sell stock the client abandoned past its store-until date | Worth taking. The only strand that is not fraud |
 | 5 | **Buying stock in** | Cash back into goods, at a worse rate | Worth taking. Makes 1 legible |
+| 6 | **Claim-as-done** *(added 2026-08-21)* | Sign a missed or partial collection as fulfilled | Worth taking **with 2** — the same fraud, outbound |
 | 4 | **Bartering at the door** | Haggling on price | **Excluded.** Parked under ADR 6 and stays parked |
 
 Strand 4 is the trap, and it is named here so it cannot ride in as part of a bundle. It is already parked, and a "sales counter" that quietly includes haggling adopts parked scope without a superseding ADR.
@@ -245,6 +246,24 @@ Sign for thirty-eight when forty arrived. The least designed of the five, but it
 - **Skimmed stock was never on the books**, so there is no collection day and nothing to explain — unless the discrepancy itself is spotted.
 
 So fencing is high-volume with a guaranteed reckoning, and skimming is low-volume with uncertain detection. You can only take a little before the count is obviously wrong. It is a **paperwork lie rather than a physical one**, which makes it the natural counterpart to the tape gun, and it produces **untraceable stock** — exactly what comping needs. Strand 2 quietly feeds strand 1 and the comp mechanic both.
+
+### The outbound mirror — claim-as-done (added 2026-08-21, parked here by NJ)
+
+Found while designing the day clock, not the counter. When the roller door starts down on an
+unclosed manifest, the client walks and the honest forks are already priced: eat the failed or
+part-filled order (ADR 22 routes the consequence — legit clients punish in reputation, dodgy ones
+in cash), agree a redelivery (cost expressed as a **locked row on tomorrow's offer sheet** —
+opportunity cost, not a fee), or comp like-for-like. The third, fraudulent fork — **sign the
+collection off as fulfilled anyway** — is strand 2 in the outbound direction: the same paperwork
+lie as under-recording an intake, with the same by-product, stock the books say is gone but the
+building still holds. Untraceable stock, which is exactly what comping wants.
+
+It is recorded *here*, not as its own idea, so that both directions of the paperwork lie enter
+(if they ever enter) through **one** superseding ADR with one detection design. v1 ships the
+honest forks only — they fall out of ADR 22 pieces Phase 4 builds anyway. The risk profile note
+on strand 2 applies doubled: a skimmed intake has no collection day to survive, but a falsified
+*outbound* has a client who believes they hold their goods — the reckoning is not just possible
+but scheduled for the moment they open the van doors.
 
 ### Two things it would fill that are currently empty
 
