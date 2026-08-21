@@ -27,6 +27,11 @@ class AimResult:
 ## solid rather than by reasoning about it in advance.
 const CELL_RESOLVE_NUDGE := 0.01
 
+## Cargo's own collision layer (project.godot layer_3, "cargo") — see
+## [member Crate.collision_layer]. Used to run a cargo-only raycast ahead of
+## the combined one below.
+const CARGO_LAYER_MASK := 4
+
 var _held: Crate = null
 ## What the host says this hold is. Only meaningful while [member _held] is set.
 ## The host owns this decision and can change it mid-carry, so it is stored rather
@@ -248,12 +253,32 @@ func speed_scale() -> float:
 	return _held.drag_speed_scale if is_dragging() else 1.0
 
 
-## One raycast, two kinds of target. Replaces the old crate-only
+## One raycast, two kinds of target — plus, when empty-handed, a second
+## cargo-only probe run first. Replaces the old crate-only
 ## [code]_aimed_crate()[/code]: there is only ever one thing a player can be
 ## aiming at, so a second ray for storage would duplicate the exception
 ## bookkeeping above for no benefit.
+##
+## ⚠ The empty-handed cargo probe is load-bearing, not an optimisation. A
+## loose crate that has come to rest [i]inside[/i] a rack's [code]CellSensor[/code]
+## volume (a shed lands there; found live twice at the wave 7 gate,
+## 2026-08-21) is otherwise permanently unaimable: the combined ray below hits
+## the sensor's own surface — an [Area3D] — before it ever reaches the
+## crate's physical box behind it, resolves to that cell, finds the cell's
+## data empty, and [method try_toggle_hold] does nothing. Supply conservation
+## does not save it either — [member Crate._recover] only fires below the
+## world, and this crate never left it. The cargo-only probe ignores the
+## storage layer entirely, so it sees straight through the sensor to the
+## crate behind it.
 func _aim() -> AimResult:
 	var result := AimResult.new()
+
+	if _held == null:
+		var loose_crate := _aim_loose_crate()
+		if loose_crate != null:
+			result.crate = loose_crate
+			return result
+
 	_ray.force_raycast_update()
 	if not _ray.is_colliding():
 		return result
@@ -278,6 +303,31 @@ func _aim() -> AimResult:
 	var into := (hit - _ray.global_position).normalized() * CELL_RESOLVE_NUDGE
 	result.cell_index = rack.cell_at_point(hit + into)
 	return result
+
+
+## The cargo-only probe [method _aim] runs before the combined ray, and only
+## while empty-handed — holding something must still resolve cells first, or
+## a loose crate sitting in front of a rack face would hijack a placement aim
+## (see [method _aim]'s own doc comment). Same origin and length as
+## [member _ray]'s own [member RayCast3D.target_position], but queried
+## directly against the physics space with [constant CARGO_LAYER_MASK] rather
+## than through the RayCast3D node, so the storage layer never enters into it
+## at all — the sensor is not merely deprioritised, it is invisible to this
+## query.
+func _aim_loose_crate() -> Crate:
+	var space_state := _player.get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(
+		_ray.global_position, _ray.to_global(_ray.target_position))
+	query.collision_mask = CARGO_LAYER_MASK
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.hit_from_inside = true
+	query.exclude = [_player.get_rid()]
+
+	var hit := space_state.intersect_ray(query)
+	if hit.is_empty():
+		return null
+	return hit.get("collider") as Crate
 
 
 func _authority() -> CarryAuthority:
