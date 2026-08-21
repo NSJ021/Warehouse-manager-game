@@ -679,6 +679,16 @@ func _run_host(rack: Rack, rack2: Rack) -> void:
 	if gate_retrieved == null:
 		_fail("retrieve from rack_island cell %d" % CELL_TOP_A, "never granted")
 		return _finish(false)
+	# Waited for, not checked in the same breath as the stays-window below:
+	# _cell_cleared and the retrieval's own crate spawn are two separate
+	# reliable messages with no ordering guarantee between them landing in
+	# the same polled frame, the same class of race the queue_free() despawn
+	# checks elsewhere in this file already account for. Folding this into
+	# the stays-window's own predicate would fail it the instant the spawn
+	# happened to lag the cell-clear by even one frame.
+	if not await _until("the retrieval spent exactly one new body", func() -> bool:
+			return _crates().get_child_count() == crates_before_gate_retrieve + 1):
+		return _finish(false)
 	if not await _stays(
 			"regression: retrieving cell %d does not shed the still-loaded neighbour cell %d" % [CELL_TOP_A, CELL_TOP_B],
 			func() -> bool:
@@ -952,6 +962,15 @@ func _run_client(rack: Rack, rack2: Rack) -> void:
 	var crates_before_gate_retrieve := _crates().get_child_count()
 	if not await _until("cell %d empties (the host's retrieval)" % CELL_TOP_A, func() -> bool:
 			return rack2.is_cell_empty(CELL_TOP_A)):
+		return _finish(false)
+	# Waited for, not checked in the same breath as the stays-window below —
+	# see the matching comment in _run_host. _cell_cleared and the
+	# retrieval's own crate spawn are two separate reliable messages with no
+	# guarantee they land on this peer in the same polled frame, so the cell
+	# can already read empty here while the client's own crate count has not
+	# caught up yet.
+	if not await _until("the retrieval spent exactly one new body, on the client's own view too", func() -> bool:
+			return _crates().get_child_count() == crates_before_gate_retrieve + 1):
 		return _finish(false)
 	if not await _stays(
 			"regression: cell %d (beside the retrieval) is untouched on the client's own view" % CELL_TOP_B,
@@ -1270,6 +1289,16 @@ func _report_state() -> void:
 		var visuals := rack.get_node_or_null("RackedItems")
 		print("[test] state cell_a=%d/8 cell_b=%d/8 racked_visuals=%d" % [
 			occ_a, occ_b, visuals.get_child_count() if visuals != null else -1,
+		])
+	# rack_island — steps 10-12's own rack, printed separately since rack.gd
+	# above is always rack_wall. Added after a gate regression's own failure
+	# printed only rack_wall's state, telling nothing about the cells this
+	# scenario was actually failing on.
+	var rack2 := _rack_island()
+	if rack2 != null:
+		print("[test] state rack_island top_a=%d/8 top_b=%d/8 cell_a=%d/8 cell_b=%d/8" % [
+			rack2.occupied_count(CELL_TOP_A), rack2.occupied_count(CELL_TOP_B),
+			rack2.occupied_count(CELL_A), rack2.occupied_count(CELL_B),
 		])
 	var me := _me()
 	if me != null:
