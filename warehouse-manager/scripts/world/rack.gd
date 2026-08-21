@@ -62,6 +62,26 @@ enum Highlight { NONE, ACTIONABLE, BLOCKED }
 ## impact.
 @export var shed_cooldown := 1.5
 
+## How long a just-minted crate is immune to shedding this rack, milliseconds.
+## [method CarryAuthority.request_retrieve] and [method
+## CarryAuthority.shed_top_row] both spawn a fresh [Crate] at a cell's own
+## centre — which sits inside [member _impact_sensor]'s volume by
+## construction, since the sensor exists to catch cargo riding at shelf
+## height — and the hold spring (a retrieval) or the launch impulse (a shed)
+## can then accelerate that brand-new body past [member shed_impact_speed]
+## while it is still overlapping the sensor it was born inside, shedding the
+## row it was just taken from, or a shed crate re-triggering the sensor a
+## second time. [member Crate.age_ms] is checked against this before
+## anything else in [method _on_impact] — deliberately not folded into
+## [member shed_cooldown], which throttles repeated *impacts on the rack*;
+## this throttles one specific crate's own first moment of life instead, and
+## the two are unrelated (found live at the wave 7 gate, 2026-08-21:
+## retrieving from a loaded top row sheds the row it was retrieved from).
+## 700 ms comfortably clears both the retrieval grant round trip and a shed's
+## own initial impulse decaying, without being long enough to blind the
+## sensor to a genuine swing into the rack moments later.
+const MINT_GRACE_MS := 700
+
 @onready var _impact_sensor: Area3D = $ImpactSensor
 ## Far enough in the past that the very first real impact is never blocked by
 ## a cooldown that never actually happened.
@@ -114,6 +134,10 @@ func _ready() -> void:
 func _on_impact(body: Node3D) -> void:
 	var crate := body as Crate
 	if crate == null:
+		return
+	# See MINT_GRACE_MS: a crate this young was minted at a cell centre inside
+	# this very sensor and has not had a chance to leave it yet.
+	if crate.age_ms() < MINT_GRACE_MS:
 		return
 	if crate.linear_velocity.length() < shed_impact_speed:
 		return

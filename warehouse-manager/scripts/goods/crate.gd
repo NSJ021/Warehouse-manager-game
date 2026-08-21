@@ -207,6 +207,20 @@ var _spawn_point := Vector3.ZERO
 ## a level bug, so it is counted rather than silently forgiven.
 var recovery_count := 0
 
+## When this instance actually entered the tree, [method Time.get_ticks_msec] —
+## set once in [method _ready], read only by [method age_ms]. Exists because
+## both [code]request_retrieve[/code] and [code]shed_top_row[/code]
+## (carry_authority.gd) mint a fresh crate at [i]a rack cell's own centre[/i],
+## which sits inside that rack's own [code]ImpactSensor[/code] volume by
+## construction — a retrieved crate's hold spring, or a shed crate's own
+## launch impulse, can accelerate it past a rack's shed threshold while it is
+## still physically overlapping the sensor it was just born inside, shedding
+## the rack it was either just taken from or just shed by (found live at the
+## wave 7 gate, 2026-08-21: retrieving from a loaded top row sheds the row).
+## Not replicated — only the host's own [Rack] ever reads it, on the host's
+## own crate instances, so a client copy needs no opinion about it.
+var _spawn_ms := 0
+
 ## Host-only. peer_id -> whether that holder asked to drag rather than carry.
 ##
 ## Per holder rather than one flag for the crate, and the distinction is not
@@ -224,6 +238,7 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	_spawn_ms = Time.get_ticks_msec()
 	if Net.is_host():
 		set_process(false)
 		return
@@ -323,6 +338,13 @@ func remove_holder(peer_id: int) -> void:
 ## Host-only truth about what this hold currently is.
 func hold_mode() -> HoldMode:
 	return _hold_mode
+
+
+## Milliseconds since this instance's own [method _ready] ran. See
+## [member _spawn_ms] for why [Rack] needs this rather than trusting
+## [member RigidBody3D.linear_velocity] alone.
+func age_ms() -> int:
+	return Time.get_ticks_msec() - _spawn_ms
 
 
 ## Host-only. Two holders always carry, so a mate walking over and grabbing a
