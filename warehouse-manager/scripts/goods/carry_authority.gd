@@ -15,7 +15,7 @@ extends Node
 ##
 ## Placing a crate does not replicate the racked item itself. The three
 ## broadcasts below carry a handful of bytes — (rack, cell, crate id) — and
-## every peer derives identical local state (Rack._rebuild_cell_visuals) from
+## every peer derives identical local state (Rack.apply_cell_filled) from
 ## that alone, against the 93–115 kb/s ADR 14 measured for loose cargo.
 ## Reintroducing per-item replication for racked stock would silently reopen
 ## exactly the cost grid storage exists to avoid.

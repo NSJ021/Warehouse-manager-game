@@ -196,4 +196,4 @@ monitorable = false
 shape = SubResource("BoxShape3D_cell")
 
 [node name="RackedItems" type="Node3D" parent="."]
-editor_description = "Container the derived racked_item.tscn meshes are built under (Rack._rebuild_cell_visuals). Empty at rest - populated only by occupancy, never authored here."
+editor_description = "Container the derived racked_item.tscn meshes are built under (Rack._spawn_cell_visual). Empty at rest - populated only by occupancy, never authored here."

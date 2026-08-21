@@ -33,6 +33,12 @@ enum Highlight { NONE, ACTIONABLE, BLOCKED }
 @export var highlight_actionable := Color(0.35, 0.85, 0.45)
 @export var highlight_blocked := Color(0.85, 0.30, 0.30)
 
+## How long a placed item takes to travel from where it was picked up to its
+## cell (01-06). Long enough to read as a movement, short enough to stay
+## responsive — exported because this is exactly the kind of number that gets
+## judged with a crate in hand, not derived from anything.
+@export var snap_time := 0.16
+
 ## One entry per cell: `{ "kind": StringName, "ids": Array[int] }`. `ids` is a
 ## stack, last in first out, so [method occupied_count] is just its size and
 ## the two can never disagree. `kind` is `&""` when the cell is empty.
@@ -171,9 +177,10 @@ func occupancy_snapshot() -> Array:
 #
 # add_to_cell / remove_from_cell are the state change. apply_cell_filled /
 # apply_cell_cleared are the broadcast entry points — what 01-04's
-# host-authoritative RPC calls on every peer, host included via call_local,
-# and what 01-06 later extends with a tween. They own the state change *and*
-# the visual rebuild. Nothing outside this file should call the inner pair.
+# host-authoritative RPC calls on every peer, host included via call_local.
+# They own the state change *and* the visual it produces: a fly-in tween and
+# a thud for a placement (01-06), an instant removal for a retrieval. Nothing
+# outside this file should call the inner pair.
 
 ## False when the cell is full, and false when it already holds a different
 ## kind — that second clause is atomicity (ADR 18), the rule that makes
@@ -216,29 +223,39 @@ func remove_from_cell(cell: int) -> int:
 	return crate_id
 
 
-## Wraps [method add_to_cell] and rebuilds that cell's visuals. Phase 1's only
-## kind is [constant Crate.KIND_SMALL] — fixed here rather than taken as a
-## parameter, because there is nothing else to pass yet (see the class doc).
-## [param from_position] is where the crate came from, carried so 01-06 can
-## animate the travel; this file stores nothing from it.
-func apply_cell_filled(cell: int, crate_id: int, _from_position: Vector3) -> void:
-	add_to_cell(cell, Crate.KIND_SMALL, crate_id)
-	_rebuild_cell_visuals(cell)
+## Wraps [method add_to_cell] and grows that cell's visuals by exactly the one
+## item that just arrived — the others, already in place, are untouched.
+## Phase 1's only kind is [constant Crate.KIND_SMALL] — fixed here rather than
+## taken as a parameter, because there is nothing else to pass yet (see the
+## class doc). [param from_position] is where the crate travelled from; see
+## [method _spawn_cell_visual] for what [constant Vector3.ZERO] means there.
+func apply_cell_filled(cell: int, crate_id: int, from_position: Vector3) -> void:
+	var sub_index := add_to_cell(cell, Crate.KIND_SMALL, crate_id)
+	if sub_index == -1:
+		return
+	_spawn_cell_visual(cell, sub_index, from_position)
 
 
-## Wraps [method remove_from_cell] and rebuilds that cell's visuals.
+## Wraps [method remove_from_cell] and frees exactly the one visual that was
+## on top. LIFO means it is always the highest sub-index this cell currently
+## holds, so nothing below it needs to move or even be looked at.
 func apply_cell_cleared(cell: int) -> void:
+	var top_index := occupied_count(cell) - 1
 	remove_from_cell(cell)
-	_rebuild_cell_visuals(cell)
+	if top_index >= 0:
+		_free_cell_visual(cell, top_index)
 
 
 ## Replaces this rack's occupancy wholesale and rebuilds every cell's visuals
-## from it — the late-joiner path (01-04). A peer that was not present for
-## earlier placements has to be brought up to date in one shot rather than by
-## replaying every [method apply_cell_filled] since the rack was last empty.
-## Duplicated on the way in for the same reason [method occupancy_snapshot]
-## duplicates on the way out: this rack's state must not alias the dictionary
-## the caller handed over.
+## from it, instantly and silently — the late-joiner path (01-04). A peer that
+## was not present for earlier placements has to be brought up to date in one
+## shot rather than by replaying every [method apply_cell_filled] since the
+## rack was last empty, which is exactly the case [method _spawn_cell_visual]'s
+## [constant Vector3.ZERO] sentinel exists for: this rack's *existing* contents
+## should appear, not fly in from the world origin with a thud each. Duplicated
+## on the way in for the same reason [method occupancy_snapshot] duplicates on
+## the way out: this rack's state must not alias the dictionary the caller
+## handed over.
 func apply_occupancy_snapshot(snapshot: Array) -> void:
 	for cell in snapshot.size():
 		var data := snapshot[cell] as Dictionary
@@ -246,7 +263,10 @@ func apply_occupancy_snapshot(snapshot: Array) -> void:
 			"kind": data.get("kind", &""),
 			"ids": (data.get("ids", []) as Array).duplicate(),
 		}
-		_rebuild_cell_visuals(cell)
+		_clear_cell_visuals(cell)
+		var ids := _ids(cell)
+		for i in ids.size():
+			_spawn_cell_visual(cell, i, Vector3.ZERO)
 
 
 # ---------------------------------------------------------------- visuals
@@ -254,14 +274,51 @@ func apply_occupancy_snapshot(snapshot: Array) -> void:
 ## Derived, never replicated (see class doc). Every peer runs this from its
 ## own copy of the occupancy state, so the meshes are a consequence of that
 ## state rather than a second copy of it that can disagree.
-func _rebuild_cell_visuals(cell: int) -> void:
-	_clear_cell_visuals(cell)
-	var ids := _ids(cell)
-	for i in ids.size():
-		var item := RACKED_ITEM_SCENE.instantiate() as Node3D
-		item.name = "Cell%d_Item%d" % [cell, i]
-		item.position = StorageGrid.cell_centre(cell) + StorageGrid.small_offset(i)
+##
+## [param from_position] is rack-local-agnostic (a world position) on
+## purpose — the crate it describes was picked up somewhere in the world, not
+## somewhere in this rack. [constant Vector3.ZERO] is the late-joiner sentinel:
+## a real placement's [param from_position] is wherever the crate physically
+## was, which in practice is never the exact world origin, so this is not the
+## bare zero-check it looks like — see [method apply_occupancy_snapshot].
+func _spawn_cell_visual(cell: int, sub_index: int, from_position: Vector3) -> void:
+	var item := RACKED_ITEM_SCENE.instantiate() as Node3D
+	item.name = "Cell%d_Item%d" % [cell, sub_index]
+	var target := StorageGrid.cell_centre(cell) + StorageGrid.small_offset(sub_index)
+
+	if from_position == Vector3.ZERO:
+		item.position = target
 		_racked_items.add_child(item)
+		return
+
+	# Both ends of the travel are in the rack's own local space — mixing a
+	# global start with a local target is a bug that only shows up once a
+	# rack is rotated. Neither fixture in test_room.tscn is rotated today,
+	# so this would pass silently without the local conversion above.
+	item.position = to_local(from_position)
+	_racked_items.add_child(item)
+
+	var sound := item.get_node_or_null("PlaceSound") as AudioStreamPlayer3D
+	if sound != null:
+		sound.play()
+
+	# bind_node ties the tween's lifetime to the item: apply_cell_cleared can
+	# free this same node before the travel finishes (a cell filled and
+	# immediately retrieved again), and without this the tween would go on
+	# trying to write "position" on a freed instance next frame.
+	var tween := create_tween().bind_node(item)
+	tween.set_parallel(true)
+	tween.tween_property(item, "position", target, snap_time) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	item.scale = Vector3(1.06, 1.06, 1.06)
+	tween.tween_property(item, "scale", Vector3.ONE, snap_time) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+func _free_cell_visual(cell: int, sub_index: int) -> void:
+	var node := _racked_items.get_node_or_null("Cell%d_Item%d" % [cell, sub_index])
+	if node != null:
+		node.queue_free()
 
 
 func _clear_cell_visuals(cell: int) -> void:
