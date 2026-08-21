@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** The dilemma is the game — patch and hope, confess, or comp.
-**Current focus:** Phase 1, Storage
+**Current focus:** Phase 1 complete (gate passed 2026-08-21). Next up: Phase 2, Goods.
 
 > **Narrative history lives in `docs/conversation-log.md`, not here.** This file tracks
 > execution position only. Duplicating the story in two places guarantees one of them
@@ -13,12 +13,14 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage)
-Plan: **01-01 through 01-07 and 01-09 complete** — waves 1–6 done, 1 of 9 plans remaining (wave 7,
-the human gate)
-Status: **Executing** — wave 6 (01-09 settled cargo) complete; wave 7 (01-08, the human gate) is
-the last plan in the phase
-Last activity: 2026-08-21 — 01-09 executed: `Crate` gained ADR 17's settle/wake state machine — a
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods).
+Plan: **01-01 through 01-09 all complete** — all 9 plans, all 7 waves done.
+Status: **Phase 1 closed 2026-08-21.** The gate (01-08) passed — verdict "storage feels
+deliberate," NJ, explicit, after three play sessions. Task 2's rulings are written into
+[ADR 24](../decisions/2026-08-21-rack-presentation-ratified.md) and `.planning/REQUIREMENTS.md`;
+full detail in `01-08-SUMMARY.md`. Phase 2 has not started.
+Last activity: 2026-08-21 — 01-08 executed, closing the phase: see the resolved block below for
+the gate's own findings and rulings. Before that: 01-09 executed: `Crate` gained ADR 17's settle/wake state machine — a
 crate at rest for half a second freezes to real `FREEZE_MODE_STATIC` world geometry and blocks
 players client-side, wakes on a shove or a grab, proven on two real processes across four
 assertions (settle, block, wake, never-while-held), four engine assumptions pinned, and the physics
@@ -70,8 +72,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 (ADR 20); the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched
 for ADR 19 before execution
 
-Progress: [████████░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-6 of 7 done
-(8/9 plans)
+Progress: [█████████░] Phase 0 complete bar one blocked item; Phase 1 complete, all 9 plans, all
+7 waves — gate passed 2026-08-21. Phase 2 not started.
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -111,13 +113,13 @@ Progress: [████████░░] Phase 0 complete bar one blocked item
 > now reads the underscore key the template actually uses); verified against all nine plans.
 > The patch is machine-local and a tool update overwrites it — re-verify after any update.
 
-**Next session: wave 6 is complete, resume at wave 7 — the human gate.** 01-09 (settled cargo)
-landed. `/gsd:execute-phase 1` from a fresh context will skip the eight plans with SUMMARYs and
-land directly on wave 7's checkpoint plan (01-08), the last plan in Phase 1. The wave 7 gate crib
-sheet (memory: `wave7-gate-crib-sheet`) is still the prep document; add to it, from this plan, that
-settled cargo now blocks other cargo too (a dragged crate can be wedged by a settled neighbour —
-found in the test harness, but it is real gameplay behaviour), and that the physics budget's ~150
-figure now means "actively moving," not "total in the world."
+**Next session: Phase 1 is closed. Start Phase 2 (Goods) planning.** `/gsd:plan-phase 2` (or
+equivalent) from a fresh context — nothing in Phase 1 remains open that blocks it. Read this
+file's Open section below first: three items are explicitly carried into Phase 2 planning (the
+Large-orientation question, STORE-07's data shape, the cell-plaques recommendation), and the
+seven follow-ups from the gate (i–vii, below) are candidates for Phase 2 or Phase 6 scope,
+not yet plans. The wave 7 gate crib sheet (memory: `wave7-gate-crib-sheet`) has done its job and
+does not need carrying forward again.
 
 Things to carry in, from the audit above and from 01-04's and 01-05's own execution:
 
@@ -464,6 +466,52 @@ Things to carry in, from the audit above and from 01-04's and 01-05's own execut
 > Two commits on `feat/phase-1-storage`: `9edf8db` (the production reach chain) and `a7fa715`
 > (the test retunes and the corner-hug fix).
 
+> **01-08 resolved 2026-08-21: the gate passed, Phase 1 is closed.** Task 1 was three real play
+> sessions (NJ), not one — the two blocks immediately above (the three defect fixes and the reach
+> ruling) came out of those sessions and were already fixed, regression-tested and recorded before
+> this plan's own write-up. All eighteen numbered checks in the plan's `how-to-verify` passed;
+> check 20, the gate itself, passed explicitly: ten relaxed minutes racking as you go, "felt
+> fine" on both known-location and placement-reads-as-decision.
+>
+> **Task 2's five rulings, recorded in full in `01-08-SUMMARY.md`, written into
+> [ADR 24](../decisions/2026-08-21-rack-presentation-ratified.md) and the requirements/GDD updates
+> below:**
+> 1. **Rack geometry** — the frame stays exactly as built (0.05 m decks, 0.1 m uprights); the
+>    actual fix is presentational — a pallet spawns on first placement, items sit on it with a
+>    small peer-deterministic seeded jitter, top clearance a quarter-Small. Named consequence:
+>    top shelf = longer hold + real throw effort, bottom shelf = fast turnaround, an intended
+>    optimisation axis. Phase 6 builds the pallet/jitter visuals; this ADR fixes the rule.
+> 2. **Wall-rack back row** — accepted as a level-design property (front sensors block a
+>    straight-on ray, the wall blocks the other side), corrected by one finding from play: it is
+>    reachable through the rack's *end* faces, so a wall rack is 6 cells head-on plus whatever its
+>    ends expose, not a flat loss of half its capacity.
+> 3. **Shed stance** — bounded top-row shedding at the existing 4.0 m/s / 1.5 s cooldown is
+>    correct for v1, unchanged; a dragged crate never reaching that threshold is a conscious call.
+>    The fuller version (positional shed, wobble telegraph, a rare full topple that must never
+>    cascade) stays in `docs/idea-book.md` ("The rack topple") and needs its own ADR to enter
+>    scope.
+> 4. **Floor stacking** — ADR 17 verified underfoot, no re-decision; checks 16-19 all passed,
+>    including that it stays worse than racking with no upside.
+> 5. **Colour-blind accessibility** — deferred to Phase 6; the ghost-preview aim-feedback rework
+>    (follow-up iii, below) adds a shape/position channel that covers it independently of colour.
+>
+> **All six STORE requirements are now met and ticked in `REQUIREMENTS.md`** — STORE-04 in
+> particular, previously unticked because "blocks pathing" was untrue for an empty-handed player
+> before ADR 17/01-09, is now true and ticked.
+>
+> **Four things the gate surfaced that are durable and forward-looking, not gate defects — full
+> text of each lives in `REQUIREMENTS.md`, `GDD.md` and/or the Open section below:** the
+> round-trip invariant (STORE-07 — a racked/retrieved crate's full record, not just its kind,
+> must survive the trip intact, or racking can launder Phase 3's damage model); cell plaques as a
+> Phase 2 recommendation, anchored on the pallet's front edge; the open question of which two
+> cells a Large actually occupies; and seven smaller follow-ups (i–vii) found at the gate and
+> deliberately not fixed now, listed under Open below.
+>
+> **Nothing in this plan touched game code.** Every fix the gate needed was already made and
+> committed during the play sessions themselves (the two blocks above); Task 3 was documentation
+> only. `./tools/run-tests.ps1` re-run clean before closing, no code changed since the last green
+> run recorded above.
+
 ## Accumulated Context
 
 ### Decisions
@@ -483,6 +531,7 @@ constrain upcoming work:
 | 17 — settled cargo turns static | Built and verified 01-09. Every future crate interaction (a new hold type, a new sensor) must account for the frozen/world-layer state, not just held/loose |
 | 18 — 1.0 m cell, atomic, LIFO | The rack's whole occupancy model (01-03 onward). `Rack` delegates all arithmetic to `StorageGrid` — nothing downstream should recompute it |
 | 23 — Early Access, same bar | Phase 6 (store page + wishlists before the date) and Phase 7 (the gate now means "EA-shippable", unchanged in content). Public roadmap sells axes, never parked features |
+| 24 — rack geometry ratified | The Phase 1 gate. Frame numbers are fixed and must not be resized once rack art exists. Pallet/jitter/plaque presentation is Phase 6 scope, not built yet. Wall-rack back row is a level-design property, not a bug: 6 cells head-on, plus end access |
 
 ### Open
 
@@ -499,25 +548,59 @@ constrain upcoming work:
   impact clears exactly the occupied top-row cells and spawns each as a real falling crate,
   bounded three ways against ADR 14 and proven on both peers. Crate sizes must still match
   exactly before anyone builds art.
-- **Floor stacking's "blocks pathing" is an open fork, not yet ruled on** (01-07): true for cargo
-  in transit (a held crate collides with a stack for real), not true for an empty-handed player
-  (`player.tscn` deliberately has no cargo bit in its mask — see the 3.39 m vs 0.01 m bulldozing
-  measurement `crate.gd` records). Two costed options in `01-07-SUMMARY.md`, needs the wave 7 gate.
-  **01-09 does not resolve this fork** — settling makes clutter genuinely solid *once it settles*,
-  but does not touch the players/cargo mask split the fork is actually about. What 01-09 adds: a
-  settled crate now also blocks *other cargo*, not just players — a dragged crate can be physically
-  wedged by a settled neighbour, found in `storage_session.gd`'s own drag-attempt step and real
-  gameplay behaviour, not a test artefact. Worth a mention at the gate alongside the fork itself.
-- **The drag-speed/shed-threshold tension flagged before 01-07 was executed is confirmed correct,
-  not a gap**: a dragged crate's ADR 19 ceiling (~1.7 m/s) can never reach the 4.0 m/s shed
-  threshold, verified with a thrown crate in the integration suite. A human check with one
-  actually in hand is still owed at the wave 7 gate (the plan's own instruction, not a new ask).
-- **A rack backed against a wall (`rack_wall`) has a permanently unaimable back row** (found by
-  01-04), independent of occupancy — see the 01-04 block above. **01-06 mirrored this as-built
-  rather than working around it**, as instructed: an unaimable cell simply never highlights,
-  since `Carrier._aim()` never resolves a valid index for it. Still needs a design ruling at the
-  wave 7 gate: island-only racks, a redesigned aim scheme for buried cells, or an explicit
-  acceptance that wall racks only expose their front row.
+- ~~Floor stacking's "blocks pathing" is an open fork~~ — **resolved at the Phase 1 gate,
+  2026-08-21.** Checks 16-19 confirmed it underfoot: an empty-handed player is stopped by a
+  settled stack (not merely a held crate colliding with one), shoving it wakes and scatters it,
+  nothing settled half-inside a rack or wall, and it stays a *tempting bad idea* rather than
+  becoming either scenery or strictly worse than racking. STORE-04 is ticked in
+  `REQUIREMENTS.md`. What 01-09 additionally proved true: a settled crate also blocks *other
+  cargo*, not just players — a dragged crate can be physically wedged by a settled neighbour,
+  real gameplay behaviour worth remembering when laying out future levels.
+- ~~The drag-speed/shed-threshold tension~~ — **resolved at the Phase 1 gate.** Confirmed correct
+  with a crate actually in hand, not just thrown: a dragged crate's ADR 19 ceiling (~1.7 m/s)
+  cannot reach the 4.0 m/s shed threshold, and that reads as intended rather than as a dragged
+  crate being oddly harmless — two-player carry or a throw are the only ways to hit hard enough.
+  Shed threshold ratified unchanged at 4.0 m/s / 1.5 s cooldown (Task 2 ruling 3, `01-08`).
+- ~~A rack backed against a wall has a permanently unaimable back row~~ — **ruled on at the
+  Phase 1 gate, [ADR 24](../decisions/2026-08-21-rack-presentation-ratified.md).** Accepted as a
+  level-design property, corrected by one finding from play: the back row is reachable through
+  the rack's own *end* faces wherever the level exposes one (NJ racked cells 8 and 0 that way).
+  A wall rack is 6 cells head-on plus whatever its ends expose, not a flat loss of half its
+  capacity. `Carrier._aim()` is unchanged — this was a design ruling, not an aim-code fix.
+- **STORE-07, the round-trip invariant, is new and unbuilt** (named at the Phase 1 gate,
+  2026-08-21): racking frees a crate's body, retrieval mints a fresh one, and every field the
+  crate record carries (today only `kind`) must survive that trip intact —
+  `retrieve(place(crate)) == crate` for every field, LIFO handing back a *different* crate of the
+  same kind excepted. Load-bearing for Phase 3: an unfaithful round trip would let racking
+  launder damage. Needs a concrete data shape once Phase 2 gives goods more than `kind`. See
+  `REQUIREMENTS.md`.
+- **Cell plaques are a Phase 2 recommendation, not a requirement** (GDD §6.3, ADR 24): per-cell
+  signage on the loading face, anchored on the pallet's front edge, derived locally from a cell's
+  own contents. Worth costing alongside whatever Phase 2 already needs for a store-until date
+  display.
+- **Large orientation is an open question for Phase 2 planning** (GDD §6.1, `REQUIREMENTS.md`
+  GOODS-01): which two cells a Large occupies — side-by-side across columns, or front-to-back
+  through depth, which would be the one layout that uses a wall rack's dead back row. Must be
+  answered before Large cargo is built.
+- **Seven smaller follow-ups from the Phase 1 gate, deliberately not fixed now — candidates for
+  Phase 2 or Phase 6 scope, not yet plans:**
+  1. The red BLOCKED cell highlight is invisible on a full cell — occluded by the eight racked
+     visuals inside it, unreadable exactly when it matters most. Folds into follow-up 3 below.
+  2. A carried crate passes through racked stock — racked items deliberately have no collision.
+     Cheap candidate fix: one static, unreplicated collision box per occupied cell. Needs its own
+     small decision, not built here.
+  3. **Ghost-preview rework** (NJ's spec): placement feedback becomes a translucent crate at the
+     exact `StorageGrid` lattice slot the next item will fill, green for fits / red for no room,
+     retiring the glowing cell cube. Answers follow-ups 1 and the colour-blind deferral (Task 2
+     ruling 5) at once. Phase 6.
+  4. A grabbable-target indicator — a reticle cue when a crate is in reach. Phase 6.
+  5. Settle "planting" reads too hard; soften it. Direction: per-kind settle feel once cargo
+     types exist (bricks sit hard, light goods softer). Phase 2/6.
+  6. Sprinting with a grabbed crate can jam the crate against the player — hold-spring tracking
+     at sprint speed. Tuning list; stiffness 2400 / damping 460 remain provisional.
+  7. A pre-existing intermittent one-resource leak at `storage_session.gd`'s client exit
+     (`WARNING: ObjectDB instances leaked`), reproduced on unmodified code, unrelated to any
+     gate-session change. Known open item, not blocking.
 - Plans 01-02 and 01-03 were **reworked for ADR 18's cell model** and re-verified. The
   re-check found two blockers, both caused by the slot → cell rename being a text substitution
   rather than a semantic one: 01-04 still enforced one item per cell, and two broadcast methods
@@ -528,11 +611,10 @@ constrain upcoming work:
   committed 2026-08-20) — candidate rents, value densities and the invoice-at-handover frame,
   embedding ADR 20's constants verbatim and calibrated to its £50–£2000 sweep envelope. Input to
   the Phase 4 ADR, not a decision. Its one load-bearing guess — ~15 moves per player per
-  8-minute day — should be timed with a real carry loop at the Phase 1 gate.
-- **`rack_wall`'s back row is permanently unaimable** (flagged by 01-04): the front row's
-  sensors block the ray, the wall blocks the other side — wall racks are effectively 6 cells.
-  Needs a design ruling; belongs with the gate's "does 2-deep read as one unit" question.
-  01-06 (2026-08-21) mirrored as-built behaviour rather than inventing a fix, as instructed.
+  8-minute day — **was timed at the Phase 1 gate (extra check F): a relaxed IN → rack → other
+  rack → OUT loop completed under 60 s**, with caveats (small room, perfect knowledge, no
+  obstacles in the way). The assumption holds, conservatively — real play with a full warehouse
+  and searching will be slower, not faster, which is the safe direction for a sim input.
 
 ### Constraints learned the hard way
 
@@ -570,8 +652,26 @@ constrain upcoming work:
 - **Settled cargo (ADR 17) blocks other cargo, not just players.** A crate dragged past another that
   has settled can be physically wedged by it, same as a player would be — real gameplay behaviour,
   found in `storage_session.gd`'s drag-attempt step once two other crates in the same row settled
-  mid-scenario (01-09). Worth remembering when laying out future levels with clutter near a path
+  mid-scenario (01-09). Worth remembering when laying out players with clutter near a path
   cargo needs to travel.
+- **A reach check must measure against the same point the interaction actually validates, not a
+  simplified proxy.** `PLACE_REACH` measured camera → cell *centre*, but the aim ray resolves and
+  the highlight paints against the ray's hit *point* — up to half a cell's own space diagonal
+  further away. Genuine aims in that gap painted green and were then silently refused. Found live
+  at the Phase 1 gate, fixed by widening the constant and re-deriving its doc comment from the
+  real arithmetic rather than an assumption (`34409df`).
+- **A freshly-minted body can trigger its own container's sensors before it has cleared them.**
+  `request_retrieve` and `shed_top_row` both mint a crate at a cell's own centre — inside that
+  rack's `ImpactSensor` by construction — so the very same spring or impulse that moves it out
+  could push it past the rack's own shed threshold before it has properly left. Anything that
+  spawns a body inside a sensor volume needs a short mint-grace window before that sensor trusts
+  velocity readings from it (`Crate.age_ms()` / `MINT_GRACE_MS`, `69c77e6`).
+- **A combined aim ray can resolve to the wrong thing when a loose object rests inside another
+  object's own aim volume** — a shed crate landing inside a rack's `CellSensor` was permanently
+  unaimable, because the ray hit the sensor's surface first. Fixed with a narrower, cargo-only
+  probe tried first, but *only* while empty-handed — while holding something, the container must
+  still win, or a stray loose crate in front of a rack face would hijack a placement aim
+  (`8be63f8`).
 
 ## Phase 0 outcome
 
@@ -587,3 +687,50 @@ measured physics budget.
 
 Two things it changed along the way: held items became force-driven rather than parented
 (ADR 13), and cargo replication moved to 20 Hz on-change, cutting host upstream 16×.
+
+## Phase 1 outcome
+
+**Complete and gate-passed, 2026-08-21.** All 9 plans, all 7 waves. Verdict: *storage feels
+deliberate* (NJ, explicit, after three play sessions). All six STORE requirements met and
+ticked; the phase's own gate crib sheet is retired.
+
+Delivered: `StorageGrid` (pure cell arithmetic for ADR 18, test-first, 183 unit checks); `Rack`
+— twelve cells as atomic, LIFO-ordered data, delegating every dimension to `StorageGrid`, with a
+zero-cost `racked_item.tscn` visual and host-side minting on retrieval; `CarryAuthority.
+request_place`/`request_retrieve`, host-validated and ADR 19-aware, with one aim ray resolving
+either a crate or a rack cell; a three-state cell highlight and a tweened travel-and-thud
+placement snap, both proven to converge on every peer including a late joiner; a host-only
+`ImpactSensor` that sheds exactly a rack's occupied top row on a hard enough hit, bounded three
+ways against ADR 14; `GoodsZone`, a plain `Area3D` with zero networking machinery, both peers
+independently agreeing on its contents over real ENet; and, closing the phase's one named gap,
+ADR 17's settle/wake state machine on `Crate` — settled cargo turns real static geometry and
+blocks players client-side with no round trip, wakes on a qualifying shove or grab, and is now
+verified true underfoot rather than only mechanically proven.
+
+Three real defects and one reach ruling came out of the gate's own play sessions, all fixed,
+regression-tested and proven on the real path before this closing plan ran (`34409df` through
+`aab3396`; full detail in the resolved blocks above and `01-08-SUMMARY.md`): a reach check that
+measured against the wrong point; a freshly-minted crate that could shed its own rack on the way
+out; a loose crate stranded inside a rack's sensor volume with no way to grab it; and the whole
+reach chain shortened 2.5 → 2.0 m on NJ's ruling after it read too long twice in play.
+
+Rack geometry and presentation were ratified at the gate rather than changed: the frame stays
+exactly as built, but cargo now sits on a pallet with a peer-deterministic seeded jitter instead
+of floating in an identical stamped pose ([ADR 24](../decisions/2026-08-21-rack-presentation-ratified.md)).
+The wall rack's long-flagged unaimable back row was accepted as a level-design property with one
+correction from play — it is reachable through the rack's own end faces. Neither of these
+touched code; both are recorded as rules for Phase 6's art pass to build against.
+
+Four things the gate surfaced are carried forward rather than closed: **STORE-07**, the
+round-trip invariant a racked crate's full record must satisfy, load-bearing for Phase 3 and
+unbuilt beyond `kind`; **cell plaques**, a Phase 2 presentation recommendation; the **open
+question of which two cells a Large occupies**, to be answered in Phase 2 planning; and **seven
+smaller follow-ups** (highlight legibility, cargo passing through racked stock, the ghost-preview
+rework, a grabbable-target reticle, settle feel, a sprint/hold-spring jam, and one pre-existing
+intermittent test-harness resource leak unrelated to any of this phase's own changes) — none
+blocking, all listed under Open above.
+
+Nothing this plan touched changed game code — every fix the gate needed was already made,
+committed and regression-tested during the play sessions themselves; this plan's own work was
+entirely the write-up: one new ADR, six requirements ticked, one new requirement added, the GDD
+and roadmap brought up to date, and this file closed out.
