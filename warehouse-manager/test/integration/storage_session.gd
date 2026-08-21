@@ -212,6 +212,8 @@ func _run_host(rack: Rack) -> void:
 		rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_A) != null,
 		"cell %d shows its racked visual on the host" % CELL_A,
 	)
+	if not await _wait_for_settle(rack, CELL_A, 0):
+		return _finish(false)
 
 	# --- 2: client racks crate_1 into the same cell. Wait, then check back. ---
 	if not await _until("client racked a second crate into cell %d" % CELL_A, func() -> bool:
@@ -219,6 +221,11 @@ func _run_host(rack: Rack) -> void:
 		return _finish(false)
 	if not await _until("both bodies left the world", func() -> bool:
 			return _crates().get_child_count() == EXPECTED_CRATES - 2):
+		return _finish(false)
+	# The client's own placement, landing on the host's copy — proves the
+	# tween converges for a non-host-initiated placement too, not just the
+	# host's own.
+	if not await _wait_for_settle(rack, CELL_A, 1):
 		return _finish(false)
 	# Captured now, while cell A's stack is known to hold exactly these two
 	# and nothing else touches it before step 6 -- this is the id the LIFO
@@ -377,6 +384,8 @@ func _run_client(rack: Rack) -> void:
 		rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_A) != null,
 		"the client's own view shows cell %d's racked visual" % CELL_A,
 	)
+	if not await _wait_for_settle(rack, CELL_A, 0):
+		return _finish(false)
 
 	# --- 2: client racks crate_1 into the same cell. ---
 	var crate_client := _crate_named(CRATE_CLIENT_NAME)
@@ -395,6 +404,10 @@ func _run_client(rack: Rack) -> void:
 		return _finish(false)
 	if not await _until("both bodies are gone from the client's own view too", func() -> bool:
 			return _crates().get_child_count() == EXPECTED_CRATES - 2):
+		return _finish(false)
+	# This is the client's own placement, checked on the client's own copy --
+	# the non-host-initiated case, on the peer that actually asked for it.
+	if not await _wait_for_settle(rack, CELL_A, 1):
 		return _finish(false)
 
 	# --- 3: wait for the host to fill CELL_B. ---
@@ -626,6 +639,26 @@ func _release_held() -> void:
 		carrier.try_toggle_hold()
 		for _i in 6:
 			await get_tree().process_frame
+
+
+## Polls until the visual at rack/cell_index/sub_index has actually arrived at
+## its resting position — the one thing about 01-06's travel-and-settle
+## animation a test can genuinely prove. A tween that starts and never
+## arrives is the classic tween bug, and it would leave an item visibly
+## floating in the aisle on some peers and not others.
+##
+## Not the bare cell centre: eight Smalls tile a cell as a 2x2x2 lattice
+## (StorageGrid.small_offset), so [param sub_index]'s actual target is offset
+## from [method Rack.cell_to_local_position] — exactly what
+## [code]Rack._spawn_cell_visual[/code] tweens toward.
+func _wait_for_settle(rack: Rack, cell_index: int, sub_index: int) -> bool:
+	var visual := rack.get_node_or_null("RackedItems/Cell%d_Item%d" % [cell_index, sub_index])
+	if visual == null:
+		_fail("the placed item settles exactly in its cell", "no visual node Cell%d_Item%d" % [cell_index, sub_index])
+		return false
+	var target := rack.cell_to_local_position(cell_index) + StorageGrid.small_offset(sub_index)
+	return await _until("the placed item settles exactly in its cell", func() -> bool:
+			return visual.position.is_equal_approx(target))
 
 
 func _until(label: String, predicate: Callable) -> bool:

@@ -357,6 +357,16 @@ func _check_decided_invariants() -> void:
 			rack.get_node_or_null("RackedItems") != null,
 			"the rack has a RackedItems container for its derived visuals",
 		)
+
+		# 01-06: the aim highlight has to exist on every rack, and start off -
+		# a rack that ships with a cell permanently glowing is exactly the
+		# kind of thing a headless run would never notice on its own.
+		var highlight := rack.get_node_or_null("CellHighlight") as MeshInstance3D
+		_expect(highlight != null, "the rack has a CellHighlight for aim feedback (01-06)")
+		_expect(
+			highlight != null and not highlight.visible,
+			"the rack's CellHighlight starts hidden (got visible=%s)" % (highlight.visible if highlight else "no node"),
+		)
 		rack.free()
 
 	# 01-04: a racked item must stay a bare mesh (ADR 14) - this is the
@@ -376,6 +386,17 @@ func _check_decided_invariants() -> void:
 		_expect(
 			mesh != null and mesh.size.is_equal_approx(Vector3(0.5, 0.5, 0.5)),
 			"ADR 18 - a racked item's box is exactly 0.5 m, matching the Small it represents (got %s)" % (mesh.size if mesh else "no mesh"),
+		)
+
+		# 01-06: a silent placeholder is the exact failure this plan exists to
+		# prevent, and nothing else would ever look at it - a scene missing
+		# its stream would still load, instance and play a placement with no
+		# sound, and nothing would say why.
+		var place_sound := racked_item.get_node_or_null("PlaceSound") as AudioStreamPlayer3D
+		_expect(place_sound != null, "a racked item has a PlaceSound for its placement thud (01-06)")
+		_expect(
+			place_sound != null and place_sound.stream != null,
+			"the PlaceSound's stream is not null (got %s)" % (place_sound.stream if place_sound else "no player"),
 		)
 		racked_item.free()
 
