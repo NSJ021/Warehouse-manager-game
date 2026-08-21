@@ -80,3 +80,50 @@ The number feeds directly into design decisions that would otherwise be made bli
 - **Items per day** — the day loop should not leave more than roughly 150 loose bodies live at once.
 
 **It also promotes [ADR 4](../decisions/2026-08-16-grid-storage-physics-transport.md) from a feel decision to a performance-critical one.** Grid-snapped storage means racked items can be static, non-simulated, non-replicated scenery. Physics is reserved for cargo in transit, which is a handful of items at a time. Had storage been full physics, a warehouse holding 300 items would have been 300 rigid bodies simply existing — twice the budget before a single one was picked up.
+
+## Re-measured 2026-08-21, after ADR 17 (settled cargo turns static) — 01-09
+
+ADR 17's own follow-up said the budget should *improve*, because a body that has genuinely turned static is cheaper than one that is merely asleep, and this ADR exists specifically to eliminate "should" as a word applied to this number. Re-ran `./tools/run-stress.ps1` unchanged, same machine, same counts.
+
+**It improved. The ~150 ceiling does not move, but what it now applies to is narrower than before.**
+
+### Before / after, solo pass (host physics ms — pure simulation cost)
+
+| mode | crates | before | after |
+|---|---|---|---|
+| settled | 100 | 1.52 | **1.48** |
+| settled | 400 | 2.39 | **2.41** |
+| settled | 800 | 2.97 | **3.27** |
+| awake | 100 | 1.98 | **1.49** |
+| awake | 400 | 3.35 | **2.41** |
+| awake | 800 | 4.80 | **3.12** |
+
+`settled` is flat, within noise — expected, since those bodies were already asleep and cheap. `awake` dropped by 24–35%, and now tracks `settled` almost exactly at every count. That convergence is the headline, and it is explained below rather than left as a coincidence.
+
+### Before / after, four peers (host sent kb/s, worst client frame ms)
+
+| mode | crates | sent before | sent after | client ms before | client ms after |
+|---|---|---|---|---|---|
+| settled | 100 | 93 | **93** | 5.99 | **4.75** |
+| settled | 400 | 59 | **82** | 6.10 | **5.14** |
+| awake | 100 | 115 | **93** | 5.91 | **4.59** |
+| awake | 200 | 126 | **93** | 8.66 | **7.43** |
+| awake | 400 | 270 | **35** | 4.96 | **5.40** |
+
+The `awake`/400 sent figure — 270 kb/s down to 35 — is the largest single move in this whole document. Same story as the client-ms convergence above: most of what this sweep calls "awake" no longer stays awake.
+
+### Why `awake` moved this much: it measures a different thing now
+
+The stress harness's `awake` mode does exactly one thing to keep bodies lively: it sets `can_sleep = false` once, at the start, and leaves it there. Before this plan, that was sufficient — a body that cannot sleep keeps costing full price indefinitely, which is what made `awake` the honest worst case the harness's own doc comment says it is.
+
+[`Crate._update_settle_state`](../warehouse-manager/scripts/goods/crate.gd) does not consult `can_sleep` or `sleeping` at all. It watches `linear_velocity`/`angular_velocity` against [`settle_speed`](../warehouse-manager/scripts/goods/crate.gd) directly, and freezes anything that holds still for [`settle_frames`](../warehouse-manager/scripts/goods/crate.gd) regardless of what the sleep flags say. A crate dropped in a pile and told "never sleep" still stops moving — `can_sleep` only stops the *engine* from marking it asleep, it does not stop the crate from coming to rest — and once it is genuinely still, ADR 17 freezes it to static within half a second, `can_sleep` or no. That is why the two modes now measure within noise of each other: by the time this harness samples, most of both piles have already frozen.
+
+**This is correct, not a harness bug**, and not something to "fix" by making the stress test fight the settle machine — a held crate never reads as at rest in the first place, because [`add_holder`](../warehouse-manager/scripts/goods/crate.gd) is what the real "never sleeps" case actually looks like, and holding resets the settle counter every frame for as long as the hold lasts (see [`_update_settle_state`](../warehouse-manager/scripts/goods/crate.gd)'s own first check). What this sweep's `awake` mode was always missing, before and after this plan, is that distinction: it forces a flag rather than a hold, and now that the flag alone is not enough to stay expensive, the gap is visible in the numbers instead of hidden by it.
+
+### Does the ~150 ceiling move?
+
+**No, but read it more narrowly than before.** ~150 concurrent bodies is still the number for genuinely active cargo — a rack mid-collapse, several players carrying and shoving at once, anything actually moving on a given frame. Nothing about ADR 17 changes the per-frame cost of a body that is *not* at rest; the 40 µs/crate figure for a truly moving body is untouched, because a moving body never reaches the settle threshold.
+
+What changes is that **floor clutter sitting still no longer counts against that ceiling the way it used to.** Before this plan, 100 crates dumped on the floor and left alone still cost close to the `awake` figures once Jolt's own sleep timer lapsed if anything nearby kept nudging them awake, and always cost the full `settled`-but-still-simulated price for however long they took to actually go to sleep. After this plan, the same pile is frozen, off the solver, and off the wire within half a second of the last thing touching it — closer to zero than to 40 µs/crate. The distinction the budget now has to track is not "how many crates total" but **"how many are moving right now"**, which is exactly the distinction ADR 17 was built to introduce at the gameplay layer too (a settled pile blocks pathing for free; a moving one costs a frame).
+
+Practically: the day-loop guidance stands (≈150 loose bodies actually in play at once), but a warehouse that has accumulated *far* more than 150 items of settled floor stock over a long lease is no longer the same kind of risk it would have been pre-ADR-17, provided most of that stock is genuinely sitting still rather than being circulated. That is a real loosening of a real constraint, not just a rounding change — but it is conditional on stock actually settling, so a day designed around constant churn (everything always mid-carry) still wants the original ~150 figure taken literally.
