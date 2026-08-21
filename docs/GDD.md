@@ -2,8 +2,8 @@
 
 *(working title until 2026-08-16: "Warehouse Manager" — see ADR 11)*
 
-- **Version:** 0.8 — orders become manifests and reputation becomes a market position rather than a score (ADR 22); the two-currency model and crew split settled (ADR 21)
-- **Date:** 2026-08-19
+- **Version:** 0.9 — the Phase 1 gate: rack geometry ratified, pallets and buried-row access decided (ADR 24), and Phase 1 (Storage) closed
+- **Date:** 2026-08-21
 - **Status:** Living document. Locked decisions live in `decisions/` and win over this doc until superseded.
 
 ---
@@ -62,6 +62,8 @@ One warehouse done properly beats five done thinly. Variety comes from **constra
 | 20 | Detection and patch maths; reputation decays with the lease | `decisions/2026-08-19-detection-and-patch-maths.md` |
 | 21 | Reputation expires with the run; the crew splits one pot | `decisions/2026-08-19-two-currencies-and-the-crew-split.md` |
 | 22 | Orders are manifests; reputation is a market position | `decisions/2026-08-19-orders-are-manifests-reputation-is-a-market.md` |
+| 23 | Early Access, not straight to 1.0 — same bar, two launch beats | `decisions/2026-08-20-early-access-launch.md` |
+| 24 | Rack geometry ratified: pallets, buried rows, two speeds of shelf | `decisions/2026-08-21-rack-presentation-ratified.md` |
 
 ADRs 7 and 9 supersede parts of ADRs 5 and 6 respectively, and ADR 13 supersedes the held-item clause of ADR 5. Check `decisions/decision-log.md` for current status before relying on any of them.
 
@@ -127,7 +129,7 @@ Every item carries:
 
 | Property | Values |
 |---|---|
-| **Size class** | Small (0.5 m cube, one-handed, **8 fit a cell**) · Medium (1.0 m cube = **a whole cell**, two-handed, **occludes your view**) · Large (2.0 × 1.0 × 1.0 = **2 cells**, two-player carry or drag) — ADR 18 |
+| **Size class** | Small (0.5 m cube, one-handed, **8 fit a cell**) · Medium (1.0 m cube = **a whole cell**, two-handed, **occludes your view**) · Large (2.0 × 1.0 × 1.0 = **2 cells**, two-player carry or drag) — ADR 18. **Open question, raised at the Phase 1 gate:** which two cells a Large actually occupies — side-by-side across columns, or front-to-back through depth, which would be the one thing that puts a wall rack's dead row to use — is not yet decided. Answer it in Phase 2 planning. |
 | **Value density** | What it earns per cell per day. Bricks are bulky and cheap; jewellery is compact and enormous. This is the portfolio decision across a lease. |
 | **Fragility** | 0–3 (crated machinery → glassware) |
 | **Store-until date** | The day it must leave. Also the spoilage deadline. |
@@ -156,20 +158,67 @@ That last row is the real incentive. A lone player dragging a Large crate physic
 
 ### 6.2 Storage
 
-- Racks expose **slots**. Items **snap** in on insert. Storage is a clean spatial puzzle, unpolluted by physics jitter.
-- **The storage unit is a cell: 1.0 m cubed** (ADR 18). Eight Smalls fill one, a Medium *is* one, a Large takes two. **A cell is atomic** — one kind of cargo at a time — so filling a cell with Smalls is efficient and spending it on a Medium is not. That trade is the packing decision.
-- **Retrieval within a cell is last-in-first-out.** You take what's reachable. Badly-ordered stock is *physically painful* to get at, which is what turns FIFO discipline (§6.3) from a good habit into something the building enforces — unstacking six crates while a client waits.
-- **A rack is 2 cells wide × 2 deep × 3 high = 12 cells:** 96 Smalls, or 12 Mediums, or 6 Larges. The top level sits at 2–3 m, so a solo player (floor level only) reaches the bottom row and nothing else.
-- **Placement decides whether stock gets buried.** A 2-deep rack against a wall has a buried back row. The same rack as an island, reachable from both sides, has two front rows and no buried stock at all. Islands store better and eat aisle space; wall racks are compact and bury half their contents.
-- Racks have **stability**. Hit one hard enough and it wobbles; the top row may shed. Chaos is a *punishment for recklessness*, not ambient noise.
-- **Floor stacking is allowed.** It's faster, it blocks pathing, it counts as clutter, and it's begging to be kicked over. A tempting shortcut with a real cost.
-- **How the blocking works (ADR 17):** a crate that settles on the floor turns *static* and becomes solid — you walk around it like a wall. Shove it hard enough and it wakes back into a physics body and scatters. Cargo in transit stays dynamic and stays out of your way, so nothing you are carrying can be bulldozed. This is what makes "blocks pathing" real rather than aspirational.
+- Racks expose **cells**. Items **snap** in on insert — a travelled, tweened placement with a
+  thud, not a physics-jittered drop. Storage is a clean spatial puzzle, unpolluted by physics
+  jitter.
+- **The storage unit is a cell: 1.0 m cubed** (ADR 18). Eight Smalls fill one, a Medium *is* one,
+  a Large takes two. **A cell is atomic** — one kind of cargo at a time — so filling a cell with
+  Smalls is efficient and spending it on a Medium is not. That trade is the packing decision,
+  **challenged and upheld at the Phase 1 gate**: sorting is the job, and the mixed zones are
+  Goods IN, the floor, and shed aftermath, not a rack.
+- **Retrieval within a cell is last-in-first-out.** You take what's reachable. Badly-ordered stock
+  is *physically painful* to get at, which is what turns FIFO discipline (§6.3) from a good habit
+  into something the building enforces — unstacking six crates while a client waits.
+- **A rack is 2 cells wide × 2 deep × 3 high = 12 cells:** 96 Smalls, or 12 Mediums, or 6 Larges.
+  The top level sits at 2–3 m, so a solo player (floor level only) reaches the bottom row and
+  nothing else — **confirmed in play at the Phase 1 gate**: the bottom row costs no fight with
+  the camera, the top row needs no jump. The two rows are not equivalent by design: the top row
+  costs a longer hold and turns a throw into something you have to actually mean, while the
+  bottom row is a fast in-and-out. Store your fast movers low and your slow movers high.
+- **Rack frame and cell presentation are ratified** (ADR 24, the Phase 1 gate). The frame — CSG
+  decks and corner uprights — is kept exactly as built. What was missing was the cell's
+  *contents*: an empty cell shows nothing, and the first item placed spawns a wooden pallet, with
+  every item after it sitting on that pallet rather than floating at the cell's mathematical
+  floor. Racked items carry a small seeded rotation and offset within the cell (seeded off the
+  crate's own id plus its cell and slot, so every peer derives the identical pose without a
+  network message), so a full cell reads as *packed* rather than *stamped*. The pallet's front
+  edge is where per-cell signage will anchor (§6.3, Phase 2).
+- **Placement decides whether stock gets buried.** A 2-deep rack against a wall has a buried back
+  row — unaimable head-on, because the front row's own sensors block the ray. **Ratified at the
+  gate:** that row is still reachable through the rack's *end* faces wherever the level exposes
+  one, so a wall rack is 6 cells head-on plus whatever its ends expose, not a flat loss of half
+  its capacity. The same rack built as an island, reachable from every side, has no buried row at
+  all. Islands store better and eat aisle space; wall racks are compact and cost you a route to
+  the back.
+- Racks have **stability**. Hit one hard enough and the top row sheds — bounded, and **confirmed
+  in play at the Phase 1 gate** to read as punishment, not ambient noise. A dragged crate can
+  never carry enough speed to trigger it; only a thrown or two-player-carried crate can. A fuller
+  version — a wobble telegraph, and a rare full topple that must never cascade to a neighbouring
+  rack — is proposed, not built; see `docs/idea-book.md` ("The rack topple").
+- **Floor stacking is allowed.** It's faster, it blocks pathing, it counts as clutter, and it's
+  begging to be kicked over. A tempting shortcut with a real cost, **confirmed in play at the
+  Phase 1 gate** — even once it genuinely blocks pathing (below), it stays worse than racking
+  with no upside, which is exactly what makes it a *bad* idea rather than a dead one.
+- **How the blocking works (ADR 17):** a crate that settles on the floor turns *static* and
+  becomes solid — you walk around it like a wall. Shove it hard enough and it wakes back into a
+  physics body and scatters. Cargo in transit stays dynamic and stays out of your way, so nothing
+  you are carrying can be bulldozed. This is what makes "blocks pathing" real rather than
+  aspirational.
+- **The round-trip invariant.** Racking frees a crate's physics body outright; retrieving one
+  mints a fresh body. Nothing about that trip is allowed to be lossy — every field a crate
+  carries (today just its kind; condition, apparent condition, scuffs, fragility, store-until
+  date, owner and value as later phases add them) rides the cell's own data as a record and comes
+  back exactly as it went in. Get this wrong and racking quietly launders damage, which deletes
+  P1. Named at the Phase 1 gate; tracked as STORE-07 in `.planning/REQUIREMENTS.md`. Returning a
+  *different* crate of the same kind via LIFO is correct behaviour, not a violation of this.
 
 > **Budget note (ADR 14).** Grid snapping is not only a feel decision — it is what makes the game affordable. Racked items can be static, non-simulated and non-replicated, so physics is reserved for cargo actually in transit. The measured ceiling is **~150 concurrent loose rigid bodies** across four peers, which sizes floor clutter, how much a rack may shed, and how many items a day can involve. Full-physics storage would have spent the entire budget on stock merely sitting there. See [`docs/physics-budget.md`](physics-budget.md).
 
 ### 6.3 The memory game
 
 Over 30 days you'll handle dozens of items. When a client turns up for crate #7 of an order placed three weeks ago, **you have to find it**. FIFO discipline, zoning, and aisle signage stop being flavour and start being survival. This is P2 in action and it needs no extra content to be deep.
+
+**Proposed for Phase 2, recommended at the Phase 1 gate:** per-cell signage on the loading face — a plaque reading e.g. "SUGAR 3/8", or "SUGAR 1/1" centred across a Large's two cells — derived locally from a cell's own contents and anchored on the pallet's front edge (§6.2, ADR 24). This is the concrete form "aisle signage" above has meant since the first draft; not built in v1.
 
 ### 6.4 Damage
 

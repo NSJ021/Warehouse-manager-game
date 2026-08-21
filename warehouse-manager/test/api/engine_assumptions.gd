@@ -34,6 +34,18 @@ var _checked := 0
 var _frames := 0
 var _aim_cases: Array = []
 
+## 01-09 (ADR 17): a settled crate freezes to FREEZE_MODE_STATIC and joins the
+## world layer, and three behaviours hold that decision up — all measured
+## before ADR 17 was written, not assumed, and named individually below
+## rather than folded into one boolean so a failure says which one broke.
+var _settled_body: RigidBody3D
+var _settled_body_start: Vector3
+var _settled_walker: CharacterBody3D
+var _settled_zone: Area3D
+var _settled_sensor_body: RigidBody3D
+var _settled_sensor_area: Area3D
+var _settled_sensor_walker: CharacterBody3D
+
 
 func _initialize() -> void:
 	_check_engine_apis()
@@ -41,13 +53,22 @@ func _initialize() -> void:
 	_check_godotsteam()
 	_check_decided_invariants()
 	_build_aim_scene()
+	_build_settle_scene()
 
 
 func _physics_process(_delta: float) -> bool:
 	_frames += 1
-	if _frames < 3:
+	# The force/impulse in _apply_settle_forces() needs a physics step to
+	# have any chance of moving something — applied once the server has a
+	# physics space to receive it (frame 3, the same gate everything else
+	# below needs anyway), then given three more frames before anything
+	# checks whether it worked.
+	if _frames == 3:
+		_apply_settle_forces()
+	if _frames < 6:
 		return false
 	_check_aim_behaviour()
+	_check_settle_behaviour()
 	_report()
 	return true
 
@@ -119,6 +140,140 @@ func _check_aim_behaviour() -> void:
 		ray.force_raycast_update()
 		var hit: bool = ray.is_colliding() and ray.get_collider() == entry[2]
 		_expect(hit, entry[0])
+
+
+## Settled cargo (ADR 17, 01-09) rests on four behaviours, none of them
+## specific to [Crate] — built from plain engine nodes here so a failure
+## points at the engine, not at anything this project wrote.
+func _build_settle_scene() -> void:
+	var world := Node3D.new()
+	get_root().add_child(world)
+
+	# 1 & 2: a frozen static body blocks a CharacterBody3D sharing its mask,
+	# and cannot itself be displaced by a force or an impulse.
+	_settled_body = RigidBody3D.new()
+	_settled_body.collision_layer = 1  # world - the bit a settled crate gains
+	_settled_body.collision_mask = 0
+	_settled_body.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	_settled_body.freeze = true
+	_settled_body.position = Vector3(20.0, 0.0, 0.0)
+	var body_shape := CollisionShape3D.new()
+	var body_box := BoxShape3D.new()
+	body_box.size = Vector3(0.5, 0.5, 0.5)
+	body_shape.shape = body_box
+	_settled_body.add_child(body_shape)
+	world.add_child(_settled_body)
+	# world sits at the origin with no rotation, so this equals global_position
+	# — read as the literal rather than via global_position here, because the
+	# body has no physics space to query yet on the very frame it is added
+	# (Jolt is explicit about this: apply_central_impulse/_force both need
+	# one, and this build step runs before the frame gate below gives the
+	# server a chance to create it).
+	_settled_body_start = Vector3(20.0, 0.0, 0.0)
+
+	_settled_walker = CharacterBody3D.new()
+	_settled_walker.collision_layer = 2
+	_settled_walker.collision_mask = 1
+	_settled_walker.position = Vector3(19.0, 0.0, 0.0)
+	var walker_shape := CollisionShape3D.new()
+	var walker_capsule := CapsuleShape3D.new()
+	walker_capsule.radius = 0.3
+	walker_capsule.height = 1.8
+	walker_shape.shape = walker_capsule
+	_settled_walker.add_child(walker_shape)
+	world.add_child(_settled_walker)
+
+	# 3: an Area3D that is NOT a child of the frozen body still sees it as an
+	# overlapping body - what lets a Goods zone (a level fixture, not a child
+	# of any crate) detect stock that has settled and sat there all day, the
+	# 01-05 <-> 01-09 interaction flagged in STATE.md.
+	_settled_zone = Area3D.new()
+	_settled_zone.collision_layer = 0
+	_settled_zone.collision_mask = 1
+	_settled_zone.monitoring = true
+	_settled_zone.monitorable = false
+	_settled_zone.position = Vector3(20.0, 0.0, 0.0)
+	var zone_shape := CollisionShape3D.new()
+	var zone_box := BoxShape3D.new()
+	zone_box.size = Vector3(2.0, 2.0, 2.0)
+	zone_shape.shape = zone_box
+	_settled_zone.add_child(zone_shape)
+	world.add_child(_settled_zone)
+
+	# 4: an Area3D CHILD of a frozen body still reports overlapping bodies -
+	# the exact shape of the crate's own PushSensor, and what lets a settled
+	# crate always be woken by a shove.
+	_settled_sensor_body = RigidBody3D.new()
+	_settled_sensor_body.collision_layer = 1
+	_settled_sensor_body.collision_mask = 0
+	_settled_sensor_body.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	_settled_sensor_body.freeze = true
+	_settled_sensor_body.position = Vector3(24.0, 0.0, 0.0)
+	var sensor_body_shape := CollisionShape3D.new()
+	var sensor_body_box := BoxShape3D.new()
+	sensor_body_box.size = Vector3(0.5, 0.5, 0.5)
+	sensor_body_shape.shape = sensor_body_box
+	_settled_sensor_body.add_child(sensor_body_shape)
+
+	_settled_sensor_area = Area3D.new()
+	_settled_sensor_area.collision_layer = 0
+	_settled_sensor_area.collision_mask = 2
+	_settled_sensor_area.monitoring = true
+	_settled_sensor_area.monitorable = false
+	var sensor_area_shape := CollisionShape3D.new()
+	var sensor_area_box := BoxShape3D.new()
+	sensor_area_box.size = Vector3(0.62, 0.62, 0.62)
+	sensor_area_shape.shape = sensor_area_box
+	_settled_sensor_area.add_child(sensor_area_shape)
+	_settled_sensor_body.add_child(_settled_sensor_area)
+	world.add_child(_settled_sensor_body)
+
+	_settled_sensor_walker = CharacterBody3D.new()
+	_settled_sensor_walker.collision_layer = 2
+	_settled_sensor_walker.collision_mask = 0
+	_settled_sensor_walker.position = Vector3(24.0, 0.0, 0.0)
+	var sensor_walker_shape := CollisionShape3D.new()
+	var sensor_walker_capsule := CapsuleShape3D.new()
+	sensor_walker_capsule.radius = 0.3
+	sensor_walker_capsule.height = 1.8
+	sensor_walker_shape.shape = sensor_walker_capsule
+	_settled_sensor_walker.add_child(sensor_walker_shape)
+	world.add_child(_settled_sensor_walker)
+
+
+## A real force and a real impulse, thrown at the frozen body once it has a
+## physics space to receive them. [method _check_settle_behaviour] checks a
+## few frames later whether either one moved it at all.
+func _apply_settle_forces() -> void:
+	_settled_body.apply_central_impulse(Vector3(500.0, 0.0, 0.0))
+	_settled_body.apply_central_force(Vector3(5000.0, 0.0, 0.0))
+
+
+func _check_settle_behaviour() -> void:
+	print("[api] settled cargo (ADR 17)")
+
+	var collision := _settled_walker.move_and_collide(Vector3(2.0, 0.0, 0.0))
+	_expect(
+		collision != null and collision.get_collider() == _settled_body,
+		"a frozen FREEZE_MODE_STATIC RigidBody3D blocks a CharacterBody3D sharing its mask",
+	)
+
+	_expect(
+		_settled_body.global_position.distance_to(_settled_body_start) < 0.001,
+		"a frozen static body cannot be displaced by a force or an impulse",
+	)
+
+	_expect(
+		_settled_zone.get_overlapping_bodies().has(_settled_body),
+		"an Area3D that is not a child of a frozen body still reports it overlapping " +
+		"(what lets a Goods zone see settled stock)",
+	)
+
+	_expect(
+		_settled_sensor_area.get_overlapping_bodies().has(_settled_sensor_walker),
+		"an Area3D child of a frozen body still reports overlapping bodies " +
+		"(what lets a settled crate always be woken)",
+	)
 
 
 # --------------------------------------------------------------- section 1
@@ -280,6 +435,14 @@ func _check_decided_invariants() -> void:
 	_expect(crate.collision_layer == 4, "cargo is on the cargo layer (got %d)" % crate.collision_layer)
 	_expect(crate.collision_mask == 5, "cargo collides with world and cargo only (got %d)" % crate.collision_mask)
 
+	# Phase 1: rack cell aim-volumes get their own physics layer rather than
+	# joining cargo, so a rack full of cells never enters a shove or a carry
+	# check. A NAME is worth asserting on its own, separately from the layer
+	# existing: an unnamed layer is an anonymous bit in a .tscn, and the next
+	# person to add a layer picks the same one rather than reading this far.
+	_expect(str(ProjectSettings.get_setting("layer_names/3d_physics/layer_4", "")) == "storage",
+			"physics layer 4 is named 'storage' - rack cell sensors live there")
+
 	# GDD 6.1: solo drag runs at about 40% of walking pace. That penalty is the
 	# entire reason two-player carry is worth organising, so it is a balance
 	# number rather than a feel one - tune it knowingly, not by drift.
@@ -309,12 +472,97 @@ func _check_decided_invariants() -> void:
 	_expect(player.collision_mask == 3, "players collide with world and players, NOT cargo (got %d)" % player.collision_mask)
 
 	var ray := player.get_node("CameraPivot/GrabRay") as RayCast3D
-	_expect(ray != null and ray.collision_mask == 4, "the grab ray still looks for cargo only")
+	# 12 = 4 (cargo) | 8 (storage): the grab ray looks for cargo AND rack cell
+	# sensors from 01-04 onward, one ray resolving either kind of target.
+	_expect(
+		ray != null and ray.collision_mask == 12,
+		"the grab ray looks for cargo and rack cell sensors (got %s)" % (ray.collision_mask if ray else "no ray"),
+	)
+	_expect(ray != null and ray.collide_with_areas, "the grab ray still sees Area3D cell volumes")
 	_expect(
 		ray != null and ray.hit_from_inside,
 		"the grab ray still reports crates it starts inside - players walk through cargo",
 	)
+	# Wave 7 gate ruling, 2026-08-21 (NJ, after it came up in two separate gate
+	# sessions): the whole reach chain read too long in play, shortened
+	# 2.5 -> 2.0 m. GRAB_REACH and PLACE_REACH in carry_authority.gd move with
+	# this number — see PLACE_REACH's own doc comment for the re-derived
+	# arithmetic.
+	_expect(
+		ray != null and ray.target_position.is_equal_approx(Vector3(0.0, 0.0, -2.0)),
+		"the grab ray reaches 2.0 m, not the original 2.5 (got %s)" % (ray.target_position if ray else "no ray"),
+	)
 	player.free()
+
+	# 01-04: the rack's cell sensors are the aim target for storage, and the
+	# aim code (Carrier._aim) resolves one via exactly one get_parent() call
+	# on whatever Area3D the ray hit.
+	var rack_scene := load("res://scenes/world/rack.tscn") as PackedScene
+	if rack_scene == null:
+		_fail("the rack scene will not load, so its invariants cannot be checked")
+	else:
+		var rack := rack_scene.instantiate()
+		var sensor := rack.get_node_or_null("CellSensor0") as Area3D
+		_expect(
+			sensor != null and sensor.get_parent() == rack,
+			"CellSensor0 is a direct child of the rack root (Carrier._aim does one get_parent())",
+		)
+		_expect(
+			sensor != null and sensor.collision_layer == 8,
+			"rack cell sensors are on the storage layer (got %s)" % (sensor.collision_layer if sensor else "no sensor"),
+		)
+		_expect(
+			sensor != null and not sensor.monitoring and not sensor.monitorable,
+			"rack cell sensors have monitoring and monitorable both off - " +
+			"raycast hittability was measured independent of both, so 150+ " +
+			"cell volumes cost nothing in overlap detection",
+		)
+		_expect(
+			rack.get_node_or_null("RackedItems") != null,
+			"the rack has a RackedItems container for its derived visuals",
+		)
+
+		# 01-06: the aim highlight has to exist on every rack, and start off -
+		# a rack that ships with a cell permanently glowing is exactly the
+		# kind of thing a headless run would never notice on its own.
+		var highlight := rack.get_node_or_null("CellHighlight") as MeshInstance3D
+		_expect(highlight != null, "the rack has a CellHighlight for aim feedback (01-06)")
+		_expect(
+			highlight != null and not highlight.visible,
+			"the rack's CellHighlight starts hidden (got visible=%s)" % (highlight.visible if highlight else "no node"),
+		)
+		rack.free()
+
+	# 01-04: a racked item must stay a bare mesh (ADR 14) - this is the
+	# assertion that stops it quietly growing a body and reopening the cost a
+	# rack of 96 Smalls as rigid bodies would be.
+	var racked_item_scene := load("res://scenes/goods/racked_item.tscn") as PackedScene
+	if racked_item_scene == null:
+		_fail("the racked item scene will not load, so its invariants cannot be checked")
+	else:
+		var racked_item := racked_item_scene.instantiate()
+		var has_collision := false
+		for child in racked_item.get_children():
+			if child is CollisionShape3D:
+				has_collision = true
+		_expect(not has_collision, "a racked item still has no CollisionShape3D of its own")
+		var mesh := (racked_item as MeshInstance3D).mesh as BoxMesh
+		_expect(
+			mesh != null and mesh.size.is_equal_approx(Vector3(0.5, 0.5, 0.5)),
+			"ADR 18 - a racked item's box is exactly 0.5 m, matching the Small it represents (got %s)" % (mesh.size if mesh else "no mesh"),
+		)
+
+		# 01-06: a silent placeholder is the exact failure this plan exists to
+		# prevent, and nothing else would ever look at it - a scene missing
+		# its stream would still load, instance and play a placement with no
+		# sound, and nothing would say why.
+		var place_sound := racked_item.get_node_or_null("PlaceSound") as AudioStreamPlayer3D
+		_expect(place_sound != null, "a racked item has a PlaceSound for its placement thud (01-06)")
+		_expect(
+			place_sound != null and place_sound.stream != null,
+			"the PlaceSound's stream is not null (got %s)" % (place_sound.stream if place_sound else "no player"),
+		)
+		racked_item.free()
 
 	# Two is the two-player carry ceiling, expressed in the data shape.
 	#

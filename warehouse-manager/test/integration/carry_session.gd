@@ -37,9 +37,28 @@ const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 ## Deliberately not 27015 — the suite must never collide with someone playing.
 const TEST_PORT := 27099
 const STEP_TIMEOUT_MS := 15000
+## Crate name allocation across this suite. Keep this table accurate — a plan
+## has already twice picked a crate name another scenario already relied on,
+## and the second time silently broke a step several lines later rather than
+## failing where the mistake actually was.
+##
+## | Crate   | Claimed by                                              |
+## |---------|----------------------------------------------------------|
+## | crate_0 | CRATE_NAME - the carry / handoff choreography           |
+## | crate_1 | free                                                     |
+## | crate_2 | DESPAWN_PROBE_NAME - the queue_free() replication probe |
+## | crate_3 | DRAG_CRATE_NAME - solo drag and its promotion (ADR 19)  |
+## | crate_4 | ZONE_PROBE_NAME - Goods IN / Goods OUT zone detection   |
+## | crate_5 | LOST_CRATE_NAME - supply conservation                   |
 const CRATE_NAME := "crate_0"
 const EXPECTED_PLAYERS := 2
-const EXPECTED_CRATES := 6
+## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for
+## the gate playtest protocol (2026-08-21) — two rows of six rather than one
+## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why. Every
+## crate_0..crate_5 name and position the allocation table above depends on is
+## unchanged — the second row (crate_6..crate_11) is unclaimed by any step in
+## this file.
+const EXPECTED_CRATES := 12
 ## Cargo rests at about y=0.25 on the floor and hangs near y=0.9 when carried, so
 ## this separates "picked up" from "sat there" with room to spare.
 const LIFT_MIN_Y := 0.55
@@ -51,15 +70,50 @@ const LIFT_MIN_Y := 0.55
 ## positions stayed put, the crate moved six metres, and every grab silently
 ## failed the reach check. Approached along Z on purpose — a small crate count
 ## lays out as a row along X, so nothing sits between the player and the target.
-const HOST_STAND_OFFSET_Z := 1.6
+##
+## HOST_STAND_OFFSET_Z re-derived at the wave 7 gate (2026-08-21) when
+## GRAB_REACH shortened 2.5 -> 2.0 m: [method _take] stands the player level
+## with the crate on X, no lateral component, so distance is purely
+## sqrt(offset² + dy²). dy is fixed at 1.45 m (CameraPivot 1.7 m up —
+## STAND_HEIGHT + 1.6 — above a settled crate's own y=0.25, per LIFT_MIN_Y's
+## own doc comment above) regardless of offset, which leaves at most
+## sqrt(2.0² - 1.45²) ≈ 1.38 m of Z offset before GRAB_REACH refuses outright.
+## 1.6 cleared the old 2.5 m GRAB_REACH by 0.34 m (distance ≈2.16 m, itself
+## now past the NEW 2.0 m — this offset was broken until this change); 1.15
+## clears the new 2.0 m by about the same proportion (distance ≈1.85 m,
+## margin 0.15 m). Applies to every host-side [method _take] in this file —
+## crate_0's own grab and both re-grabs in [method _run_host_drag] — since
+## all of them find their crate on the floor at that same rest height.
+## CLIENT_STAND_OFFSET_Z needed no change: its smaller magnitude already
+## cleared the new reach with margin (distance ≈1.88 m) even against this
+## same worst-case floor height.
+const HOST_STAND_OFFSET_Z := 1.15
 const CLIENT_STAND_OFFSET_Z := -1.2
 const STAND_HEIGHT := 0.1
 
+## A crate no other assertion in this suite has claimed. See the allocation
+## table above.
+const DESPAWN_PROBE_NAME := "crate_2"
+## How long the initial 6-crate spawn must read as stable before the despawn
+## probe is allowed to fire. Real wall time, not frames, on purpose: headless
+## runs uncapped, so a frame count buys no fixed amount of real time for the
+## initial MultiplayerSpawner sync to a freshly-joined peer to actually land.
+const SPAWN_SETTLE_MS := 500
 ## A second crate, far enough along the row that the first one falling back to the
 ## floor at the end of the carry scenario cannot interfere with the drag one.
 const DRAG_CRATE_NAME := "crate_3"
 ## A crate no other scenario touches, pushed out of the world to prove it returns.
 const LOST_CRATE_NAME := "crate_5"
+## The Goods IN / Goods OUT probe. Teleported into GoodsIn by the host and
+## then left standing still, so both peers can independently ask their own
+## [GoodsZone] whether it agrees.
+const ZONE_PROBE_NAME := "crate_4"
+const ZONE_PATH := "Zones/GoodsIn"
+const ZONE_OUT_PATH := "Zones/GoodsOut"
+## Half a Small's height (0.5 m cube, ADR 18). Landing the zone probe here
+## rather than at the zone's own floor-level origin keeps it resting on top
+## of the floor instead of embedded in it.
+const CRATE_REST_HEIGHT := 0.25
 ## How long a dragged crate must stay on the floor while its dragger stares at the
 ## ceiling. A carry spring would have hauled it to eye level many times over in
 ## this window, so it separates "dragged" from "carried low" rather than merely
@@ -73,6 +127,20 @@ const DRAG_FOLLOW_MIN := 0.3
 ## Drag is deliberately slow (GDD §6.1). Asserted on the dragger's own machine,
 ## because movement is client-authoritative and this is the only place it applies.
 const DRAG_SPEED_SCALE := 0.4
+## How long to sit on "client released" before trusting it (01-09). [method
+## _take]'s own retry loop is deliberately unawaited (see its docstring) and
+## keeps a background press pending for up to six frames after the one that
+## actually succeeds — normally resolved in well under this margin, but
+## headless is uncapped, so six frames is a real wall-clock span that varies
+## with whatever else the process is doing, not a fixed handful of
+## milliseconds. Moving on to grab a different crate the instant both signals
+## in [code]_run_client[/code]'s own wait go true is not late enough to
+## guarantee that stale press has already fired and found nothing to do:
+## found by the join's own leftover press landing after crate_0 had already
+## been let go, and silently re-grabbing it instead of touching crate_3 at
+## all. Comfortably above six frames' worst observed span rather than tuned
+## to the minimum that happens to pass.
+const TAKE_TAIL_SETTLE_MS := 500
 
 var _role := "host"
 var _world: Node = null
@@ -126,6 +194,51 @@ func _run() -> void:
 	if not await _until("all %d crates replicated" % EXPECTED_CRATES, func() -> bool:
 			return _crates() != null and _crates().get_child_count() == EXPECTED_CRATES):
 		return _finish(false)
+
+	## The load-bearing unknown of the whole phase: a racked crate is meant to be
+	## FREED, not frozen (ADR 14 / NFR-01) — a client pays ~40 µs/frame merely for
+	## a rigid body to exist, awake or asleep, so Phase 1's "static and
+	## unreplicated" design only works if MultiplayerSpawner replicates the
+	## despawn of a node spawned through a custom spawn_function when the host
+	## calls queue_free() on it. The docs describe the mechanism and player
+	## disconnects already lean on it, but nobody had ever asserted it for the
+	## crate path before this plan. Both roles run the poll below, but only the
+	## host frees — asserted on the CLIENT because the host believing a node is
+	## gone proves nothing, only the client's own replicated view does. This
+	## must stay in the suite forever: an engine upgrade could silently take the
+	## guarantee away and nothing else here would notice.
+	if _role == "host":
+		# The host reaches "all 6 crates replicated" in the same script
+		# continuation it learns the client has joined roster, and
+		# MultiplayerSpawner's initial sync of already-existing nodes to that
+		# new peer is queued in that very same moment. Freeing crate_2
+		# immediately would let its despawn RPC ride the same network flush as
+		# the tail of that initial sync, so the client's own Crates node could
+		# go 5→6→5 inside network processing it never gets a polled frame to
+		# observe — "all 6 crates replicated" would then never read true on
+		# the client, not because despawn replication is broken, but because
+		# the harness raced its own precondition. Real wall time, not frames,
+		# on purpose: headless runs uncapped, so a frame count buys no fixed
+		# amount of real time for the sync to land. Host-only: the client
+		# needs no matching wait, since the despawn poll below already has its
+		# own full timeout budget to catch the despawn whenever it lands.
+		var settle_deadline := Time.get_ticks_msec() + SPAWN_SETTLE_MS
+		while Time.get_ticks_msec() < settle_deadline:
+			await get_tree().process_frame
+
+		var despawn_target := _crates().get_node_or_null(DESPAWN_PROBE_NAME)
+		if despawn_target == null:
+			_fail("find %s" % DESPAWN_PROBE_NAME, "not present under Crates")
+			return _finish(false)
+		despawn_target.queue_free()
+		print("[test]      (host freed %s)" % DESPAWN_PROBE_NAME)
+	if not await _until("%s despawned on this peer" % DESPAWN_PROBE_NAME, func() -> bool:
+			return _crates().get_node_or_null(DESPAWN_PROBE_NAME) == null and _crates().get_child_count() == EXPECTED_CRATES - 1):
+		return _finish(false)
+
+	if not await _check_goods_zones():
+		return _finish(false)
+
 	if not await _until("own body spawned", func() -> bool: return _me() != null):
 		return _finish(false)
 
@@ -139,6 +252,88 @@ func _run() -> void:
 		await _run_host(crate)
 	else:
 		await _run_client(crate)
+
+
+## Both peers run this before the role split (01-05). The host teleports the
+## probe crate into GoodsIn — the same determinism trick [method _take] uses
+## on players — and both peers then ask their [i]own[/i] [GoodsZone] whether
+## it agrees, rather than only proving the host's opinion.
+##
+## ⚠ The probe crate is teleported in and then left standing still, which is
+## harmless in Phase 1 but not forever: once 01-09 (wave 6) lands, a crate
+## left standing still SETTLES — frozen, FREEZE_MODE_STATIC, moved onto the
+## world layer (ADR 17) — on the [i]host[/i] too, not only on a client's
+## puppet. If [method GoodsZone.count] ever silently drops to 0 once that
+## lands, this is why: Area3D overlap has to keep reporting a settled crate,
+## because Goods OUT must detect stock that has sat there all day. That is a
+## design constraint on [GoodsZone], not a test artefact — report it rather
+## than working around it if it turns out not to hold.
+func _check_goods_zones() -> bool:
+	var goods_in := _world.get_node_or_null(ZONE_PATH) as GoodsZone
+	var goods_out := _world.get_node_or_null(ZONE_OUT_PATH) as GoodsZone
+	if goods_in == null or goods_out == null:
+		_fail("find zones", "%s or %s not present under %s" % [ZONE_PATH, ZONE_OUT_PATH, _world.name])
+		return false
+
+	if _role == "host":
+		var probe := _crate_named(ZONE_PROBE_NAME)
+		if probe == null:
+			_fail("find %s" % ZONE_PROBE_NAME, "not present under Crates")
+			return false
+		# Teleporting a body for determinism - the same trick _take() uses on
+		# players. Raised by CRATE_REST_HEIGHT rather than dropped exactly on
+		# [member GoodsZone.global_position]: the zone's own origin sits at
+		# floor level (y=0), and a Small's centre needs to be at its own
+		# half-height to rest on top of the floor rather than embedded in it.
+		# Found the hard way: landing it exactly at y=0 half-buries the crate,
+		# and because [member RigidBody3D.sleeping] is forced false below, it
+		# never settles quietly enough to fall back asleep on its own — it
+		# jitters against the floor indefinitely, which is what actually
+		# carried it off the level over the course of a full run rather than
+		# any zone-detection code being at fault.
+		probe.global_position = goods_in.global_position + Vector3(0.0, CRATE_REST_HEIGHT, 0.0)
+		probe.linear_velocity = Vector3.ZERO
+		probe.angular_velocity = Vector3.ZERO
+		probe.sleeping = false
+
+	if not await _until("GoodsIn sees exactly one crate", func() -> bool:
+			return goods_in.count() == 1):
+		return false
+	if not await _until("GoodsIn names the right crate", func() -> bool:
+			var found := goods_in.contents()
+			return found.size() == 1 and String(found[0].name) == ZONE_PROBE_NAME):
+		return false
+	# A detector that reports everything is not a detector.
+	if not await _until("GoodsOut stays empty", func() -> bool:
+			return goods_out.count() == 0):
+		return false
+
+	# Host-only: let the probe settle back to rest before the carry scenario
+	# starts. It was placed exactly at rest height with zero velocity, so this
+	# is normally immediate — but skipping it left a still-awake, still-
+	# replicating crate active on the exact frames the carry/handoff sequence
+	# runs, which was enough to disturb that scenario's own timing (found
+	# 2026-08-20). Nothing here reads [member Crate.sleeping] from a client:
+	# clients never simulate cargo (only the host runs [method
+	# Crate._physics_process]), so only the host has anything to wait for.
+	#
+	# ⚠ Checks [member Crate.sync_settled] rather than [member
+	# Crate.sleeping] (01-09). Once ADR 17 landed, a still probe FREEZES to
+	# FREEZE_MODE_STATIC well before the engine's own sleep timer would ever
+	# fire — and a frozen body was measured to never report sleeping=true on
+	# its own, so the old sleeping-only wait hung the full 15s timeout every
+	# run. sync_settled is in every sense the stronger signal anyway: it is
+	# the point past which this crate stops replicating at all, which is the
+	# actual property this wait exists to guarantee. sleeping stays as a
+	# fallback in case a future tuning change ever raises settle_frames past
+	# the engine's own sleep timer, so this crate can rest asleep without
+	# ever freezing and still unblock this wait.
+	if _role == "host":
+		var probe := _crate_named(ZONE_PROBE_NAME)
+		if not await _until("zone probe settled", func() -> bool:
+				return probe != null and (probe.sync_settled or probe.sleeping)):
+			return false
+	return true
 
 
 func _stand_beside(crate: Crate, offset_z: float) -> Vector3:
@@ -275,6 +470,22 @@ func _run_client(crate: Crate) -> void:
 	if not await _until("client joined the carry", func() -> bool:
 			return crate.holder_count() == 2):
 		return _finish(false)
+
+	# [constant TAKE_TAIL_SETTLE_MS]'s own margin, as early as it can go: this
+	# join's own [method _take] call above is unawaited (see that function's
+	# docstring) and can still have one more retry press pending for up to six
+	# frames after the press that actually succeeded — headless is uncapped,
+	# so six frames is real, variable wall-clock time, not a fixed handful of
+	# milliseconds. Placed here rather than only right before the release
+	# later in this function so the whole rest of the carry/handoff sequence
+	# below (which itself takes real time) is extra margin on top, not the
+	# only margin there is. See that constant's own doc for the race this
+	# closes: a stale press from this exact loop landing after the crate had
+	# already been let go, and silently re-grabbing it.
+	var settle_deadline := Time.get_ticks_msec() + TAKE_TAIL_SETTLE_MS
+	while Time.get_ticks_msec() < settle_deadline:
+		await get_tree().process_frame
+
 	# Asserted on the client too: proves the lift replicated, not just that the
 	# host believes it happened.
 	if not await _until("client sees it lifted", func() -> bool:
@@ -286,7 +497,13 @@ func _run_client(crate: Crate) -> void:
 
 	var carrier: Carrier = _me().get_node("Carrier")
 	carrier.try_toggle_hold()
-	if not await _until("client released", func() -> bool: return crate.holder_count() == 0):
+	# Both signals, not just the replicated one (01-09 found the gap). Holder
+	# count updates as soon as the HOST's own [method Crate._physics_process]
+	# next runs; on_hold_granted's ray exception is only cleared once the
+	# separate _hold_revoked RPC actually reaches THIS client, and those two
+	# arrivals are not ordered against each other.
+	if not await _until("client released", func() -> bool:
+			return crate.holder_count() == 0 and carrier.held_crate() == null):
 		return _finish(false)
 
 	await _run_client_drag()
@@ -361,6 +578,19 @@ func _run_client_drag() -> void:
 ## *replicated* position, which eases toward the teleport over a few frames. A
 ## fixed wait would be a flake waiting to happen; retrying until the state changes
 ## is deterministic in outcome.
+##
+## [b]Deliberately called without `await`.[/b] Every call site fires the
+## request synchronously (the loop's first iteration runs before its first
+## internal `await`) and then leaves this to keep retrying as a detached
+## coroutine while the caller moves on to its own state-based `_until` polls —
+## which is what actually decides pass or fail. Tried awaiting every call site
+## instead (2026-08-20, in case of an interaction with 01-05's zone probe) and
+## it made things worse: serialising all four calls stretched the carry/handoff
+## sequence enough to occasionally collapse the two-holder state out of a
+## single 20 Hz replication tick before the client ever observed it. Reverted;
+## the two things that actually needed fixing were the zone probe embedding
+## itself in the floor and never settling (below), and letting it stay awake
+## and replicating into the timing-sensitive carry scenario that follows.
 func _take(stand: Vector3, crate: Crate, want_drag := false) -> void:
 	var me := _me()
 	me.teleport_to(stand)
@@ -452,6 +682,13 @@ func _report_state() -> void:
 		print("[test] state %s holders=%d (a=%d b=%d) pos=%v" % [
 			CRATE_NAME, crate.holder_count(), crate.sync_holder_a, crate.sync_holder_b,
 			crate.global_position,
+		])
+	if _world != null:
+		var goods_in := _world.get_node_or_null(ZONE_PATH) as GoodsZone
+		var goods_out := _world.get_node_or_null(ZONE_OUT_PATH) as GoodsZone
+		print("[test] state GoodsIn.count=%d GoodsOut.count=%d" % [
+			goods_in.count() if goods_in != null else -1,
+			goods_out.count() if goods_out != null else -1,
 		])
 	var me := _me()
 	if me != null:

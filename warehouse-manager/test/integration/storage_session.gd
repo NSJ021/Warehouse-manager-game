@@ -1,0 +1,1462 @@
+extends Node
+
+## Integration layer: the storage round trip, across two real processes.
+##
+## Sibling to carry_session.gd rather than folded into it — carry's
+## choreography is already a full linear script, and storage is a different
+## scenario entirely. Follows the same design rules as that file (see its own
+## doc comment for the reasoning): drives the real keypress path through
+## [method Carrier.try_toggle_hold], instances the real test_room.tscn rather
+## than a bespoke scene, waits on state rather than time, and has its own
+## port so it can never fight carry_session's 27099 or a live game's 27015.
+##
+## ⚠ A few of this scenario's exact numbers do not survive being simulated
+## step by step the way the plan first wrote them — filling a cell to eight
+## and then asserting it empty two steps later, or an occupancy of 1 sitting
+## alongside a crate count that only matches a completely different point in
+## the sequence. Every *property* the plan names is still proven below —
+## place, a cell taking more than one, a full cell refusing without a drop, a
+## dragged crate refused above the floor row, LIFO order, and the body budget
+## — the exact figures are just derived from what this sequence actually
+## does rather than copied from the plan text. See 01-04-SUMMARY.md for the
+## specifics that changed.
+##
+## Two peers, host-leads/client-follows and back again, entirely through
+## replicated state:
+##   1. Host racks crate_0 into CELL_A. Client waits for the occupancy to
+##      change and checks its own copy — the real proof of "the body left the
+##      world on every peer", not just the host's say-so.
+##   2. Client racks crate_1 into the SAME cell. Host waits and checks back —
+##      proves a cell holds more than one (ADR 18), not one-slot-per-cell.
+##   3. Host tops CELL_B up to capacity through the referee's own broadcast
+##      RPC directly, with synthetic ids that were never real crates. This is
+##      setup, not the thing under test, but it travels over the same wire a
+##      real placement does, so both peers agree it is full.
+##   4. Client grabs a loose crate and is refused by the full cell — proven on
+##      the real keypress path, and proven it does not silently become a
+##      drop.
+##   5. Client drags a different crate and is refused by CELL_A, which is not
+##      floor level (ADR 19) — a carried crate can reach it (steps 1 and 2
+##      just did); a dragged one physically cannot.
+##   6. Host retrieves twice from CELL_A with empty hands between each. The
+##      rack's own bookkeeping (rack.occupant()) pops in the exact reverse of
+##      the order the two ids went in — the mechanic ADR 18 exists for. Proven
+##      through that bookkeeping rather than through the id of whatever crate
+##      ends up in the retriever's hands, because request_retrieve always
+##      mints a fresh body — the placed one was freed outright, ADR 14, so
+##      nothing kept the original in reserve to hand back. The cell ends
+##      empty, which the client independently confirms on its own copy.
+##
+## 01-07 continues the same two peers straight on from step 6, with its own
+## numbered steps 7-9 (shed, then stack) — see the block of constants below
+## for the detail, kept there rather than here so the exact cell numbers and
+## the reasoning behind them sit next to each other.
+
+const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
+
+## Deliberately neither carry_session's 27099 nor a live game's 27015.
+const TEST_PORT := 27097
+const STEP_TIMEOUT_MS := 15000
+const EXPECTED_PLAYERS := 2
+## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for
+## the gate playtest protocol (2026-08-21) — two rows of six rather than one
+## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why. Every
+## crate_0..crate_5 name and position this file already depends on is
+## unchanged — the second row (crate_6..crate_11) is unclaimed by any step
+## below, same as row 1's own untouched crate_1 slot before it.
+const EXPECTED_CRATES := 12
+
+## The rack this session racks into and retrieves from. Node name is protocol
+## (ADR 12) — must match the level's actual Racks/rack_wall exactly.
+const RACK_PATH := "Racks/rack_wall"
+## The wave 7 gate's three regression steps (10-12, below) all use
+## rack_island rather than rack_wall — untouched by every step above this
+## point, so they cannot collide with rack_wall's own already-exercised cell
+## states. The same cell-index topology applies unchanged: StorageGrid's
+## arithmetic is rack-agnostic, and CELL_A/CELL_B/CELL_TOP_A/CELL_TOP_B below
+## are reused as-is against this second rack — depth=1 is the near, aimable
+## side approached from +Z on rack_island too, for the same reason rack_wall's
+## own note on those constants explains.
+const RACK2_PATH := "Racks/rack_island"
+## Both level 1 (StorageGrid.cell_coords(i).z == 1, not floor) — deliberately
+## not level 0, so a real carried placement into either one is itself a small
+## proof that "a carried crate can reach any cell" (a dragged one cannot
+## reach either).
+##
+## ⚠ Both also depth=1 (StorageGrid.cell_coords(i).y == 1), and that part is
+## not a free choice. A rack's CellSensor volumes are permanent aim targets,
+## present whether or not their cell holds anything, and rack_wall is backed
+## directly onto the room's north wall — so the only side a player can ever
+## stand on is the depth=1 (south-facing) row's own side. Aiming at a
+## depth=0 cell from there means the ray has to pass through the depth=1
+## cell directly in front of it first, and an Area3D blocks a raycast
+## regardless of its monitoring flags, so a depth=0 cell on this particular
+## rack is permanently unaimable no matter what it holds. Discovered by this
+## scenario timing out solid on cell 5 (depth 0) before this was cell 7.
+const CELL_A := 7
+const CELL_B := 6
+
+## How far past the cell centre a player stands to interact with it, along Z.
+##
+## Derived, not guessed. At 1.3 m the held crate (riding 1.15 m in front of
+## the camera) would sit inside the rack's own deck, breaking the hold for
+## reasons that look like a physics bug rather than a bad stand position. At
+## 2.0 m the held crate clears the deck face, the camera sits about 2.05 m
+## from the cell centre — inside both the 2.0 m GrabRay and the referee's
+## 3.0 m PLACE_REACH — and aiming at rack.cell_to_global_position(i) resolves
+## back to cell i. If an assertion below ever fails, re-check this first.
+## (PLACE_REACH was 2.6 until the wave 7 gate found it too tight for a
+## ray-limited aim near the ray's own edge — see MAX_RANGE_STAND_OFFSET_Z's
+## own doc comment below, and carry_authority.gd's. The whole reach chain —
+## GrabRay, GRAB_REACH, PLACE_REACH — was shortened again at the wave 7 gate,
+## 2026-08-21 (NJ): 2.5 m ray / 2.5 m GRAB_REACH / 3.5 m PLACE_REACH each
+## became 2.0 / 2.0 / 3.0. This constant's own 2.0 m needed no change — it was
+## already the closer, deck-clearance-driven number — only the numbers it is
+## compared against here moved.)
+const RACK_STAND_OFFSET_Z := 2.0
+## Two different lateral offsets so host and client never occupy the exact
+## same point when both are near the rack in the same window — the same
+## reason carry_session gives its two roles different Z offsets around the
+## crate they share.
+const HOST_LATERAL := 0.4
+const CLIENT_LATERAL := -0.4
+## How far along Z a player stands from the crate row to grab a loose crate.
+##
+## Re-derived at the wave 7 gate (2026-08-21) when GRAB_REACH shortened
+## 2.5 -> 2.0 m — this is a GRAB_REACH check (carry_authority.gd's
+## request_grab measures camera -> crate.global_position directly), not a
+## PLACE_REACH one, so it has no half-diagonal margin to lean on the way a
+## cell placement does. [method _grab] stands the player level with the
+## crate on X, so this is the only horizontal component — but the vertical
+## drop is what actually eats the budget: CameraPivot sits 1.6 m above
+## STAND_HEIGHT (1.7 m up), and a crate that spawned at the row's y=0.6 has
+## long since fallen and settled to its real rest height, y=0.25 (floor top
+## at y=0.0, a Small's own half-height 0.25 - see carry_session.gd's
+## LIFT_MIN_Y doc for the same number confirmed independently). That is a
+## fixed 1.45 m vertical leg regardless of how close this offset stands the
+## player, so sqrt(offset^2 + 1.45^2) <= 2.0 caps offset at about 1.38 m with
+## NO margin. 1.5 cleared the old 2.5 m GRAB_REACH by 0.41 m; 1.15 clears the
+## new 2.0 m by about 0.15 m (distance ~1.85 m) — comparable margin, closer
+## stand. Every crate this file grabs (crate_0 through the max-range probe)
+## sits at this same row height, so this one number covers all of them.
+const GRAB_STAND_OFFSET_Z := 1.15
+const STAND_HEIGHT := 0.1
+## How long the host waits, after its own last network-relevant action,
+## before quitting. get_tree().quit() does not flush a pending reliable send
+## first, so finishing immediately after issuing one can tear the peer down
+## before it actually reaches the client -- see the call site.
+const EXIT_SETTLE_MS := 500
+
+## Crate name allocation within this scenario's own world (a separate process
+## pair from carry_session, so its own crate counter starts at 0 too — these
+## names do not collide with carry_session's table).
+const CRATE_HOST_NAME := "crate_0"
+const CRATE_CLIENT_NAME := "crate_1"
+const CRATE_FULL_ATTEMPT_NAME := "crate_2"
+const CRATE_DRAG_ATTEMPT_NAME := "crate_3"
+
+## Ids for CELL_B's synthetic fill. Far outside the range TestRoom ever
+## mints (0..5 for six starting crates), so they can never collide with, or
+## be mistaken for, a real crate.
+const FILLER_ID_START := 9000
+const FILLER_COUNT := 8
+
+## --- 01-07: the shed, and the stack. ---
+##
+##   7. Host fills two top-row cells with two of the six starting crates that
+##      nothing above ever names (crate_4, crate_5 sit untouched in the row
+##      the whole time - reserved for exactly this), through the same real
+##      grab-and-place choreography steps 1-2 used.
+##   8. Host launches a third crate at the rack fast enough to clear
+##      Rack.shed_impact_speed, by direct property manipulation rather than a
+##      grab - the same determinism trick carry_session.gd's own _take()
+##      documents: a crate is always simulated for real on the host, so
+##      setting its transform and velocity by hand is a legitimate host
+##      action. Both peers then assert: both top-row cells empty; cell 6 (not
+##      top row) untouched, proving the bound; the loose-crate count up by
+##      exactly two, a delta against what was recorded before the impact, not
+##      an absolute; and both racked visuals gone.
+##   9. The same direct-manipulation trick places one loose crate directly
+##      above another, away from every other fixture, and both peers wait for
+##      the upper one to settle above the lower rather than sink through it -
+##      success criterion 5's first half. The "blocks pathing" half is a
+##      finding for a human, not a test - see 01-07-SUMMARY.md.
+##
+## Steps 10-12 (added 2026-08-21) are three regressions found live at the
+## wave 7 gate playtest, all against rack_island rather than rack_wall so
+## they cannot collide with anything above: retrieving a crate does not shed
+## a still-loaded neighbour cell in the same top row; a crate stranded inside
+## a rack's own CellSensor volume is grabbable through the real interact
+## path; and a genuine maximum-range aim succeeds rather than being silently
+## refused. See the "Wave 7 gate regressions" block comment above
+## MAX_RANGE_STAND_OFFSET_Z for the full reasoning behind each.
+
+## Both level 2 (top row - StorageGrid.cell_coords(i).z == RACK_LEVELS - 1)
+## and depth 1, the same aimable side CELL_A/CELL_B already established
+## above: rack_wall's depth-0 row is permanently unaimable regardless of
+## level (the front row's own CellSensor volumes block the ray to whatever
+## is behind them), so a depth-0 top-row cell would never be reachable
+## through the real grab-and-place path this step deliberately uses.
+const CELL_TOP_A := 10
+const CELL_TOP_B := 11
+
+## Two of the six starting crates nothing above this point ever names by
+## constant - see the step 7 note above for why that is deliberate rather
+## than an oversight.
+const CRATE_SHED_A_NAME := "crate_4"
+const CRATE_SHED_B_NAME := "crate_5"
+
+## Comfortably above Rack.shed_impact_speed (4.0) so a frame or two of drag
+## before body_entered fires can never flake the assertion.
+const IMPACT_SPEED := 8.0
+## Rack-local, along the rack's own +Z - the same axis RACK_STAND_OFFSET_Z
+## stands a player on, and the side ImpactSensor's own centre (z=1.0) sits
+## proud of at its far edge (z=1.45, half its 0.9 depth either side of
+## centre). 1.9 clears that with margin, so the crate starts genuinely
+## outside the sensor and body_entered fires as it arrives rather than on
+## the very first frame of the scenario.
+const IMPACT_START_OFFSET_Z := 1.9
+## Rack-local height for the impact - inside ImpactSensor's y-span (1.3 local
+## centre, 1.2 either side) with margin on both sides.
+const IMPACT_HEIGHT := 1.5
+## Rack-local, along the rack's own +X. Centred on the rack's own width
+## (matches ImpactSensor's own x centre) and deliberately not 0 - the corner
+## uprights (rack.tscn's UprightBackLeft/Right) sit right at the rack's own
+## x=0 and x=2 edges, and a crate launched with no lateral offset spawns
+## already overlapping one of them, which flings it in a direction this test
+## cannot predict rather than sending it into the sensor. 1.0 keeps the whole
+## crate (0.25 half-extent) inside the 0.1-1.9 aisle between them.
+const IMPACT_LATERAL_OFFSET := 1.0
+
+## Clear floor for the stacking check, away from the racks, the zones, the
+## crate row and PARK_POINT alike.
+const STACK_BASE := Vector3(4.0, 0.25, -4.0)
+## How far above STACK_BASE the upper crate starts - comfortably clear so it
+## visibly falls onto the lower one rather than starting embedded in it.
+const STACK_DROP_HEIGHT := 0.55
+## The stacked crate's own half-height (0.25) plus the lower crate's, less a
+## small margin - above this it is resting on top; at or below it, it has
+## sunk into (or through) the lower crate.
+const STACK_SETTLED_MIN_Y := 0.45
+
+## --- Wave 7 gate regressions (10-12), added 2026-08-21. ---
+##
+## Three defects diagnosed live at the gate playtest, each fixed in game code
+## and proven here against the real path rather than only by reasoning about
+## the fix:
+##
+##   10. A cell taken more than one, retrieval this time: rack_island's own
+##       top row is filled exactly as step 7 filled rack_wall's, then ONE of
+##       the two loaded cells is retrieved through the real request_retrieve
+##       path. Before the fix (Crate._spawn_ms / age_ms, Rack.MINT_GRACE_MS),
+##       the retrieved crate mints at its cell's own centre — inside the
+##       rack's ImpactSensor — and the hold spring accelerates it past
+##       shed_impact_speed while still overlapping, shedding the row it was
+##       just taken from (reproduced live: retrieving from a loaded top row
+##       shed the row). Proven the same way step 8 already proves a real shed
+##       — occupied_count on the untouched neighbour cell, and a crate-count
+##       delta against a baseline captured immediately before — rather than
+##       inventing a second observation mechanism for "no shed happened".
+##   11. A loose crate resting inside a rack's CellSensor volume (a shed
+##       crate landing there happened twice in play) used to be permanently
+##       unaimable: the combined ray hit the sensor's own surface first,
+##       resolved to an empty cell, and try_toggle_hold did nothing — and
+##       supply conservation did not save it, since recovery only fires
+##       below the world. Carrier._aim()'s empty-handed cargo-only probe is
+##       the fix; this teleports a crate into a cell, lets it fall and settle
+##       exactly as a shed crate would, then grabs it through the real
+##       try_toggle_hold path — not by calling anything lower-level.
+##   12. A genuine maximum-range aim: PLACE_REACH used to measure
+##       camera → cell CENTRE against a reach barely past GrabRay's own 2.5 m
+##       camera → hit-point limit (both numbers as they stood at the time),
+##       so a real aim near the ray's own edge could paint the highlight
+##       green and then be silently refused. MAX_RANGE_STAND_OFFSET_Z stands
+##       the player far enough back that camera → cell face lands near the
+##       ray's own edge while camera → cell centre lands past the OLD, buggy
+##       2.6 m PLACE_REACH — this placement would have failed before the fix
+##       and must succeed now. Re-derived at the wave 7 gate (2026-08-21,
+##       NJ) when the whole reach chain shortened again — ray and
+##       GRAB_REACH 2.5 → 2.0 m, PLACE_REACH 3.5 → 3.0 m — see
+##       MAX_RANGE_STAND_OFFSET_Z's own doc comment below for the new
+##       numbers this regression now proves against.
+
+## Regression 12's stand offset, deliberately farther back than
+## RACK_STAND_OFFSET_Z's comfortable 2.0 m. Solved the same way
+## RACK_STAND_OFFSET_Z's own doc comment was: numerically, from the
+## stand → camera → face/centre geometry, not guessed.
+##
+## Re-derived at the wave 7 gate (2026-08-21) for the new 2.0 m ray / 3.0 m
+## PLACE_REACH (was 2.85 m, for the old 2.5 m ray / 3.5 m PLACE_REACH — see
+## the "12." bullet above). At 2.35 m: camera to the cell's own face lands at
+## ≈1.89 m — just inside the new 2.0 m GrabRay, the same "near the ray's own
+## edge" band the original 2.85 m targeted (then 2.3-2.45 m out of a 2.5 m
+## ray; now 1.8-1.95 m out of a 2.0 m one) — so the ray still connects, but
+## barely, which is the point. Camera to the cell CENTRE — what PLACE_REACH
+## actually checks — lands at ≈2.38 m: comfortably inside the new 3.0 m
+## PLACE_REACH, which alone would tolerate up to the ray's own 2.87 m worst
+## case (PLACE_REACH's own doc comment). The binding constraint at this
+## offset is the ray actually reaching the cell at all, not PLACE_REACH —
+## exactly the case this regression exists to prove.
+const MAX_RANGE_STAND_OFFSET_Z := 2.35
+
+const CRATE_GATE_TOP_A_NAME := "crate_6"
+const CRATE_GATE_TOP_B_NAME := "crate_7"
+const CRATE_GATE_STRANDED_NAME := "crate_8"
+const CRATE_GATE_MAX_RANGE_NAME := "crate_9"
+
+## Where steps 10-11 release what they were holding — PARK_POINT itself is
+## calibrated for rack_wall's own approach corridor, over 11 m from
+## rack_island, and walking a release there and back (measured: this scenario
+## timed out solid on step 11's cross-peer check the first time it used
+## PARK_POINT — the round trip left too little of the client's own 15 s
+## window for a 20 Hz replication tick to actually land before the crate was
+## released again) buys nothing here: steps 10-12 never aim at rack_wall
+## again, so there is no earlier corridor left to protect from a dropped
+## crate. East of rack_island's own footprint (x=[6.5,8.5]) rather than north
+## of it, clear of both CELL_A's and CELL_B's own approach stand points
+## (both north of the rack, around z=4.5-5.35) and of the ImpactSensor's own
+## x-extent (max 8.6).
+const GATE_PARK_POINT := Vector3(9.5, STAND_HEIGHT, 2.5)
+## How long step 11 holds crate_8 before releasing it, deliberately — not a
+## state wait, but the same reasoning EXIT_SETTLE_MS already relies on: the
+## client's own replicated view needs at least one 20 Hz sync tick to see
+## the hold before it ends again.
+const GATE_HOLD_CONFIRM_MS := 500
+
+## Step 11's own approach offset, added at the wave 7 gate (2026-08-21) when
+## GRAB_REACH shortened 2.5 -> 2.0 m. RACK_STAND_OFFSET_Z's default is tuned
+## for a PLACE_REACH check against the cell's mathematical CENTRE — fine for
+## every placement/retrieval in this file, but step 11 grabs a real crate
+## (a GRAB_REACH check, camera -> crate.global_position), and this crate did
+## not stay at the centre: it fell out of CELL_A's own sensor volume and
+## settled on the rack's DeckMid shelf below (local/world y=1.025, from
+## rack.tscn — a Small's own half-height, 0.25, puts its resting centre at
+## y≈1.275), 0.225 m below the cell's mathematical centre (y=1.5) that
+## RACK_STAND_OFFSET_Z's own margin was computed against. That extra vertical
+## drop, combined with CameraPivot sitting 1.7 m up (STAND_HEIGHT + 1.6) and
+## HOST_LATERAL's 0.4 m sideways offset, pushed camera -> crate to ≈2.08 m at
+## the default 2.0 m offset — inside the OLD 2.5 m GRAB_REACH with room to
+## spare, but past the new 2.0 m one. At 1.7 m: sqrt(0.4² + 0.425² + 1.7²) ≈
+## 1.80 m, comfortably inside the new GRAB_REACH with margin — and still well
+## clear of the rack's own accessible face (world z=3.0 for this cell; this
+## stands the player at world z=4.2), so it does not put the capsule inside
+## the frame.
+const STRANDED_STAND_OFFSET_Z := 1.7
+
+var _role := "host"
+var _world: Node = null
+var _steps_passed := 0
+
+
+func _ready() -> void:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--role="):
+			_role = arg.trim_prefix("--role=")
+
+	print("[test] role=%s port=%d" % [_role, TEST_PORT])
+
+	Net.session_started.connect(_on_session_started)
+	Net.session_failed.connect(_on_session_failed)
+
+	if _role == "host":
+		Net.local_player_name = "HOST"
+		Net.host_session(Net.TransportKind.ENET, TEST_PORT)
+	else:
+		Net.local_player_name = "CLIENT"
+		Net.join_session(Net.TransportKind.ENET, "127.0.0.1", TEST_PORT)
+
+	_run()
+
+
+func _on_session_started(as_host: bool) -> void:
+	if _world != null:
+		return
+	_world = WORLD_SCENE.instantiate()
+	add_child(_world)
+	if as_host:
+		print("[test] READY-TO-ACCEPT")
+
+
+func _on_session_failed(reason: String) -> void:
+	_fail("session", reason)
+	_finish(false)
+
+
+func _run() -> void:
+	if not await _until("session up", func() -> bool: return Net.in_session()):
+		return _finish(false)
+	if not await _until("world loaded", func() -> bool: return _world != null):
+		return _finish(false)
+	if not await _until("both peers in roster", func() -> bool:
+			return Net.players.size() == EXPECTED_PLAYERS):
+		return _finish(false)
+	if not await _until("all %d crates replicated" % EXPECTED_CRATES, func() -> bool:
+			return _crates() != null and _crates().get_child_count() == EXPECTED_CRATES):
+		return _finish(false)
+	if not await _until("own body spawned", func() -> bool: return _me() != null):
+		return _finish(false)
+
+	var rack := _rack()
+	if rack == null:
+		_fail("find %s" % RACK_PATH, "not present under the world")
+		return _finish(false)
+	var rack2 := _rack_island()
+	if rack2 == null:
+		_fail("find %s" % RACK2_PATH, "not present under the world")
+		return _finish(false)
+
+	if _role == "host":
+		await _run_host(rack, rack2)
+	else:
+		await _run_client(rack, rack2)
+
+
+# --------------------------------------------------------------- host role
+
+func _run_host(rack: Rack, rack2: Rack) -> void:
+	# --- 1: host racks crate_0 into CELL_A. ---
+	var crate_host := _crate_named(CRATE_HOST_NAME)
+	if crate_host == null:
+		_fail("find %s" % CRATE_HOST_NAME, "not present under Crates")
+		return _finish(false)
+
+	await _grab(crate_host)
+	if not await _until("host holds %s" % CRATE_HOST_NAME, func() -> bool:
+			return crate_host.holder_count() == 1):
+		return _finish(false)
+	# Captured now, not read off crate_host later: placing it frees the body
+	# (ADR 14), and crate_host itself becomes a freed reference the instant
+	# that happens. crate.id survives; the node does not.
+	var crate_host_id := crate_host.id
+
+	await _place(rack, CELL_A, HOST_LATERAL)
+	if not await _until("crate_0 racked into cell %d" % CELL_A, func() -> bool:
+			return rack.occupant(CELL_A) != -1):
+		return _finish(false)
+	# queue_free() defers the actual removal rather than doing it inline, so
+	# polled rather than checked once — a check landing in the gap between
+	# "the cell shows it" and "the node is actually gone" would read as a
+	# real failure for a race that was never one.
+	if not await _until("the body left the world on the host too", func() -> bool:
+			return _crates().get_child_count() == EXPECTED_CRATES - 1):
+		return _finish(false)
+	_expect_now(
+		rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_A) != null,
+		"cell %d shows its racked visual on the host" % CELL_A,
+	)
+	if not await _wait_for_settle(rack, CELL_A, 0):
+		return _finish(false)
+
+	# --- 2: client racks crate_1 into the same cell. Wait, then check back. ---
+	if not await _until("client racked a second crate into cell %d" % CELL_A, func() -> bool:
+			return rack.occupied_count(CELL_A) == 2):
+		return _finish(false)
+	if not await _until("both bodies left the world", func() -> bool:
+			return _crates().get_child_count() == EXPECTED_CRATES - 2):
+		return _finish(false)
+	# The client's own placement, landing on the host's copy — proves the
+	# tween converges for a non-host-initiated placement too, not just the
+	# host's own.
+	if not await _wait_for_settle(rack, CELL_A, 1):
+		return _finish(false)
+	# Captured now, while cell A's stack is known to hold exactly these two
+	# and nothing else touches it before step 6 -- this is the id the LIFO
+	# check at the end proves comes back out first, without this script
+	# needing its own reference to whatever crate the client happened to grab.
+	var crate_client_id := rack.occupant(CELL_A)
+
+	# --- 3: fill CELL_B to capacity through the referee's own broadcast. ---
+	# This is setup, not the thing under test, so it skips eight real
+	# grab-and-place round trips — but it goes out over the same _cell_filled
+	# RPC a real placement uses, so the client's own copy is genuinely full,
+	# not merely asserted so on the host's say-so.
+	var authority := _authority()
+	if authority == null:
+		_fail("find CarryAuthority", "not present under the world")
+		return _finish(false)
+	var before_budget := _crates().get_child_count()
+	for i in FILLER_COUNT:
+		authority._cell_filled.rpc(rack.name, CELL_B, FILLER_ID_START + i, rack.cell_to_global_position(CELL_B))
+	_expect_now(
+		rack.occupied_count(CELL_B) == FILLER_COUNT,
+		"cell %d holds all %d synthetic fillers on the host" % [CELL_B, FILLER_COUNT],
+	)
+	# The budget line: eight items now stored, at the cost of zero rigid
+	# bodies -- Crates.get_child_count() has not moved, because none of these
+	# were ever real crates in the first place. Printed as a [test] line so a
+	# human reading the log sees the number, because it is the criterion most
+	# likely to regress invisibly.
+	print("[test]      budget: %d crates in the world, %d items in cell %d" % [
+		_crates().get_child_count(), rack.occupied_count(CELL_B), CELL_B,
+	])
+	_expect_now(
+		_crates().get_child_count() == before_budget,
+		"storing 8 items spent zero bodies (%d before, %d after)" % [before_budget, _crates().get_child_count()],
+	)
+	# Unlike the placements above, nothing here ever calls queue_free() -- the
+	# fillers were never real crate bodies -- so this one is safe to check
+	# immediately rather than poll for.
+
+	# --- 4: wait for the client to grab the full-cell attempt crate, and
+	# confirm the refusal from the host's own authoritative truth, not the
+	# client's say-so. A tight window starting right at the grab, because the
+	# client releases this crate once its own check passes and moves on. ---
+	var crate_full_attempt := _crate_named(CRATE_FULL_ATTEMPT_NAME)
+	if crate_full_attempt == null:
+		_fail("find %s" % CRATE_FULL_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	if not await _until("client grabbed %s" % CRATE_FULL_ATTEMPT_NAME, func() -> bool:
+			return crate_full_attempt.holder_count() == 1):
+		return _finish(false)
+	if not await _stays(
+			"refused on the host's own truth: %s stays held, cell %d stays full" % [CRATE_FULL_ATTEMPT_NAME, CELL_B],
+			func() -> bool:
+				return (crate_full_attempt.holder_count() == 1
+						and rack.occupied_count(CELL_B) == FILLER_COUNT)):
+		return _finish(false)
+
+	# --- 5: same shape, for the drag attempt against cell A (ADR 19). ---
+	var crate_drag_attempt := _crate_named(CRATE_DRAG_ATTEMPT_NAME)
+	if crate_drag_attempt == null:
+		_fail("find %s" % CRATE_DRAG_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	if not await _until("client is dragging %s" % CRATE_DRAG_ATTEMPT_NAME, func() -> bool:
+			return (crate_drag_attempt.holder_count() == 1
+					and crate_drag_attempt.hold_mode() == Crate.HoldMode.DRAG)):
+		return _finish(false)
+	if not await _stays(
+			"ADR 19 on the host's own truth: %s stays dragged, cell %d untouched" % [CRATE_DRAG_ATTEMPT_NAME, CELL_A],
+			func() -> bool:
+				return (crate_drag_attempt.holder_count() == 1
+						and crate_drag_attempt.hold_mode() == Crate.HoldMode.DRAG
+						and rack.occupied_count(CELL_A) == 2)):
+		return _finish(false)
+
+	# The host's own stays window above is not proof the client's matching
+	# window (which starts later -- the client still has to walk and press
+	# three times first) has finished too. Without this, step 6 emptying
+	# CELL_A can race the client's own read of occupied_count(CELL_A) == 2
+	# mid-check -- exactly what happened before this wait was added. The
+	# client drops crate_3 once its own check passes, so that release is the
+	# signal step 6 is safe to start.
+	if not await _until("client finished with %s" % CRATE_DRAG_ATTEMPT_NAME, func() -> bool:
+			return crate_drag_attempt.holder_count() == 0):
+		return _finish(false)
+
+	# --- 6: retrieve twice from CELL_A with empty hands between each. ---
+	#
+	# LIFO is proven through the rack's own bookkeeping (rack.occupant()),
+	# not through the id of whatever crate ends up in the retriever's hands:
+	# request_retrieve always mints a brand new Crate body -- the one that
+	# was placed was freed outright (ADR 14), nothing kept it in reserve --
+	# so the physical crate that comes back has a fresh id unrelated to
+	# which stored id was actually popped.
+	_expect_now(
+		rack.occupant(CELL_A) == crate_client_id,
+		"LIFO: the most recently placed id (%d) is on top before the first retrieve (got %d)" % [crate_client_id, rack.occupant(CELL_A)],
+	)
+	var first := await _retrieve(rack, CELL_A, HOST_LATERAL)
+	if first == null:
+		_fail("first retrieve from cell %d" % CELL_A, "never granted")
+		return _finish(false)
+	_expect_now(
+		rack.occupant(CELL_A) == crate_host_id,
+		"LIFO: the first-placed id (%d) is what's left after popping the top one (got %d)" % [crate_host_id, rack.occupant(CELL_A)],
+	)
+	await _release_held()
+
+	var second := await _retrieve(rack, CELL_A, HOST_LATERAL)
+	if second == null:
+		_fail("second retrieve from cell %d" % CELL_A, "never granted")
+		return _finish(false)
+
+	_expect_now(rack.is_cell_empty(CELL_A), "cell %d is empty after both retrievals" % CELL_A)
+	# get_node_or_null() still finds a queue_free()'d node until the deferred
+	# removal actually runs, same as Crates.get_child_count() above -- polled
+	# for the same reason.
+	if not await _until("cell %d's racked visual is gone" % CELL_A, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_A) == null):
+		return _finish(false)
+	if not await _until("every original crate id is a body again", func() -> bool:
+			return _crates().get_child_count() == EXPECTED_CRATES):
+		return _finish(false)
+
+	# --- 7: fill two top-row cells for the shed test (01-07). ---
+	#
+	# The host is still holding what the second retrieve above handed back --
+	# nothing in step 6 lets it go. Release it first, same empty-hands start
+	# as every other grab in this file.
+	await _release_held()
+
+	var crate_shed_a := _crate_named(CRATE_SHED_A_NAME)
+	if crate_shed_a == null:
+		_fail("find %s" % CRATE_SHED_A_NAME, "not present under Crates")
+		return _finish(false)
+	await _grab(crate_shed_a)
+	if not await _until("host holds %s" % CRATE_SHED_A_NAME, func() -> bool:
+			return crate_shed_a.holder_count() == 1):
+		return _finish(false)
+	await _place(rack, CELL_TOP_A, HOST_LATERAL)
+	if not await _until("%s racked into cell %d" % [CRATE_SHED_A_NAME, CELL_TOP_A], func() -> bool:
+			return rack.occupant(CELL_TOP_A) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_TOP_A, 0):
+		return _finish(false)
+
+	var crate_shed_b := _crate_named(CRATE_SHED_B_NAME)
+	if crate_shed_b == null:
+		_fail("find %s" % CRATE_SHED_B_NAME, "not present under Crates")
+		return _finish(false)
+	await _grab(crate_shed_b)
+	if not await _until("host holds %s" % CRATE_SHED_B_NAME, func() -> bool:
+			return crate_shed_b.holder_count() == 1):
+		return _finish(false)
+	await _place(rack, CELL_TOP_B, HOST_LATERAL)
+	if not await _until("%s racked into cell %d" % [CRATE_SHED_B_NAME, CELL_TOP_B], func() -> bool:
+			return rack.occupant(CELL_TOP_B) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_TOP_B, 0):
+		return _finish(false)
+
+	# Baselines the shed's own assertions are measured against, recorded now
+	# rather than as a literal constant -- everything above this point has
+	# already shifted the loose-crate count more than once, so only a delta
+	# from here is meaningful (see the file's own note on why).
+	var crates_before_shed := _crates().get_child_count()
+	var cell_b_before_shed := rack.occupied_count(CELL_B)
+
+	# --- 8: launch a crate at the rack hard enough to shed it. ---
+	#
+	# Direct property manipulation, not a grab -- the same determinism trick
+	# carry_session.gd's own _take() documents: a crate is always simulated
+	# for real on the host, so setting its transform and velocity by hand is
+	# a legitimate host action, not a workaround for one. crate_2 is loose
+	# and unheld -- the client released it after its own refused-placement
+	# check back in step 4.
+	var impactor := _crate_named(CRATE_FULL_ATTEMPT_NAME)
+	if impactor == null:
+		_fail("find %s" % CRATE_FULL_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	_ensure_awake(impactor)
+	impactor.global_position = (rack.global_position
+			+ rack.global_transform.basis.x * IMPACT_LATERAL_OFFSET
+			+ rack.global_transform.basis.z * IMPACT_START_OFFSET_Z
+			+ Vector3.UP * IMPACT_HEIGHT)
+	impactor.sleeping = false
+	impactor.linear_velocity = -rack.global_transform.basis.z * IMPACT_SPEED
+	impactor.angular_velocity = Vector3.ZERO
+
+	if not await _until("the impact sheds cell %d" % CELL_TOP_A, func() -> bool:
+			return rack.occupied_count(CELL_TOP_A) == 0):
+		return _finish(false)
+	if not await _until("the impact sheds cell %d" % CELL_TOP_B, func() -> bool:
+			return rack.occupied_count(CELL_TOP_B) == 0):
+		return _finish(false)
+	_expect_now(
+		rack.occupied_count(CELL_B) == cell_b_before_shed,
+		"the bound holds: cell %d (not top row) is untouched by the shed" % CELL_B,
+	)
+	if not await _until("the shed spent exactly two new bodies", func() -> bool:
+			return _crates().get_child_count() == crates_before_shed + 2):
+		return _finish(false)
+	if not await _until("cell %d's racked visual is gone after the shed" % CELL_TOP_A, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_TOP_A) == null):
+		return _finish(false)
+	if not await _until("cell %d's racked visual is gone after the shed" % CELL_TOP_B, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_TOP_B) == null):
+		return _finish(false)
+
+	# --- 9: floor stacking still works (success criterion 5, first half). ---
+	#
+	# Same direct-manipulation trick as the impactor above. crate_2 (the
+	# impactor, now loose wherever the shed's own impulse and gravity left
+	# it) and crate_3 (loose since step 5) are both unheld and otherwise
+	# unused for the rest of this scenario.
+	var stack_bottom := impactor
+	var stack_top := _crate_named(CRATE_DRAG_ATTEMPT_NAME)
+	if stack_top == null:
+		_fail("find %s" % CRATE_DRAG_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	_ensure_awake(stack_bottom)
+	stack_bottom.global_position = STACK_BASE
+	stack_bottom.sleeping = false
+	stack_bottom.linear_velocity = Vector3.ZERO
+	stack_bottom.angular_velocity = Vector3.ZERO
+	_ensure_awake(stack_top)
+	stack_top.global_position = STACK_BASE + Vector3.UP * STACK_DROP_HEIGHT
+	stack_top.sleeping = false
+	stack_top.linear_velocity = Vector3.ZERO
+	stack_top.angular_velocity = Vector3.ZERO
+
+	if not await _until("the stacked crate rests on top rather than sinking through", func() -> bool:
+			return stack_top.global_position.y > STACK_SETTLED_MIN_Y):
+		return _finish(false)
+
+	# --- 10: regression - retrieval directly beside a loaded top row does
+	# NOT shed. See the "Wave 7 gate regressions" block comment below
+	# STACK_SETTLED_MIN_Y for the full reasoning; rack2 (rack_island) is
+	# untouched by everything above. ---
+	var crate_gate_a := _crate_named(CRATE_GATE_TOP_A_NAME)
+	if crate_gate_a == null:
+		_fail("find %s" % CRATE_GATE_TOP_A_NAME, "not present under Crates")
+		return _finish(false)
+	await _grab(crate_gate_a)
+	if not await _until("host holds %s" % CRATE_GATE_TOP_A_NAME, func() -> bool:
+			return crate_gate_a.holder_count() == 1):
+		return _finish(false)
+	# avoid_rack_island=true: see RACK_ISLAND_CORNER_WAYPOINT's own doc
+	# comment — a direct walk from the row crosses this rack's own footprint.
+	# Not load-bearing for crate_6 itself (the rack is still empty, so
+	# Rack._on_impact's own is_empty() guard would absorb any spurious
+	# impact here regardless), but the waypoint costs almost nothing over the
+	# direct path, so this stays consistent with crate_7's own approach below
+	# rather than leaving a latent version of the same hazard for whichever
+	# crate goes into this cell if the step order ever changes.
+	await _place(rack2, CELL_TOP_A, HOST_LATERAL, RACK_STAND_OFFSET_Z, true)
+	if not await _until("%s racked into rack_island cell %d" % [CRATE_GATE_TOP_A_NAME, CELL_TOP_A], func() -> bool:
+			return rack2.occupant(CELL_TOP_A) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_TOP_A, 0):
+		return _finish(false)
+
+	var crate_gate_b := _crate_named(CRATE_GATE_TOP_B_NAME)
+	if crate_gate_b == null:
+		_fail("find %s" % CRATE_GATE_TOP_B_NAME, "not present under Crates")
+		return _finish(false)
+	await _grab(crate_gate_b)
+	if not await _until("host holds %s" % CRATE_GATE_TOP_B_NAME, func() -> bool:
+			return crate_gate_b.holder_count() == 1):
+		return _finish(false)
+	# avoid_rack_island=true: see RACK_ISLAND_CORNER_WAYPOINT's own doc
+	# comment. Load-bearing here specifically — this is the placement whose
+	# direct walk sheds cell 10 out from under crate_7's own approach.
+	await _place(rack2, CELL_TOP_B, HOST_LATERAL, RACK_STAND_OFFSET_Z, true)
+	if not await _until("%s racked into rack_island cell %d" % [CRATE_GATE_TOP_B_NAME, CELL_TOP_B], func() -> bool:
+			return rack2.occupant(CELL_TOP_B) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_TOP_B, 0):
+		return _finish(false)
+
+	# Captured immediately before the retrieval that is actually under test --
+	# everything above this point has already moved the loose-crate count more
+	# than once, so only a delta from here is meaningful, same reasoning as
+	# crates_before_shed in step 7-8 above.
+	var crates_before_gate_retrieve := _crates().get_child_count()
+
+	var gate_retrieved := await _retrieve(rack2, CELL_TOP_A, HOST_LATERAL)
+	if gate_retrieved == null:
+		_fail("retrieve from rack_island cell %d" % CELL_TOP_A, "never granted")
+		return _finish(false)
+	# Waited for, not checked in the same breath as the stays-window below:
+	# _cell_cleared and the retrieval's own crate spawn are two separate
+	# reliable messages with no ordering guarantee between them landing in
+	# the same polled frame, the same class of race the queue_free() despawn
+	# checks elsewhere in this file already account for. Folding this into
+	# the stays-window's own predicate would fail it the instant the spawn
+	# happened to lag the cell-clear by even one frame.
+	if not await _until("the retrieval spent exactly one new body", func() -> bool:
+			return _crates().get_child_count() == crates_before_gate_retrieve + 1):
+		return _finish(false)
+	if not await _stays(
+			"regression: retrieving cell %d does not shed the still-loaded neighbour cell %d" % [CELL_TOP_A, CELL_TOP_B],
+			func() -> bool:
+				return (rack2.occupied_count(CELL_TOP_B) == 1
+						and _crates().get_child_count() == crates_before_gate_retrieve + 1)):
+		return _finish(false)
+	await _release_held(GATE_PARK_POINT)
+
+	# --- 11: regression - a crate stranded inside a rack's own CellSensor
+	# volume is grabbable through the real interact path, not permanently
+	# lost. ---
+	var crate_stranded := _crate_named(CRATE_GATE_STRANDED_NAME)
+	if crate_stranded == null:
+		_fail("find %s" % CRATE_GATE_STRANDED_NAME, "not present under Crates")
+		return _finish(false)
+	_ensure_awake(crate_stranded)
+	crate_stranded.global_position = rack2.cell_to_global_position(CELL_A)
+	crate_stranded.linear_velocity = Vector3.ZERO
+	crate_stranded.angular_velocity = Vector3.ZERO
+
+	# Real gravity carries it down onto the rack's own deck rather than
+	# leaving it floating at the cell's mathematical centre — waited for
+	# rather than assumed, the same "state, not time" rule every other step
+	# here follows. sync_settled (ADR 17) is the same signal a real shed
+	# crate would eventually reach too.
+	if not await _until("%s falls and settles inside cell %d's sensor volume" % [CRATE_GATE_STRANDED_NAME, CELL_A], func() -> bool:
+			return crate_stranded.sync_settled):
+		return _finish(false)
+
+	# STRANDED_STAND_OFFSET_Z, not the default RACK_STAND_OFFSET_Z — this grab
+	# checks against the crate's own settled (lower) position, not the cell's
+	# mathematical centre, and needs its own closer stand point to still clear
+	# GRAB_REACH. See that constant's own doc comment for the arithmetic.
+	await _approach_cell(rack2, CELL_A, HOST_LATERAL, false, STRANDED_STAND_OFFSET_Z)
+	var me := _me()
+	var carrier: Carrier = me.get_node("Carrier")
+	# Aimed at the crate's own resting position rather than the cell's
+	# mathematical centre — gravity settled it onto the deck below, not
+	# exactly at the centre a shed crate would rarely land on either.
+	var aim_target := crate_stranded.global_position
+	var deadline := Time.get_ticks_msec() + STEP_TIMEOUT_MS
+	while Time.get_ticks_msec() < deadline:
+		if carrier.held_crate() == crate_stranded:
+			break
+		me.aim_at(aim_target)
+		carrier.try_toggle_hold()
+		for _i in 6:
+			await get_tree().process_frame
+	_expect_now(
+		carrier.held_crate() == crate_stranded,
+		"the stranded %s was grabbed through the real interact path, not left permanently unreachable" % CRATE_GATE_STRANDED_NAME,
+	)
+
+	# Held deliberately for a moment before releasing — see
+	# GATE_HOLD_CONFIRM_MS's own doc comment. The client's own matching check
+	# (in _run_client) is what actually proves this replicated; this is just
+	# giving it the time to.
+	var hold_confirm_deadline := Time.get_ticks_msec() + GATE_HOLD_CONFIRM_MS
+	while Time.get_ticks_msec() < hold_confirm_deadline:
+		await get_tree().process_frame
+	await _release_held(GATE_PARK_POINT)
+
+	# --- 12: regression - a genuine maximum-range aim succeeds. ---
+	var crate_max_range := _crate_named(CRATE_GATE_MAX_RANGE_NAME)
+	if crate_max_range == null:
+		_fail("find %s" % CRATE_GATE_MAX_RANGE_NAME, "not present under Crates")
+		return _finish(false)
+	await _grab(crate_max_range)
+	if not await _until("host holds %s" % CRATE_GATE_MAX_RANGE_NAME, func() -> bool:
+			return crate_max_range.holder_count() == 1):
+		return _finish(false)
+	await _place(rack2, CELL_B, HOST_LATERAL, MAX_RANGE_STAND_OFFSET_Z)
+	if not await _until("%s racked into rack_island cell %d from maximum range" % [CRATE_GATE_MAX_RANGE_NAME, CELL_B], func() -> bool:
+			return rack2.occupant(CELL_B) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_B, 0):
+		return _finish(false)
+
+	# The host's own view of everything above is already correct here --
+	# call_local applies its own broadcasts synchronously -- but the CLIENT's
+	# matching checks each depend on an RPC (the second retrieve's
+	# _cell_cleared, then the shed's own pair of them) actually reaching the
+	# wire before quit() tears the peer down. get_tree().quit() does not wait
+	# for a pending reliable send to flush, so finishing immediately after
+	# issuing one raced the packet out from under itself the first time this
+	# scenario was run to a clean pass. Real wall time, not frames, for the
+	# same reason SPAWN_SETTLE_MS in carry_session.gd is: headless runs
+	# uncapped, so a frame count buys no fixed amount of real time for the
+	# network to actually do anything.
+	var settle_deadline := Time.get_ticks_msec() + EXIT_SETTLE_MS
+	while Time.get_ticks_msec() < settle_deadline:
+		await get_tree().process_frame
+
+	_finish(true)
+
+
+# ------------------------------------------------------------- client role
+
+func _run_client(rack: Rack, rack2: Rack) -> void:
+	# --- 1: wait for the host to rack crate_0, then check our own copy. ---
+	if not await _until("host racked crate_0 into cell %d" % CELL_A, func() -> bool:
+			return rack.occupied_count(CELL_A) == 1):
+		return _finish(false)
+	# Polled, not checked once: queue_free() replicates its own despawn as a
+	# separate message from the _cell_filled broadcast, so there is no
+	# ordering guarantee between "the cell shows it" and "the body is
+	# actually gone on this peer" landing in the same polled frame.
+	if not await _until("the client's own view already lost the body too", func() -> bool:
+			return _crates().get_child_count() == EXPECTED_CRATES - 1):
+		return _finish(false)
+	_expect_now(
+		rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_A) != null,
+		"the client's own view shows cell %d's racked visual" % CELL_A,
+	)
+	if not await _wait_for_settle(rack, CELL_A, 0):
+		return _finish(false)
+
+	# --- 2: client racks crate_1 into the same cell. ---
+	var crate_client := _crate_named(CRATE_CLIENT_NAME)
+	if crate_client == null:
+		_fail("find %s" % CRATE_CLIENT_NAME, "not present under Crates")
+		return _finish(false)
+
+	await _grab(crate_client)
+	if not await _until("client holds %s" % CRATE_CLIENT_NAME, func() -> bool:
+			return crate_client.holder_count() == 1):
+		return _finish(false)
+
+	await _place(rack, CELL_A, CLIENT_LATERAL)
+	if not await _until("cell %d now holds two" % CELL_A, func() -> bool:
+			return rack.occupied_count(CELL_A) == 2):
+		return _finish(false)
+	if not await _until("both bodies are gone from the client's own view too", func() -> bool:
+			return _crates().get_child_count() == EXPECTED_CRATES - 2):
+		return _finish(false)
+	# This is the client's own placement, checked on the client's own copy --
+	# the non-host-initiated case, on the peer that actually asked for it.
+	if not await _wait_for_settle(rack, CELL_A, 1):
+		return _finish(false)
+
+	# --- 3: wait for the host to fill CELL_B. ---
+	if not await _until("cell %d filled to capacity" % CELL_B, func() -> bool:
+			return rack.occupied_count(CELL_B) == FILLER_COUNT):
+		return _finish(false)
+
+	# --- 4: attempt to place a loose crate into the full cell. Refused. ---
+	var crate_full_attempt := _crate_named(CRATE_FULL_ATTEMPT_NAME)
+	if crate_full_attempt == null:
+		_fail("find %s" % CRATE_FULL_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+
+	await _grab(crate_full_attempt)
+	if not await _until("client holds %s" % CRATE_FULL_ATTEMPT_NAME, func() -> bool:
+			return crate_full_attempt.holder_count() == 1):
+		return _finish(false)
+
+	var carrier: Carrier = _me().get_node("Carrier")
+	await _attempt_place(rack, CELL_B, CLIENT_LATERAL)
+	if not await _stays("refused: still holding %s, cell %d still full" % [CRATE_FULL_ATTEMPT_NAME, CELL_B],
+			func() -> bool:
+				return (carrier.held_crate() == crate_full_attempt
+						and rack.occupied_count(CELL_B) == FILLER_COUNT)):
+		return _finish(false)
+
+	# Hands free again before the next grab -- request_grab refuses outright
+	# while already holding something, so the refused crate has to go down
+	# (an ordinary drop, unchanged from Phase 0) before crate_3 can be picked
+	# up. The host's own check above already ran and finished by this point.
+	await _release_held()
+
+	# --- 5: drag a different crate, attempt cell A (not floor level). Refused. ---
+	var crate_drag_attempt := _crate_named(CRATE_DRAG_ATTEMPT_NAME)
+	if crate_drag_attempt == null:
+		_fail("find %s" % CRATE_DRAG_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+
+	await _grab(crate_drag_attempt, true)
+	if not await _until("client is dragging %s" % CRATE_DRAG_ATTEMPT_NAME, func() -> bool:
+			return carrier.is_dragging()):
+		return _finish(false)
+
+	await _attempt_place(rack, CELL_A, CLIENT_LATERAL, true)
+	if not await _stays(
+			"ADR 19: still dragging %s, cell %d untouched" % [CRATE_DRAG_ATTEMPT_NAME, CELL_A],
+			func() -> bool:
+				return (carrier.is_dragging() and carrier.held_crate() == crate_drag_attempt
+						and rack.occupied_count(CELL_A) == 2)):
+		return _finish(false)
+
+	# Drop it -- this is the host's signal that step 6 (which empties cell A)
+	# is safe to start. Without it, the host's own matching check (which
+	# finishes sooner, since it has no walk-and-press-three-times of its own
+	# to do first) can start retrieving from cell A while this check is
+	# still reading it, which is exactly what happened before this existed.
+	await _release_held()
+
+	# --- 6: wait for the host to empty cell A via two retrievals. ---
+	if not await _until("cell %d is empty" % CELL_A, func() -> bool: return rack.is_cell_empty(CELL_A)):
+		return _finish(false)
+	# Polled, not checked once: the same deferred-queue_free race as the
+	# Crates.get_child_count() checks above. get_node_or_null() still finds a
+	# node between queue_free() being called and the removal actually
+	# running, so a check landing in that gap reads as a real failure for a
+	# race that was never one — this one did exactly that the first time this
+	# scenario passed everything else.
+	if not await _until("the client's own view shows cell %d's visual gone" % CELL_A, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_A) == null):
+		return _finish(false)
+	if not await _until("the client's own view has every crate id back as a body", func() -> bool:
+			return _crates().get_child_count() == EXPECTED_CRATES):
+		return _finish(false)
+
+	# --- 7: wait for the host to fill both top-row cells for the shed test. ---
+	if not await _until("cell %d holds the shed setup" % CELL_TOP_A, func() -> bool:
+			return rack.occupied_count(CELL_TOP_A) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_TOP_A, 0):
+		return _finish(false)
+	if not await _until("cell %d holds the shed setup" % CELL_TOP_B, func() -> bool:
+			return rack.occupied_count(CELL_TOP_B) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_TOP_B, 0):
+		return _finish(false)
+
+	# Baselines, recorded independently on this peer's own copy -- the point
+	# of proving both peers agree is that neither one is taking the other's
+	# word for it.
+	var crates_before_shed := _crates().get_child_count()
+	var cell_b_before_shed := rack.occupied_count(CELL_B)
+
+	# --- 8: the host launches the impact; confirm the shed on this peer's
+	# own copy, not the host's say-so. ---
+	if not await _until("the impact sheds cell %d" % CELL_TOP_A, func() -> bool:
+			return rack.occupied_count(CELL_TOP_A) == 0):
+		return _finish(false)
+	if not await _until("the impact sheds cell %d" % CELL_TOP_B, func() -> bool:
+			return rack.occupied_count(CELL_TOP_B) == 0):
+		return _finish(false)
+	_expect_now(
+		rack.occupied_count(CELL_B) == cell_b_before_shed,
+		"the bound holds: cell %d (not top row) is untouched by the shed" % CELL_B,
+	)
+	if not await _until("the shed spent exactly two new bodies", func() -> bool:
+			return _crates().get_child_count() == crates_before_shed + 2):
+		return _finish(false)
+	if not await _until("cell %d's racked visual is gone after the shed" % CELL_TOP_A, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_TOP_A) == null):
+		return _finish(false)
+	if not await _until("cell %d's racked visual is gone after the shed" % CELL_TOP_B, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_TOP_B) == null):
+		return _finish(false)
+
+	# --- 9: floor stacking still works, confirmed on this peer's own copy. ---
+	var stack_top := _crate_named(CRATE_DRAG_ATTEMPT_NAME)
+	if stack_top == null:
+		_fail("find %s" % CRATE_DRAG_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	if not await _until("the stacked crate rests on top rather than sinking through", func() -> bool:
+			return stack_top.global_position.y > STACK_SETTLED_MIN_Y):
+		return _finish(false)
+
+	# --- 10: regression - retrieval beside a loaded top row does not shed,
+	# confirmed on the client's own copy too. ---
+	if not await _until("cell %d holds the regression setup" % CELL_TOP_A, func() -> bool:
+			return rack2.occupied_count(CELL_TOP_A) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_TOP_A, 0):
+		return _finish(false)
+	if not await _until("cell %d holds the regression setup" % CELL_TOP_B, func() -> bool:
+			return rack2.occupied_count(CELL_TOP_B) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_TOP_B, 0):
+		return _finish(false)
+
+	var crates_before_gate_retrieve := _crates().get_child_count()
+	if not await _until("cell %d empties (the host's retrieval)" % CELL_TOP_A, func() -> bool:
+			return rack2.is_cell_empty(CELL_TOP_A)):
+		return _finish(false)
+	# Waited for, not checked in the same breath as the stays-window below —
+	# see the matching comment in _run_host. _cell_cleared and the
+	# retrieval's own crate spawn are two separate reliable messages with no
+	# guarantee they land on this peer in the same polled frame, so the cell
+	# can already read empty here while the client's own crate count has not
+	# caught up yet.
+	if not await _until("the retrieval spent exactly one new body, on the client's own view too", func() -> bool:
+			return _crates().get_child_count() == crates_before_gate_retrieve + 1):
+		return _finish(false)
+	if not await _stays(
+			"regression: cell %d (beside the retrieval) is untouched on the client's own view" % CELL_TOP_B,
+			func() -> bool:
+				return (rack2.occupied_count(CELL_TOP_B) == 1
+						and _crates().get_child_count() == crates_before_gate_retrieve + 1)):
+		return _finish(false)
+
+	# --- 11: regression - a crate stranded inside a cell sensor is
+	# grabbable, confirmed on the client's own copy too. ---
+	if not await _until("client sees %s become held (the stranded-crate grab)" % CRATE_GATE_STRANDED_NAME, func() -> bool:
+			var crate := _crate_named(CRATE_GATE_STRANDED_NAME)
+			return crate != null and crate.holder_count() == 1):
+		return _finish(false)
+
+	# --- 12: regression - a genuine maximum-range placement, confirmed on
+	# the client's own copy too. ---
+	if not await _until("cell %d holds the max-range placement" % CELL_B, func() -> bool:
+			return rack2.occupied_count(CELL_B) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_B, 0):
+		return _finish(false)
+
+	_finish(true)
+
+
+# -------------------------------------------------------------- action helpers
+
+## Host-only. A crate left loose and untouched for half a second settles to a
+## frozen, immovable body (ADR 17, 01-09) — which several direct-manipulation
+## tricks below now run straight into, since a frozen body ignores both an
+## assigned velocity and gravity: setting position teleports it (a transform
+## write, unaffected by freeze), but it then just sits at the new position
+## forever, never travelling anywhere and never falling. Both steps 8 and 9
+## reuse crates ([constant CRATE_FULL_ATTEMPT_NAME], [constant
+## CRATE_DRAG_ATTEMPT_NAME]) that have been sitting loose and unclaimed for
+## several real seconds by the time they get here — comfortably past
+## [member Crate.settle_frames] — so both need this first.
+##
+## Mirrors [method Crate._wake] rather than calling it: that method is
+## host-only and private by convention, and this is test code reaching into
+## a crate's own fields exactly the way the direct-manipulation tricks below
+## already do legitimately — a crate is always simulated for real on the
+## host (see [code]_take()[/code]'s own docstring in carry_session.gd).
+func _ensure_awake(crate: Crate) -> void:
+	crate.sync_settled = false
+	crate.collision_layer &= ~Crate.LAYER_WORLD
+	crate.freeze = false
+	crate.sleeping = false
+
+
+## Teleport to the crate's row and press until it is ours.
+func _grab(crate: Crate, want_drag := false) -> void:
+	var me := _me()
+	var carrier: Carrier = me.get_node("Carrier")
+	me.teleport_to(Vector3(crate.global_position.x, STAND_HEIGHT, crate.global_position.z + GRAB_STAND_OFFSET_Z))
+
+	var deadline := Time.get_ticks_msec() + STEP_TIMEOUT_MS
+	while Time.get_ticks_msec() < deadline:
+		if carrier.held_crate() == crate:
+			break
+		me.aim_at(crate.global_position)
+		carrier.try_toggle_hold(want_drag)
+		for _i in 6:
+			await get_tree().process_frame
+
+	# Look level afterward, the same reason carry_session does: keeping the
+	# aim pointed down at the floor leaves later reach checks a coin toss.
+	var level := Vector3(crate.global_position.x, me.camera.global_position.y, crate.global_position.z)
+	me.aim_at(level)
+
+
+## A held crate does not teleport with its holder — it has to physically fly
+## to the new hold point every physics frame — so [method _walk_to] closes
+## ground in small steps rather than one jump, whether or not anything is
+## currently held. Paced by [b]wall-clock time[/b], not a frame count:
+## headless Godot runs uncapped, so idle frames can fire far faster than the
+## fixed 60 Hz physics tick, and a frame count between steps was measured to
+## buy almost no real physics time for the spring to catch up — the very
+## first walk in this scenario silently dropped its crate for exactly that
+## reason before this was paced by the clock instead.
+##
+## Kept at or below the in-game drag speed penalty (40% of the 4.2 m/s walk
+## speed, so ~1.68 m/s — GDD §6.1) rather than any faster carry speed: the
+## drag spring is deliberately softer than the carry one (900 vs 2400
+## stiffness) and a walk paced for carry snapped the drag hold mid-transit
+## the first time this scenario tried to walk a dragged crate to a cell.
+const WALK_SPEED_MPS := 1.5
+## How often, in real time, the walk advances the hold point. Small and
+## clock-paced, so several physics ticks land inside every step.
+const WALK_TICK_MS := 50
+
+
+## Move the local player toward [param destination] at [constant WALK_SPEED_MPS],
+## paced by real elapsed time. See the constants' own doc for why.
+func _walk_to(destination: Vector3) -> void:
+	var me := _me()
+	var start := me.global_position
+	var distance := start.distance_to(destination)
+	if distance < 0.01:
+		return
+	var duration_ms := int(ceil((distance / WALK_SPEED_MPS) * 1000.0))
+	var start_time := Time.get_ticks_msec()
+	var deadline := start_time + duration_ms
+	while Time.get_ticks_msec() < deadline:
+		var elapsed := Time.get_ticks_msec() - start_time
+		var t := clampf(float(elapsed) / float(duration_ms), 0.0, 1.0)
+		me.teleport_to(start.lerp(destination, t))
+		var tick_deadline := Time.get_ticks_msec() + WALK_TICK_MS
+		while Time.get_ticks_msec() < tick_deadline:
+			await get_tree().process_frame
+	me.teleport_to(destination)
+
+
+## South of TestRoom's crate row (CRATE_ROW_ORIGIN.z = -6.0), by a wide
+## margin, and clear of the rack, both zones and PARK_POINT alike. Only
+## needed for [param avoid_row] in [method _approach_cell] below.
+const ROW_DETOUR_Z := -3.0
+
+## A single waypoint, just outside rack_island's own footprint (world x < 6.5;
+## its ImpactSensor's own x-span is [6.4, 8.6], z-span [1.55, 2.45] — this
+## clears the wider figure with margin on the approach side that matters).
+## Only needed for [param avoid_rack_island] in [method _approach_cell] below.
+##
+## Added at the wave 7 gate (2026-08-21) when GRAB_STAND_OFFSET_Z shortened
+## alongside the rest of the reach chain (2.5 -> 2.0 m). A held crate walked
+## straight from the crate row to rack_island's own top-row cells crosses
+## this rack's footprint partway through the journey — harmless while
+## rack_island holds nothing yet (Rack._on_impact's own is_empty() guard
+## skips it outright), but once crate_6 already occupies cell 10, the same
+## crossing sheds it back out from under crate_7's own placement moments
+## later: request_retrieve then finds cell 10 already empty, try_toggle_hold
+## resolves the loose shed crate sitting in the way instead of the cell, and
+## the retrieval "succeeds" on a plain grab that never mints a new body —
+## read as a hang on "the retrieval spent exactly one new body". Reproduced
+## with GRAB_REACH, PLACE_REACH and the ray all held at their OLD values and
+## only GRAB_STAND_OFFSET_Z moved, so this is specifically about where the
+## walk starts, not about any of the reach distance checks.
+##
+## Deliberately not the same shape as [param avoid_row]'s two-axis-aligned-
+## legs detour (via [constant ROW_DETOUR_Z]) — that shape adds roughly 6.5 m
+## to this particular walk, which blew the client's own 15 s wait for the
+## replicated placement to land (found running this fix the first time).
+## This point instead hugs the ImpactSensor's own near corner from outside:
+## the first leg holds x < 6.4 throughout (this point's own x is left of the
+## sensor entirely, so a straight line from anywhere further left/south never
+## crosses into it), and the second leg holds z > 2.45 throughout (this
+## point's own z already clears the sensor, and both top-row cells sit
+## further north in z again, so z only rises from here) — safe by
+## construction on both legs, for a two-segment path barely longer than the
+## direct one it replaces (measured ~15.9 m against the direct ~15.8 m).
+const RACK_ISLAND_CORNER_WAYPOINT := Vector3(6.1, STAND_HEIGHT, 2.75)
+
+## Walk to a cell and aim at its centre. Shared by every cell interaction.
+##
+## [param avoid_row] routes via [constant ROW_DETOUR_Z] first rather than
+## walking a straight line. Needed once ADR 17 (01-09) landed: crate_4 and
+## crate_5 sit untouched in the row for this whole scenario (01-07's own
+## reservation, still unclaimed at this point) and settle to real, immovable
+## world geometry after half a second at rest. The rack's own approach point
+## sits barely south of the row itself (z=-6.5 against the row's z=-6.0), so
+## a straight walk from crate_3's own spot east toward the rack drags it
+## directly into crate_4's now-solid footprint and wedges it there
+## permanently — caught by this scenario's own drag-attempt step timing out
+## on a hold that had silently broken. Not needed for anything that does not
+## drag a crate through the row: a bare player walk here uses
+## [method Player.teleport_to], which bypasses collision entirely, so only a
+## dragged crate can actually get physically stuck on the way.
+## [param stand_offset_z] defaults to [constant RACK_STAND_OFFSET_Z] — the
+## comfortable interior distance every step above this point uses. Regression
+## 12 (below) is the one caller that passes something else
+## ([constant MAX_RANGE_STAND_OFFSET_Z]), to stand deliberately near the edge
+## of GrabRay's own reach rather than well inside it.
+## [param avoid_rack_island] is a different shape to [param avoid_row] — a
+## single corner-hugging waypoint rather than two axis-aligned legs, because
+## the two-leg shape cost too much real time for this particular walk. See
+## [constant RACK_ISLAND_CORNER_WAYPOINT]'s own doc comment for both the
+## hazard and why the shape differs.
+func _approach_cell(rack: Rack, cell_index: int, lateral: float, avoid_row := false,
+		stand_offset_z := RACK_STAND_OFFSET_Z, avoid_rack_island := false) -> Vector3:
+	var me := _me()
+	var target := rack.cell_to_global_position(cell_index)
+	if avoid_row:
+		await _walk_to(Vector3(me.global_position.x, STAND_HEIGHT, ROW_DETOUR_Z))
+		await _walk_to(Vector3(target.x + lateral, STAND_HEIGHT, ROW_DETOUR_Z))
+	if avoid_rack_island:
+		await _walk_to(RACK_ISLAND_CORNER_WAYPOINT)
+	await _walk_to(Vector3(target.x + lateral, STAND_HEIGHT, target.z + stand_offset_z))
+	me.aim_at(target)
+	return target
+
+
+## Press until whatever we were holding is no longer in our hands — a
+## successful placement. Only for cases the caller expects to succeed; a
+## refusal would spin this to its timeout, which is what [method _attempt_place]
+## is for instead.
+func _place(rack: Rack, cell_index: int, lateral: float,
+		stand_offset_z := RACK_STAND_OFFSET_Z, avoid_rack_island := false) -> void:
+	var me := _me()
+	var carrier: Carrier = me.get_node("Carrier")
+	var target := await _approach_cell(rack, cell_index, lateral, false, stand_offset_z, avoid_rack_island)
+
+	var deadline := Time.get_ticks_msec() + STEP_TIMEOUT_MS
+	while Time.get_ticks_msec() < deadline:
+		if carrier.held_crate() == null:
+			return
+		me.aim_at(target)
+		carrier.try_toggle_hold()
+		for _i in 6:
+			await get_tree().process_frame
+
+
+## A handful of presses at a cell expected to refuse. Deliberately bounded
+## rather than looped to success — success here would be the bug.
+##
+## [param avoid_row] is passed straight through to [method _approach_cell] —
+## see its own doc for why the drag-attempt call site below needs it.
+func _attempt_place(rack: Rack, cell_index: int, lateral: float, avoid_row := false) -> void:
+	var me := _me()
+	var carrier: Carrier = me.get_node("Carrier")
+	var target := await _approach_cell(rack, cell_index, lateral, avoid_row)
+
+	for _i in 3:
+		me.aim_at(target)
+		carrier.try_toggle_hold()
+		for _j in 6:
+			await get_tree().process_frame
+
+
+## Press until a crate lands in our (previously empty) hands, and return it.
+func _retrieve(rack: Rack, cell_index: int, lateral: float) -> Crate:
+	var me := _me()
+	var carrier: Carrier = me.get_node("Carrier")
+	var target := await _approach_cell(rack, cell_index, lateral)
+
+	var deadline := Time.get_ticks_msec() + STEP_TIMEOUT_MS
+	while Time.get_ticks_msec() < deadline:
+		if carrier.held_crate() != null:
+			return carrier.held_crate()
+		me.aim_at(target)
+		carrier.try_toggle_hold()
+		for _i in 6:
+			await get_tree().process_frame
+	return null
+
+
+## Off to the side of both cells' approach corridor (which sits within about
+## a metre of x=7.6-8.8, z=-6.5 for this rack), so a crate dropped here never
+## ends up in the path of a later raycast at either one -- but close, not
+## across the room: WALK_SPEED_MPS is deliberately slow (it has to stay under
+## what the drag spring can follow), and this point is visited twice for
+## every retrieve-then-release pair. A far corner turned that into two
+## multi-second walks per release and made the LIFO retrievals alone take
+## longer than the other peer's own wait budget for seeing the result.
+const PARK_POINT := Vector3(4.0, STAND_HEIGHT, -6.5)
+
+
+## Walk clear, look somewhere that is neither cargo nor a rack cell, and press
+## until our hands are empty — the ordinary Phase 0 release. Walking away
+## first (rather than dropping on the spot) is what stops a dropped crate
+## from later sitting in the ray's path the next time this rack is aimed at.
+##
+## [param target] defaults to [constant PARK_POINT] (rack_wall's own safe
+## spot) — steps 10-11 pass [constant GATE_PARK_POINT] instead, since a walk
+## all the way to PARK_POINT and back left too little of the client's own
+## 15 s window for a replication tick to land (see its own doc comment).
+func _release_held(target := PARK_POINT) -> void:
+	var me := _me()
+	var carrier: Carrier = me.get_node("Carrier")
+	if carrier.held_crate() == null:
+		return
+	await _walk_to(target)
+	me.aim_at(me.camera.global_position + Vector3(0.0, 5.0, 0.0))
+
+	var deadline := Time.get_ticks_msec() + STEP_TIMEOUT_MS
+	while Time.get_ticks_msec() < deadline:
+		if carrier.held_crate() == null:
+			return
+		carrier.try_toggle_hold()
+		for _i in 6:
+			await get_tree().process_frame
+
+
+## Polls until the visual at rack/cell_index/sub_index has actually arrived at
+## its resting position — the one thing about 01-06's travel-and-settle
+## animation a test can genuinely prove. A tween that starts and never
+## arrives is the classic tween bug, and it would leave an item visibly
+## floating in the aisle on some peers and not others.
+##
+## Not the bare cell centre: eight Smalls tile a cell as a 2x2x2 lattice
+## (StorageGrid.small_offset), so [param sub_index]'s actual target is offset
+## from [method Rack.cell_to_local_position] — exactly what
+## [code]Rack._spawn_cell_visual[/code] tweens toward.
+func _wait_for_settle(rack: Rack, cell_index: int, sub_index: int) -> bool:
+	var visual := rack.get_node_or_null("RackedItems/Cell%d_Item%d" % [cell_index, sub_index])
+	if visual == null:
+		_fail("the placed item settles exactly in its cell", "no visual node Cell%d_Item%d" % [cell_index, sub_index])
+		return false
+	var target := rack.cell_to_local_position(cell_index) + StorageGrid.small_offset(sub_index)
+	return await _until("the placed item settles exactly in its cell", func() -> bool:
+			return visual.position.is_equal_approx(target))
+
+
+func _until(label: String, predicate: Callable) -> bool:
+	var deadline := Time.get_ticks_msec() + STEP_TIMEOUT_MS
+	while Time.get_ticks_msec() < deadline:
+		if predicate.call():
+			_pass(label)
+			return true
+		await get_tree().process_frame
+	_fail(label, "timed out after %d ms" % STEP_TIMEOUT_MS)
+	return false
+
+
+## Assert something stays true for a window, rather than merely becoming true
+## once — needed for every refusal here, since "still holding it" is trivially
+## true in the first frame regardless of whether the refusal actually worked.
+func _stays(label: String, predicate: Callable, window_ms := 500) -> bool:
+	var deadline := Time.get_ticks_msec() + window_ms
+	while Time.get_ticks_msec() < deadline:
+		if not predicate.call():
+			_fail(label, "stopped being true before the window closed")
+			return false
+		await get_tree().process_frame
+	_pass(label)
+	return true
+
+
+func _expect_now(condition: bool, label: String) -> void:
+	if condition:
+		_pass(label)
+		return
+	_fail(label, "expected true, was false")
+
+
+func _pass(label: String) -> void:
+	_steps_passed += 1
+	print("[test] ok   %s" % label)
+
+
+func _fail(label: String, why: String) -> void:
+	print("[test] FAIL %s — %s" % [label, why])
+	_report_state()
+
+
+## Printed on failure only: enough state to tell which side disagreed, and
+## with what the rack believed, without rerunning anything.
+func _report_state() -> void:
+	print("[test] state role=%s local_id=%d roster=%d crates=%d" % [
+		_role, Net.local_id(), Net.players.size(),
+		_crates().get_child_count() if _crates() != null else -1,
+	])
+	var rack := _rack()
+	if rack != null:
+		var occ_a := rack.occupied_count(CELL_A)
+		var occ_b := rack.occupied_count(CELL_B)
+		var visuals := rack.get_node_or_null("RackedItems")
+		print("[test] state cell_a=%d/8 cell_b=%d/8 racked_visuals=%d" % [
+			occ_a, occ_b, visuals.get_child_count() if visuals != null else -1,
+		])
+	# rack_island — steps 10-12's own rack, printed separately since rack.gd
+	# above is always rack_wall. Added after a gate regression's own failure
+	# printed only rack_wall's state, telling nothing about the cells this
+	# scenario was actually failing on.
+	var rack2 := _rack_island()
+	if rack2 != null:
+		print("[test] state rack_island top_a=%d/8 top_b=%d/8 cell_a=%d/8 cell_b=%d/8" % [
+			rack2.occupied_count(CELL_TOP_A), rack2.occupied_count(CELL_TOP_B),
+			rack2.occupied_count(CELL_A), rack2.occupied_count(CELL_B),
+		])
+	var me := _me()
+	if me != null:
+		print("[test] state me pos=%v" % me.global_position)
+
+
+func _finish(passed: bool) -> void:
+	print("[test] RESULT=%s role=%s steps_passed=%d" % [
+		"PASS" if passed else "FAIL", _role, _steps_passed,
+	])
+	get_tree().quit(0 if passed else 1)
+
+
+func _crates() -> Node:
+	if _world == null:
+		return null
+	return _world.get_node_or_null("Crates")
+
+
+func _crate_named(crate_name: String) -> Crate:
+	var crates := _crates()
+	if crates == null:
+		return null
+	return crates.get_node_or_null(crate_name) as Crate
+
+
+func _rack() -> Rack:
+	if _world == null:
+		return null
+	return _world.get_node_or_null(RACK_PATH) as Rack
+
+
+func _rack_island() -> Rack:
+	if _world == null:
+		return null
+	return _world.get_node_or_null(RACK2_PATH) as Rack
+
+
+func _authority() -> CarryAuthority:
+	if _world == null:
+		return null
+	return _world.get_node_or_null("CarryAuthority") as CarryAuthority
+
+
+func _me() -> Player:
+	if _world == null:
+		return null
+	return _world.get_node_or_null("Players/%d" % Net.local_id()) as Player

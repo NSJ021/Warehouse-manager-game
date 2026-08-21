@@ -11,7 +11,10 @@
                    registered yet.
       integration  Two real processes over real ENet, driving the real keypress
                    path: grab, two-player carry, handoff, release, then solo
-                   drag and its promotion back into a carry. This is the layer
+                   drag and its promotion back into a carry -- then a second
+                   scenario for storage: place, a cell taking more than one,
+                   a full cell refusing, a dragged crate refused above the
+                   floor row (ADR 19), and LIFO retrieval. This is the layer
                    that matters, because host authority and held-item handoff
                    are exactly what unit tests cannot reach.
 
@@ -194,28 +197,41 @@ foreach ($line in ((Get-LogText $api) -split "`r?`n" | Where-Object { $_ -match 
 Test-CleanLog $api | Out-Null
 
 Write-Host ''
-Write-Host '[2/4] unit - the condition model and the dilemma maths' -ForegroundColor Cyan
-$unit = Start-Godot -Name 'unit' -GodotArgs @(
-    '--headless', '--path', $projectDir, '--script', 'res://test/unit/dilemma_maths.gd'
-)
-$unitExited = Wait-ForExit -Job $unit -TimeoutSeconds $StartupTimeoutSeconds
+Write-Host '[2/4] unit - the condition model, the dilemma maths, and the cell arithmetic' -ForegroundColor Cyan
 
-if (-not $unitExited) {
-    $failures.Add('unit: timed out and was killed')
-} else {
-    $code = Get-ExitCode $unit
-    if ($code -gt 0) { $failures.Add("unit: exit code $code") }
-    Test-Marker $unit '\[unit\] PASS' 'a unit PASS' | Out-Null
+# Enumerated rather than hardcoded: the next pure module (there will be one)
+# should cost nothing to add here, and a loop that only checked the last
+# file's marker would let earlier files fail silently - exactly the class of
+# bug the zero-tolerance scan exists to prevent. Every file must earn its own
+# [unit] PASS.
+$unitDir = Join-Path $repoRoot "$projectDir\test\unit"
+$unitScripts = Get-ChildItem -Path $unitDir -Filter '*.gd' | Sort-Object Name
+
+foreach ($script in $unitScripts) {
+    # Distinguishable per-file job name, so a Test-CleanLog or Test-Marker
+    # failure below names the file rather than just saying "unit".
+    $unitJob = Start-Godot -Name "unit-$($script.BaseName)" -GodotArgs @(
+        '--headless', '--path', $projectDir, '--script', "res://test/unit/$($script.Name)"
+    )
+    $unitExited = Wait-ForExit -Job $unitJob -TimeoutSeconds $StartupTimeoutSeconds
+
+    if (-not $unitExited) {
+        $failures.Add("$($unitJob.Name): timed out and was killed")
+    } else {
+        $code = Get-ExitCode $unitJob
+        if ($code -gt 0) { $failures.Add("$($unitJob.Name): exit code $code") }
+        Test-Marker $unitJob '\[unit\] PASS' "a unit PASS ($($script.Name))" | Out-Null
+    }
+    # Same as the api layer: the passing lines are numerous and uninteresting,
+    # and each file's own summary line is worth seeing on a green run.
+    foreach ($line in ((Get-LogText $unitJob) -split "`r?`n" | Where-Object { $_ -match '^\[unit\] (FAIL|PASS|     )' })) {
+        $colour = 'Gray'
+        if ($line -match 'FAIL') { $colour = 'Red' }
+        if ($line -match 'PASS') { $colour = 'Green' }
+        Write-Host "      $line" -ForegroundColor $colour
+    }
+    Test-CleanLog $unitJob | Out-Null
 }
-# Same as the api layer: the passing lines are numerous and uninteresting, and
-# the sweep's own summary line is worth seeing on a green run.
-foreach ($line in ((Get-LogText $unit) -split "`r?`n" | Where-Object { $_ -match '^\[unit\] (FAIL|PASS|     )' })) {
-    $colour = 'Gray'
-    if ($line -match 'FAIL') { $colour = 'Red' }
-    if ($line -match 'PASS') { $colour = 'Green' }
-    Write-Host "      $line" -ForegroundColor $colour
-}
-Test-CleanLog $unit | Out-Null
 
 Write-Host ''
 Write-Host '[3/4] smoke - every scene loads and instances' -ForegroundColor Cyan
@@ -255,63 +271,79 @@ if ($SmokeOnly) {
 
 # ---------------------------------------------------------- integration
 
-Write-Host ''
-Write-Host '[4/4] integration - 2 processes, carry / handoff / solo drag' -ForegroundColor Cyan
+# Runs one two-process scenario (host + client, told apart by --role=) and
+# folds its failures into the shared $failures list. Factored out because the
+# integration block now runs twice — carry_session, then storage_session —
+# and duplicating the READY-TO-ACCEPT wait, the per-role exit codes and the
+# RESULT=PASS markers for a second scenario is exactly the kind of drift that
+# lets one copy quietly stop being checked as strictly as the other.
+function Invoke-IntegrationScenario {
+    param([string]$Scene, [string]$Label)
 
-$scene = 'res://test/integration/carry_session.tscn'
-$host_ = Start-Godot -Name 'host' -GodotArgs @(
-    '--headless', '--path', $projectDir, $scene, '--', '--role=host'
-)
+    Write-Host ''
+    Write-Host "      -- $Label --" -ForegroundColor Cyan
 
-# Wait for the host to actually be listening before starting the client, rather
-# than sleeping and hoping. This is what stops the suite being flaky.
-$ready = $false
-$deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
-while ((Get-Date) -lt $deadline) {
-    if ((Get-LogText $host_) -match 'READY-TO-ACCEPT') { $ready = $true; break }
-    if ($host_.Process.HasExited) { break }
-    Start-Sleep -Milliseconds 150
-}
-
-if (-not $ready) {
-    $failures.Add('integration: host never reported READY-TO-ACCEPT')
-    if (-not $host_.Process.HasExited) {
-        try { Stop-Process -Id $host_.Process.Id -Force -ErrorAction Stop } catch {}
-    }
-    Show-TestLines $host_
-} else {
-    Write-Host '      host is listening, starting client' -ForegroundColor DarkGray
-    $client = Start-Godot -Name 'client' -GodotArgs @(
-        '--headless', '--path', $projectDir, $scene, '--', '--role=client'
+    $hostJob = Start-Godot -Name "$Label-host" -GodotArgs @(
+        '--headless', '--path', $projectDir, $Scene, '--', '--role=host'
     )
 
-    $hostExited = Wait-ForExit -Job $host_ -TimeoutSeconds $RunTimeoutSeconds
-    $clientExited = Wait-ForExit -Job $client -TimeoutSeconds 30
+    # Wait for the host to actually be listening before starting the client,
+    # rather than sleeping and hoping. This is what stops the suite being flaky.
+    $ready = $false
+    $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if ((Get-LogText $hostJob) -match 'READY-TO-ACCEPT') { $ready = $true; break }
+        if ($hostJob.Process.HasExited) { break }
+        Start-Sleep -Milliseconds 150
+    }
+
+    if (-not $ready) {
+        $failures.Add("$Label integration: host never reported READY-TO-ACCEPT")
+        if (-not $hostJob.Process.HasExited) {
+            try { Stop-Process -Id $hostJob.Process.Id -Force -ErrorAction Stop } catch {}
+        }
+        Show-TestLines $hostJob
+        return
+    }
+
+    Write-Host '      host is listening, starting client' -ForegroundColor DarkGray
+    $clientJob = Start-Godot -Name "$Label-client" -GodotArgs @(
+        '--headless', '--path', $projectDir, $Scene, '--', '--role=client'
+    )
+
+    $hostExited = Wait-ForExit -Job $hostJob -TimeoutSeconds $RunTimeoutSeconds
+    $clientExited = Wait-ForExit -Job $clientJob -TimeoutSeconds 30
 
     if (-not $hostExited) {
-        $failures.Add('integration: host hung and was killed')
+        $failures.Add("$Label integration: host hung and was killed")
     } else {
-        $hostCode = Get-ExitCode $host_
-        if ($hostCode -gt 0) { $failures.Add("integration host: exit code $hostCode") }
-        Test-Marker $host_ 'RESULT=PASS' 'a host RESULT=PASS' | Out-Null
+        $hostCode = Get-ExitCode $hostJob
+        if ($hostCode -gt 0) { $failures.Add("$Label integration host: exit code $hostCode") }
+        Test-Marker $hostJob 'RESULT=PASS' "a $Label host RESULT=PASS" | Out-Null
     }
 
     if (-not $clientExited) {
-        $failures.Add('integration: client hung and was killed')
+        $failures.Add("$Label integration: client hung and was killed")
     } else {
-        $clientCode = Get-ExitCode $client
-        if ($clientCode -gt 0) { $failures.Add("integration client: exit code $clientCode") }
-        Test-Marker $client 'RESULT=PASS' 'a client RESULT=PASS' | Out-Null
+        $clientCode = Get-ExitCode $clientJob
+        if ($clientCode -gt 0) { $failures.Add("$Label integration client: exit code $clientCode") }
+        Test-Marker $clientJob 'RESULT=PASS' "a $Label client RESULT=PASS" | Out-Null
     }
 
-    Write-Host '      --- host ---' -ForegroundColor DarkGray
-    Show-TestLines $host_
-    Write-Host '      --- client ---' -ForegroundColor DarkGray
-    Show-TestLines $client
+    Write-Host "      --- $Label host ---" -ForegroundColor DarkGray
+    Show-TestLines $hostJob
+    Write-Host "      --- $Label client ---" -ForegroundColor DarkGray
+    Show-TestLines $clientJob
 
-    Test-CleanLog $host_ | Out-Null
-    Test-CleanLog $client | Out-Null
+    Test-CleanLog $hostJob | Out-Null
+    Test-CleanLog $clientJob | Out-Null
 }
+
+Write-Host ''
+Write-Host '[4/4] integration - 2 processes, carry / handoff / solo drag, then storage' -ForegroundColor Cyan
+
+Invoke-IntegrationScenario -Scene 'res://test/integration/carry_session.tscn' -Label 'carry'
+Invoke-IntegrationScenario -Scene 'res://test/integration/storage_session.tscn' -Label 'storage'
 
 # ---------------------------------------------------------------- verdict
 

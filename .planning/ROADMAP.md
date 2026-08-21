@@ -22,7 +22,7 @@ execution.
 insertions and are marked INSERTED.
 
 - [x] **Phase 0: Netcode spine** - 4 players, an empty room, one physics crate
-- [ ] **Phase 1: Storage** - Racks, grid snap, Goods IN / Goods OUT zones
+- [x] **Phase 1: Storage** - Racks, grid snap, Goods IN / Goods OUT zones
 - [ ] **Phase 2: Goods** - Size classes, expiry, collection day, the day clock
 - [ ] **Phase 3: The dilemma** - Damage, condition tiers, tape gun, patch / confess / comp
 - [ ] **Phase 4: Consequence** - Clients, trust, suspicion, economy, rent, eviction
@@ -56,32 +56,42 @@ Plans:
 **Goal:** Racks with cells, grid-snapped insertion, and Goods IN / Goods OUT zones.
 **Depends on:** Phase 0
 **Requirements**: STORE-01, STORE-02, STORE-03, STORE-04, STORE-05
-**Gate (GDD §13)**: *Storage feels deliberate.*
+**Gate (GDD §13)**: *Storage feels deliberate.* — **PASSED, 2026-08-21 (NJ).**
 **Success Criteria** (what must be TRUE):
-  1. A player carrying a crate can aim at a rack cell and place it, and it snaps cleanly
-  2. Every peer agrees which cell holds which crate, and how many are in it
-  3. Racked items are static and unreplicated, so they cost nothing against the body budget (ADR 14)
-  4. Goods IN and Goods OUT zones detect what is inside them
-  5. Floor stacking still works, and is still a tempting bad idea
-  6. Hitting a rack hard enough sheds from the top row, and it reads as punishment rather than noise
+  1. A player carrying a crate can aim at a rack cell and place it, and it snaps cleanly — **done, verified** (01-04 place/retrieve, 01-06 the travel-and-thud snap; confirmed in play at the gate)
+  2. Every peer agrees which cell holds which crate, and how many are in it — **done, verified** (01-04 late-joiner cell sync, 01-06 highlight/placement convergence, both proven over real ENet)
+  3. Racked items are static and unreplicated, so they cost nothing against the body budget (ADR 14) — **done, verified** (`racked_item.tscn` grepped at zero body/collision/synchronizer, 01-03)
+  4. Goods IN and Goods OUT zones detect what is inside them — **done, verified** (01-05, both peers proven to agree independently over real ENet)
+  5. Floor stacking still works, and is still a tempting bad idea — **done, confirmed in play** (ADR 17 / 01-09 built it; gate checks 16-19 verified it underfoot, including that it stays worse than racking with no upside)
+  6. Hitting a rack hard enough sheds from the top row, and it reads as punishment rather than noise — **done, confirmed in play** (01-07 built it bounded three ways against ADR 14; gate checks 14-15 confirmed a normal carry never misfires it and a hard hit reads as earned)
 
-**Plans:** 9 plans in 7 waves
+**Plans:** 9 plans in 7 waves — **all 9 complete, all 7 waves done. Phase 1 closed 2026-08-21.**
 
 Plans:
-- [ ] 01-01-PLAN.md — Prove the spawner despawns a freed crate on both peers; name physics layer 4 `storage` *(wave 1)*
-- [ ] 01-02-PLAN.md — `StorageGrid` cell arithmetic and the 2×2×2 lattice, test-first, unit layer wired into the suite *(wave 1)*
-- [ ] 01-03-PLAN.md — The rack fixture: cell geometry, atomic occupancy as data, derived local visuals *(wave 2)*
-- [ ] 01-04-PLAN.md — Place and retrieve: referee RPCs, one aim ray for crates and cells, a second integration session *(wave 3)*
-- [ ] 01-05-PLAN.md — Goods IN / Goods OUT zones, agreed on both peers *(wave 3)*
-- [ ] 01-06-PLAN.md — Aim feedback and the snap: cell highlight, travel, placement sound *(wave 4)*
-- [ ] 01-07-PLAN.md — Rack shedding, bounded; and what floor stacking actually costs *(wave 5)*
-- [ ] 01-09-PLAN.md — Settled cargo turns solid and disturbed cargo wakes, so floor stacking finally blocks pathing (ADR 17) *(wave 6)*
-- [ ] 01-08-PLAN.md — The gate: a human judges whether storage feels deliberate, and the ADRs that follow *(wave 7)*
+- [x] 01-01-PLAN.md — Prove the spawner despawns a freed crate on both peers; name physics layer 4 `storage` *(wave 1)*
+- [x] 01-02-PLAN.md — `StorageGrid` cell arithmetic and the 2×2×2 lattice, test-first, unit layer wired into the suite *(wave 1)*
+- [x] 01-03-PLAN.md — The rack fixture: cell geometry, atomic occupancy as data, derived local visuals *(wave 2)*
+- [x] 01-04-PLAN.md — Place and retrieve: referee RPCs, one aim ray for crates and cells, a second integration session *(wave 3)*
+- [x] 01-05-PLAN.md — Goods IN / Goods OUT zones, agreed on both peers *(wave 3)*
+- [x] 01-06-PLAN.md — Aim feedback and the snap: cell highlight, travel, placement sound *(wave 4)*
+- [x] 01-07-PLAN.md — Rack shedding, bounded; and what floor stacking actually costs *(wave 5)*
+- [x] 01-09-PLAN.md — Settled cargo turns solid and disturbed cargo wakes, so floor stacking finally blocks pathing (ADR 17) *(wave 6)*
+- [x] 01-08-PLAN.md — The gate: a human judges whether storage feels deliberate, and the ADRs that follow *(wave 7)* — gate passed; [ADR 24](../decisions/2026-08-21-rack-presentation-ratified.md) written; full detail in `01-08-SUMMARY.md`
 
 ### Phase 2: Goods
 **Goal:** Goods with size classes, fragility, store-until dates, and the day clock that makes them matter.
 **Depends on:** Phase 1
 **Requirements**: GOODS-01, GOODS-02, GOODS-03, CARRY-03, RUN-02
+
+**Carried in from the Phase 1 gate (2026-08-21), must be answered in planning:**
+- **Large orientation:** which two cells a Large occupies — side-by-side across columns, or
+  front-to-back through depth (the one layout that would use a wall rack's dead back row). See
+  GOODS-01 in `REQUIREMENTS.md` and [ADR 24](../decisions/2026-08-21-rack-presentation-ratified.md).
+- **STORE-07, the round-trip invariant**, needs a concrete data shape once goods carry more than
+  `kind` — condition, apparent condition, scuffs, fragility, store-until date, owner, value all
+  have to survive a place/retrieve cycle intact.
+- **Cell plaques** (GDD §6.3) are a recommendation, not a requirement — worth costing alongside
+  whatever Phase 2 already needs for a store-until date display.
 **Gate (GDD §13)**: *The loop closes.*
 **Success Criteria** (what must be TRUE):
   1. Items come in Small (8 per cell), Medium (one whole cell) and Large (two cells) — ADR 18

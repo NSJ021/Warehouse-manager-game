@@ -27,8 +27,8 @@ Four rules it holds to, each of which exists because of something that actually 
 |---|---|---|
 | `api/` | The engine and addon APIs we depend on still exist and behave as assumed | <1s |
 | `smoke/` | Every scene under `res://scenes/` loads *and instances* | ~1s |
-| `integration/` | Two processes: grab, two-player carry, handoff, release, **solo drag and its promotion to a carry**, all agreeing | ~2s |
-| `unit/` | The condition model and the dilemma maths, including *no dominant strategy* as an assertion | <1s |
+| `integration/` | Two processes: grab, two-player carry, handoff, release, **solo drag and its promotion to a carry**, then a second scenario for **storage** -- place, refuse, place, retrieve, LIFO -- all agreeing | ~3s |
+| `unit/` | The condition model and the dilemma maths, including *no dominant strategy* as an assertion; and the storage cell arithmetic (ADR 18) | <1s |
 
 ### api
 
@@ -54,6 +54,10 @@ This layer sat empty and marked "reserved" until those two existed, on the state
 
 The valuable half of this file is not the arithmetic — it is the assertion that **there is no dominant strategy**. GDD §6.5 only works if the right answer changes with the situation, which is a claim about the *shape* of the numbers rather than any one of them, and it is exactly what a later balance tweak breaks silently. So it sweeps 192 situations across item value, damage depth, client suspicion and days remaining, and requires that all three forks win somewhere and none wins more than 75%. It reports the realistic one-tier slice separately, because a uniform sweep can look healthy while the common case has quietly settled.
 
+`storage_grid_test.gd` covers `StorageGrid` — the cell arithmetic ADR 18 fixes: dimensions, the cell index round trip, the boundary rule that resolves anything outside a rack to `-1`, the 2×2×2 lattice a cell's 8 Smalls tile with no overlap, and the LIFO fill/remove pair proven as exact inverses. It was written before `StorageGrid` existed and watched to fail by naming the missing script, not by crashing.
+
+The unit stage in `tools/run-tests.ps1` runs every `*.gd` file under this directory, not just these two, and requires each one to print its own `[unit] PASS` — a loop that only checked the last file's marker would let earlier files fail silently. Adding another pure module here costs nothing beyond dropping the file in.
+
 ### smoke
 
 `load_all_scenes.gd` walks `res://scenes/`, loads each scene and instances it. Loading catches a stale path after a file move; instancing catches broken `@onready` node paths, which a plain load lets straight through.
@@ -64,7 +68,7 @@ It does no networking at all, so it can never fight a live play session for a po
 
 `carry_session.tscn` runs in **both** processes, told apart by `--role=host` / `--role=client`. They synchronise on replicated state rather than sleeps — the client waits until it can see the host holding the crate, then joins the carry.
 
-It asserts, in order: session up, world loaded, both peers in the roster, all six crates replicated to the client, own body spawned, host grabs, **a second holder joins**, the crate is lifted off the floor, the handoff leaves one holder, it is still held afterwards, and finally everyone has let go. The lift is asserted on the client too, which proves it replicated rather than only that the host believes it.
+It asserts, in order: session up, world loaded, both peers in the roster, all twelve starting crates replicated to the client, own body spawned, host grabs, **a second holder joins**, the crate is lifted off the floor, the handoff leaves one holder, it is still held afterwards, and finally everyone has let go. The lift is asserted on the client too, which proves it replicated rather than only that the host believes it.
 
 Then a second scenario for **solo drag**, on a different crate, with the *client* doing the dragging so every verdict has to survive a real RPC — a host-side drag would only exercise the local branch, which is the half that cannot break. It asserts the host granted a drag rather than a carry, that the 40% speed penalty applied on the dragger's own machine, that the crate **stays on the floor while the dragger looks straight up** (a carry would have hauled it to eye level; this is the mechanical reason a solo player cannot rack anything), that it follows them as they back away, that a second holder **promotes the drag into a carry** and lifts it, and that the promotion reached the dragger so their speed penalty lifts.
 
@@ -73,6 +77,16 @@ The two roles hand over through replicated state rather than a clock: the host w
 That last scenario found a bug the day it was written. The drag request was stored per crate rather than per holder, so when a helper joined a drag and the original dragger let go, the helper inherited a drag they had never asked for.
 
 It uses port **27099**, deliberately not 27015, so running the suite never collides with someone playing.
+
+### storage_session
+
+`storage_session.tscn` runs the same two-process, `--role=` shape as `carry_session`, on its own port (**27097**, so it can never collide with `carry_session`'s 27099 or a live game's 27015) and its own instance of `test_room.tscn`.
+
+It asserts, in order: the host racks a crate into a rack cell and the crate's rigid body leaves the world **on the client's own copy too**, not just the host's; a second crate racked into the *same* cell brings its count to two rather than being refused (ADR 18 — a cell is eight Smalls, not one slot); a cell filled to capacity refuses a further placement **without dropping** what the asker was holding; a **dragged** crate is refused from a cell that is not floor level (ADR 19) while a *carried* crate reaches that same cell earlier in the run without issue; and finally two retrievals from the first cell come back in the exact reverse of the order they were placed in (LIFO), leaving the cell — and its derived visual — empty, independently confirmed on both peers.
+
+The "cell filled to capacity" setup goes through the referee's own `_cell_filled` broadcast directly, with synthetic ids that were never real crates, rather than eight real grab-and-place round trips — it is setup, not the thing under test, but it still travels the real wire, so both peers agree the cell is genuinely full rather than the host merely asserting so.
+
+A handful of this scenario's exact numbers (crate counts, which cell ends up holding what) do not match a literal reading of the plan that first specified it — filling a cell to eight and asserting it empty two steps later does not reconcile with itself once actually simulated. Every property named in the plan is still proven; see `storage_session.gd`'s own header comment and `01-04-SUMMARY.md` for what changed and why.
 
 ## When it fails
 

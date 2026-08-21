@@ -43,6 +43,12 @@ signal hold_mode_changed(peer_id: int, mode: HoldMode)
 ## pick up, and deliberately worse in every way except that it is always possible.
 enum HoldMode { CARRY, DRAG }
 
+## This crate's kind, for storage (01-03 onward). A cell is atomic — one kind
+## at a time (ADR 18) — so racking needs to know what it is holding. Phase 1
+## has exactly one cargo size, so this is the only kind that exists; Phase 2
+## turns it into a real size class rather than a single constant.
+const KIND_SMALL := &"small"
+
 ## Two is the ceiling by design — two-player carry, not four (GDD §6.1).
 const MAX_HOLDERS := 2
 ## Above this, one player cannot get a crate off the floor and is given a drag
@@ -127,6 +133,20 @@ const MIN_ALIGN_ANGLE := 0.001
 ## Below this you are leaning on it, not shoving it.
 @export var min_shove_speed := 0.4
 
+## The world layer's bit value (project settings name layer 1 "world"). A
+## settled crate ORs this into [member RigidBody3D.collision_layer] rather
+## than replacing it, so it stays tagged as cargo too — a Goods zone still
+## has to see it (ADR 17, see the class comment on [GoodsZone]). Named so the
+## settle machine's bit twiddling below reads as intent, not magic.
+const LAYER_WORLD := 1
+
+@export_group("Settling")
+## Below this speed, for this many consecutive physics frames, a crate is at rest.
+## Frames rather than seconds because it is a physics-tick judgement, and the tick
+## rate is pinned at 60 by the api layer.
+@export var settle_speed := 0.15
+@export var settle_frames := 30
+
 ## Replicated by the MultiplayerSynchronizer. Written only by the host.
 var sync_position := Vector3.ZERO
 var sync_basis := Quaternion.IDENTITY
@@ -136,6 +156,11 @@ var sync_basis := Quaternion.IDENTITY
 ## an array because two is the cap, so the shape encodes the rule. 0 means empty.
 var sync_holder_a := 0
 var sync_holder_b := 0
+
+## Replicated because blocking happens CLIENT-side: a player is stopped by their own
+## capsule meeting this body locally, so every peer needs it solid at the same moment.
+## Deriving it per-peer from velocity would have peers disagree during the settle.
+var sync_settled := false
 
 ## Below this, a crate has left the world and is recovered rather than lost.
 ##
@@ -162,12 +187,39 @@ var _holders: Dictionary = {}
 ## Host-only. What the current hold is, kept so a change can be spotted and
 ## announced rather than recomputed by everyone every frame.
 var _hold_mode := HoldMode.CARRY
+## Host-only. Consecutive physics frames this crate has been at rest —
+## see [method _update_settle_state]. Debounced rather than instant so a
+## crate that merely bounces once does not flicker solid and back.
+var _settle_frames_at_rest := 0
+## Set once in [method setup]. -1 means never assigned, which would be a bug —
+## every crate is minted with an id, and racking (01-03 onward) needs it to
+## turn stored occupancy data back into a real crate.
+var id := -1
+## Always [constant KIND_SMALL] in Phase 1. A real field rather than the
+## constant read directly, so 01-04 onward can ask "what kind is this crate"
+## without caring whether the answer is fixed or, later, per-instance.
+var kind := KIND_SMALL
+
 ## Where this crate came into the world. Kept so a crate that falls out of it has
 ## somewhere valid to come back to — the dock, in a real level.
 var _spawn_point := Vector3.ZERO
 ## How many times the host has fished this crate back out of the void. Nonzero is
 ## a level bug, so it is counted rather than silently forgiven.
 var recovery_count := 0
+
+## When this instance actually entered the tree, [method Time.get_ticks_msec] —
+## set once in [method _ready], read only by [method age_ms]. Exists because
+## both [code]request_retrieve[/code] and [code]shed_top_row[/code]
+## (carry_authority.gd) mint a fresh crate at [i]a rack cell's own centre[/i],
+## which sits inside that rack's own [code]ImpactSensor[/code] volume by
+## construction — a retrieved crate's hold spring, or a shed crate's own
+## launch impulse, can accelerate it past a rack's shed threshold while it is
+## still physically overlapping the sensor it was just born inside, shedding
+## the rack it was either just taken from or just shed by (found live at the
+## wave 7 gate, 2026-08-21: retrieving from a loaded top row sheds the row).
+## Not replicated — only the host's own [Rack] ever reads it, on the host's
+## own crate instances, so a client copy needs no opinion about it.
+var _spawn_ms := 0
 
 ## Host-only. peer_id -> whether that holder asked to drag rather than carry.
 ##
@@ -186,6 +238,7 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	_spawn_ms = Time.get_ticks_msec()
 	if Net.is_host():
 		set_process(false)
 		return
@@ -200,9 +253,10 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if global_position.y < RECOVERY_FLOOR_Y:
 		_recover()
-	_apply_shoves()
+	var player_overlapping := _apply_shoves()
 	if not _holders.is_empty():
 		_apply_hold_forces(delta)
+	_update_settle_state(player_overlapping)
 	sync_position = global_position
 	sync_basis = global_transform.basis.get_rotation_quaternion()
 
@@ -212,6 +266,18 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# Applied BEFORE the early-out below, deliberately. A crate that is
+	# perfectly still is exactly a SETTLED one, and the early-out exists to
+	# skip work once a crate stops moving — put after it, this would never
+	# run for the one case it exists to handle, and a settled crate would
+	# stay solid only on the host (ADR 17).
+	var wants_world := (collision_layer & LAYER_WORLD) != 0
+	if sync_settled != wants_world:
+		if sync_settled:
+			collision_layer |= LAYER_WORLD
+		else:
+			collision_layer &= ~LAYER_WORLD
+
 	# Measured, not guessed: smoothing every crate every frame cost a client about
 	# 6 ms per frame at 100 crates - over a third of a 60 Hz budget, before
 	# anything is drawn - and most of those crates were sitting perfectly still.
@@ -241,6 +307,11 @@ func _process(delta: float) -> void:
 func add_holder(peer_id: int, holder: Player, want_drag := false) -> bool:
 	if _holders.size() >= MAX_HOLDERS or _holders.has(peer_id):
 		return false
+	# A settled crate is frozen. Without this the hold spring in
+	# _apply_hold_forces pulls against a static body and the crate never
+	# leaves the floor — the single most likely bug this plan can introduce.
+	if sync_settled:
+		_wake()
 	_holders[peer_id] = holder
 	_drag_requests[peer_id] = want_drag
 	# A held body is awake by definition — letting it sleep would strand it in
@@ -267,6 +338,13 @@ func remove_holder(peer_id: int) -> void:
 ## Host-only truth about what this hold currently is.
 func hold_mode() -> HoldMode:
 	return _hold_mode
+
+
+## Milliseconds since this instance's own [method _ready] ran. See
+## [member _spawn_ms] for why [Rack] needs this rather than trusting
+## [member RigidBody3D.linear_velocity] alone.
+func age_ms() -> int:
+	return Time.get_ticks_msec() - _spawn_ms
 
 
 ## Host-only. Two holders always carry, so a mate walking over and grabbing a
@@ -302,11 +380,12 @@ func is_held_by(peer_id: int) -> bool:
 
 
 ## Called on every peer by the spawner before the node enters the tree.
-func setup(id: int, spawn_point: Vector3) -> void:
+func setup(crate_id: int, spawn_point: Vector3) -> void:
+	id = crate_id
 	# Deterministic on every machine: this name is how peers agree which crate is
 	# which, so it is protocol rather than decoration (ADR 12). Do not rename it
 	# for cosmetic reasons — it would fail on remote peers only, and silently.
-	name = "crate_%d" % id
+	name = "crate_%d" % crate_id
 	position = spawn_point
 	sync_position = spawn_point
 	_spawn_point = spawn_point
@@ -333,11 +412,19 @@ func _recover() -> void:
 
 
 ## Host-only. Walking into cargo shoves it, at a force the host controls.
-func _apply_shoves() -> void:
+##
+## Returns whether any player is currently overlapping the push sensor at
+## all, including one this crate is held by, so [method _update_settle_state]
+## can reuse this frame's sensor read rather than paying for a second one —
+## the guard against settling on top of a standing player is free for exactly
+## that reason.
+func _apply_shoves() -> bool:
+	var player_overlapping := false
 	for body in _push_sensor.get_overlapping_bodies():
 		var player := body as Player
 		if player == null:
 			continue
+		player_overlapping = true
 		# Never shove what you are carrying. Without this the holder's own capsule
 		# pushes their crate away from them for as long as they walk forward.
 		if is_held_by(player.peer_id):
@@ -355,9 +442,69 @@ func _apply_shoves() -> void:
 		if closing < min_shove_speed:
 			continue
 
+		# The sensor still fires while frozen (measured, ADR 17) — a qualifying
+		# shove has to wake a settled crate before the force below lands, or it
+		# lands on a static body and does nothing at all.
+		if sync_settled:
+			_wake()
+
 		# A crate asleep on the floor will not wake for an applied force alone.
 		sleeping = false
 		apply_central_force((toward * closing * shove_force).limit_length(max_shove_force))
+	return player_overlapping
+
+
+## Host-only. Debounces "at rest" into "settled" over [member settle_frames]
+## consecutive physics frames. Refuses to settle at all while held, or while
+## [param player_overlapping] says a player is standing inside the push
+## sensor's volume — a player stuck inside solidifying geometry is the worst
+## failure mode this plan can produce, so both guards reset the counter
+## rather than merely skipping the increment (ADR 17).
+func _update_settle_state(player_overlapping: bool) -> void:
+	if not _holders.is_empty() or player_overlapping:
+		_settle_frames_at_rest = 0
+		return
+	if sync_settled:
+		return
+	if linear_velocity.length() < settle_speed and angular_velocity.length() < settle_speed:
+		_settle_frames_at_rest += 1
+		if _settle_frames_at_rest >= settle_frames:
+			_settle()
+	else:
+		_settle_frames_at_rest = 0
+
+
+## Host-only. A crate at rest becomes real world geometry: frozen, and on the
+## world layer, so a player's own capsule collides with it CLIENT-side, with
+## no round trip and no authority question (ADR 17) — see [Crate]'s class
+## comment on why this does not reopen the bulldozing bug the cargo/players
+## mask split exists to prevent. The crate is not sharing a mask with
+## players; it has joined theirs, the same way a wall is world geometry too.
+func _settle() -> void:
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	freeze = true
+	collision_layer |= LAYER_WORLD   # now world geometry, so players collide with it
+	sync_settled = true
+
+
+## Host-only. Reverses [method _settle]. Driven by a qualifying shove
+## ([method _apply_shoves]) or by being grabbed ([method add_holder]) — the
+## push sensor keeps firing while frozen (measured, ADR 17), which is what
+## makes a settled crate always wakeable rather than permanent scenery.
+##
+## [member sleeping] is set explicitly rather than left to whatever it was
+## before freezing: unfreezing alone makes the body dynamic again but does
+## not by itself guarantee the solver treats it as awake, and a hold spring
+## applying force to a body that never actually wakes looks identical to a
+## broken hold — the crate sits motionless while its holder walks away from
+## it until the hold snaps at break distance. Found by the integration suite
+## breaking a drag it should not have.
+func _wake() -> void:
+	sync_settled = false
+	collision_layer &= ~LAYER_WORLD
+	freeze = false
+	sleeping = false
+	_settle_frames_at_rest = 0
 
 
 func _apply_hold_forces(delta: float) -> void:

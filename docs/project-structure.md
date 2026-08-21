@@ -11,8 +11,14 @@ warehouse-manager/
 ├── scenes/
 │   ├── main/         main.tscn        Entry point and menu shell
 │   ├── levels/       test_room.tscn   Whole playable maps
-│   ├── world/                         Fixtures placed inside levels: racks, shelving, dock doors, zones
-│   ├── goods/                         Cargo and its size variants
+│   ├── world/        rack.tscn,       Fixtures placed inside levels: racks, shelving, dock doors, zones.
+│   │                 goods_zone.tscn  Phase 1: rack.tscn (instanced as rack_wall / rack_island in
+│   │                                  test_room.tscn) and goods_zone.tscn (instanced as GoodsIn /
+│   │                                  GoodsOut). racked_item.tscn, the zero-cost visual a filled
+│   │                                  cell shows, lives under goods/ instead — it is cargo, not a
+│   │                                  fixture.
+│   ├── goods/        crate.tscn,      Cargo and its size variants
+│   │                 racked_item.tscn
 │   ├── player/       player.tscn      The capsule
 │   ├── ui/                            HUD, prompts, menus beyond the shell
 │   └── components/                    Sub-scenes instanced into other scenes
@@ -82,6 +88,17 @@ The coming temptations are a day clock, a client roster and an economy ledger (P
 **`class_name` is declared when another script refers to the type** — `Player`, `TestRoom`, `NetTransport`. Omitted for one-off scene glue like `main.gd`, where a global name buys nothing and pollutes autocomplete.
 
 Code style — static typing, script section order, past-tense signals — is governed separately and is not repeated here.
+
+## Physics layers
+
+Named in `project.godot` (`layer_names/3d_physics/layer_N`) and pinned in `test/api/engine_assumptions.gd` so a new layer cannot appear silently inside a `.tscn`.
+
+| Layer | Name | Bit value | What lives there |
+|---|---|---|---|
+| 1 | `world` | 1 | Static level geometry — floors, walls, dock doors |
+| 2 | `players` | 2 | Player capsules. Deliberately does not share a mask with cargo — a puppet capsule's position is written rather than simulated, so a shared mask lets the solver bulldoze cargo at full walking speed |
+| 3 | `cargo` | 4 | Crates and other held or thrown goods — host-simulated rigid bodies |
+| 4 | `storage` | 8 | Rack cell aim-volumes (Phase 1) — `Area3D`s with `monitoring` and `monitorable` both off, hittable by the grab ray without joining the cargo layer |
 
 ## ⚠ Node names are protocol, not decoration
 

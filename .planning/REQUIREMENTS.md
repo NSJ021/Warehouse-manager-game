@@ -26,16 +26,17 @@
 
 ### Storage (STORE)
 
-- [ ] **STORE-01**: Racks expose **cells** that hold cargo — 8 Smalls, or 1 Medium, or half a Large
-- [ ] **STORE-02**: Cargo snaps into cells on insert, with no physics jitter
-- [ ] **STORE-03**: Goods IN and Goods OUT zones detect what is inside them
-- [ ] **STORE-04**: Floor stacking is allowed, blocks pathing, and counts as clutter
-- [ ] **STORE-05**: Racks have stability; hit one hard enough and the top row sheds
-- [ ] **STORE-06**: A cell is atomic — one kind of cargo at a time — and retrieval within it is last-in-first-out
+- [x] **STORE-01**: Racks expose **cells** that hold cargo — 8 Smalls, or 1 Medium, or half a Large *(01-03, twelve cells per rack against ADR 18; Phase 1 gate passed 2026-08-21)*
+- [x] **STORE-02**: Cargo snaps into cells on insert, with no physics jitter *(01-04 place/retrieve, 01-06 the tweened travel-and-thud snap; verified clean on both peers and confirmed at the gate)*
+- [x] **STORE-03**: Goods IN and Goods OUT zones detect what is inside them *(01-05, both peers proven to agree independently over real ENet)*
+- [x] **STORE-04**: Floor stacking is allowed, blocks pathing, and counts as clutter *(ADR 17 / 01-09 — settled cargo turns static and blocks players for real, not only cargo in transit; verified underfoot at the Phase 1 gate, checks 16-19)*
+- [x] **STORE-05**: Racks have stability; hit one hard enough and the top row sheds *(01-07, bounded three ways against ADR 14; confirmed at the gate to read as punishment, not noise — a dragged crate can never reach the threshold, a thrown or two-player-carried one can)*
+- [x] **STORE-06**: A cell is atomic — one kind of cargo at a time — and retrieval within it is last-in-first-out *(01-03/01-04; atomicity challenged and upheld in play at the Phase 1 gate — the mixed zones are Goods IN, the floor, and shed aftermath, not a rack)*
+- [ ] **STORE-07**: The round-trip invariant — racking frees a crate's body and retrieval mints a fresh one, so every field of a crate's record (kind today; condition, apparent condition, scuffs, fragility, store-until date, owner and value as later phases add them) must survive a place/retrieve cycle intact: `retrieve(place(crate)) == crate` for every field. LIFO returning a *different* crate of the same kind is correct; losing or corrupting a field is not. *(Named at the Phase 1 gate, 2026-08-21 — not yet built beyond `kind`; Phase 2/3 scope, load-bearing for the Phase 3 pillar, since an unfaithful round trip would let racking launder damage.)*
 
 ### Goods (GOODS)
 
-- [ ] **GOODS-01**: Size classes — Small (0.5 m, 8 per cell), Medium (1.0 m, one whole cell, view-blocking), Large (2.0 × 1.0 × 1.0, two cells)
+- [ ] **GOODS-01**: Size classes — Small (0.5 m, 8 per cell), Medium (1.0 m, one whole cell, view-blocking), Large (2.0 × 1.0 × 1.0, two cells) *(open question, raised at the Phase 1 gate: which two cells a Large occupies — side-by-side across columns, or front-to-back through depth, which would uniquely use a wall rack's dead row — is undecided; answer in Phase 2 planning)*
 - [ ] **GOODS-02**: Fragility 0–3, from crated machinery to glassware
 - [ ] **GOODS-03**: A store-until date that is both the deadline and the spoilage limit
 - [ ] **GOODS-04**: Condition tiers — Pristine, Scuffed, Damaged, Destroyed

@@ -46,8 +46,9 @@ current = true
 fov = 80.0
 
 [node name="GrabRay" type="RayCast3D" parent="CameraPivot"]
-target_position = Vector3(0, 0, -2.5)
-collision_mask = 4
+target_position = Vector3(0, 0, -2.0)
+collision_mask = 12
+collide_with_areas = true
 hit_from_inside = true
 
 [node name="NameLabel" type="Label3D" parent="."]

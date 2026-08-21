@@ -119,6 +119,53 @@ Each is a **PRO with a CON in the same system**, so no perk is a straight upgrad
 
 *Pallet* and *Wingnut* are the two whose perks only pay out **in co-op**, which is exactly the shape the design wants: teamwork rewarded by being better, never by being required. A roster with two or three of these makes the co-op case without gating anything — Ronnie solo is simply a bloke, and that is allowed.
 
+### Variant proposed 2026-08-20 — the trait picker
+
+**Raised:** NJ, mid-session. Decouple the cosmetic identity from the mechanical one: **~6 character
+models with changeables** (hi-vis, hats, colours), then a **points-based trait picker** in the
+Project Zomboid mould — buffs cost points, debuffs pay them, weighted so that affording any real
+buff means taking debuffs. **Nicknames are generated from the picks**, using the name pool below
+as the generator's vocabulary and keeping its rule: the name names the trait and takes the piss.
+
+What it fixes outright — the entry's two sharpest risks dissolve structurally:
+
+- **The roster-size problem disappears.** No eight-character minimum, no leftover pick, no
+  duplicate rule needed. Combinatorial builds mean four players always have a real choice.
+- **The solo problem disappears.** One pick no longer locks seven doors for a whole lease — a
+  solo player assembles their own texture. "Conveniences, not keys" stops being a discipline to
+  hold and becomes a property of the system.
+
+The debuff weighting is proven design: Zomboid players voluntarily take *more* debuffs than they
+need because debuffs are funny, and self-inflicted chaos is consented chaos — the same
+philosophy as the host splitting the pot. Guardrails that carry over from the fixed-cast
+version, plus two new ones:
+
+1. **Debuffs must be physics-visible** — drops things when shoved, can't stop on demand, clips
+   rack corners. A stat tax is a spreadsheet; a fumble is a clip.
+2. **Cap the picks** (roughly two buffs, three debuffs) so the lobby stays a conversation, not a
+   spreadsheet.
+3. **Any trait touching the dilemma's constants must be a parameter the no-dominant-strategy
+   sweep can iterate** (a suspicion-ramp rate, a replacement-cost multiplier), and the sweep
+   runs per-build. This turns "balance work" from a vibe into a testable cost.
+
+**What it loses, and the rescue:** the fixed sitcom cast. "Rodney did it again" works across
+every streamer's video because Rodney is the same Rodney; custom builds make stories personal
+but not franchisable, and capsule art wants a recognisable cast. The synthesis: **the eight
+become curated presets** — canonical look, canonical build, canonical nickname — sitting on top
+of the trait system. Trailers and capsule art use the cast; players pick a preset or build
+custom and get christened by the generator. Marketing keeps its sitcom, players keep their
+freedom.
+
+**Teflon Vin, revisited harder:** his perk breaks two load-bearing rules, not one — the
+pillar's "holder decides, holder owns it", and ADR 21's deliberate refusal to mechanise blame
+(damage is named but never netted precisely because attribution is unprovable). Keep him in the
+name pool, keep him out of any shipping set.
+
+**Sequencing (per ADR 23):** models and cosmetics at the EA launch — close to a marketing
+requirement, since the store page needs clippable characters and ADR 11's positioning demands
+them. The trait system is a post-EA headline update, priced against live economy data that will
+not exist sooner. The decoupling in this variant is exactly the seam that split needs.
+
 ### Where this sits against scope
 
 Not in v1's In list, and it is not on the parked list either — it is new. If it comes in, it needs its own ADR, and that ADR should be honest that the *cost* is balance work rather than art.
@@ -225,9 +272,80 @@ It reinforces the crew and is reinforced by it — **Half-Inch Del** and **Gaz t
 
 It also gets a **free evidence trail** from ADR 21's contribution tally: *"sold 3 of other people's crates"* is a column, and it is the most damning line the host could read at the split.
 
+### Two couplings found 2026-08-20
+
+**Fencing a damaged item is a fourth dilemma fork, and nobody had named it.** A damaged crate in
+hand can be sold to the van and reported as never arrived — same order-of-cash as confessing,
+no suspicion, reckoning deferred. That bypasses the pillar (constraint 1) through a side door:
+fencing as *evidence disposal*. Any ADR for this must either price "gone missing" at least as
+harshly as a failed order, or set the spread below the worst confession band (15%) so the honest
+forks always beat the van on damaged stock — and if it is built, the no-dominant-strategy sweep
+needs the fourth fork added or the design property is unverified.
+
+**The spread can be derived rather than guessed.** The first-pass economy model
+(`tools/economy-sim.js`) gives the "never saves a run" rule a tunable shape: **one fence must
+never cover one night's rent.** At the model's candidate numbers, a good crate fenced at ~40%
+yields ~£235 against a ~£585 eviction night — two or three sales can save the night, each
+digging a visible hole in promised stock, which is exactly the "decision with a count" texture
+constraint 3 wants.
+
+**Sequencing (per ADR 23):** the lien sale (strand 3) is the low-controversy door and naturally
+rides alongside Phase 4's economy ADRs. The van proper needs ADR 22's unsavoury market not just
+decided but live-proven — a post-EA headline update, which is precisely the shape ADR 23 wants
+updates to take.
+
 ### Open questions
 
 - **Does a sale show up on the day's tally, or only at the final reckoning?** ADR 21 posts the tally at each day's CLOSE, which makes a sale **unilateral in the moment but accountable by nightfall** — you can hide it for an afternoon, not for a run. That is probably the right balance and consistent with the pillar, but it is worth confirming rather than assuming.
 - **Who can sell?** Consistent with the pillar, any player. But one person fencing the warehouse is a far bigger unilateral act than patching one crate, and the tally is the only thing holding it accountable.
 - **Does the client find out it was sold, or only that it is missing?** Different reputation consequences, and the second is more interesting because it leaves room for a lie.
 - **What is the spread?** The single most important number if this is ever built, because it is the interest rate on the whole mechanic and it decides whether the loan is tempting or absurd.
+
+---
+
+## The rack topple
+
+**Raised:** 2026-08-21 (NJ) · **Status:** proposal, not in v1 scope · one slice (positional shedding) is legitimately before the Phase 1 gate now
+
+### The idea
+
+The clip: a player comes in too hot, slams into a rack's *frame* rather than its stock, and the rack wobbles — wobbles again — then slowly goes over, scattering items everywhere, damaging crates, clipping the next rack, and leaving the crew a logistical nightmare that somebody has to carry back out of the aisle one crate at a time. In NJ's original telling the vehicle is a forklift with the forks set too low, which is the perfect image and also the tell that this idea spans several very different doors — see below.
+
+§11 already commits the game to being sold on clips, and this is the storage system's best one: a disaster legible in three seconds, caused by one identifiable idiot, with consequences the whole crew inherits. That is the same social shape as the pillar — one person's unilateral act, everyone's problem.
+
+### Most of it already exists, or is already coming
+
+Decomposing the clip is the whole analysis, because the pieces land in wildly different places:
+
+| Piece of the clip | Where it stands |
+|---|---|
+| The aftermath blocks the warehouse and must be re-carried | **Built** (ADR 17, plan 01-09) — settled cargo turns static, blocks pathing, wakes when shoved |
+| Falling stock takes damage | **Phase 3, already planned** — and every damaged crate is a patch/confess/comp fork, so a shed feeds the pillar for free |
+| A hard hit knocks stock off | **Built, bounded** (01-07) — top row only, 4.0 m/s threshold, cooldown |
+| Shedding depends on *where* the rack was hit | **Candidate for the Phase 1 gate ruling** — the impact sensor already knows where the crate struck; shedding the cells above the impact rather than always the ceremonial top row is a bounded extension, not a new system |
+| The wobble before it lets go | **Phase 6 juice** — racked items are visuals parented to the rack, so rocking the rack node rocks everything on it. A telegraph, then a consequence |
+| The full topple | **New. Needs its own ADR** — see the sums below |
+| The forklift | **Parked** (ADR 6). Needs a superseding ADR on its own evidence. The in-scope vehicle is a two-player carry at full speed — the one hold mode fast enough to shed |
+| Spills, leaks, mopping | **Parked** (ADR 6, cleaning). Same rule |
+
+The last two rows are named so they cannot ride in as part of a bundle — the same discipline as bartering in the sales counter entry. A topple ADR that quietly assumes a forklift has adopted parked scope through the side door.
+
+### The sums the topple must respect
+
+A rack is 12 cells; full of Smalls that is up to **96 items becoming rigid bodies at once**, against ADR 14's ~150-body budget. So *one* topple is affordable as a transient spike in an otherwise calm warehouse — and it is **recoverable precisely because of ADR 17**: the wreckage re-settles to static and stops costing anything, which is the same mechanic that makes the mess a chore to clear. The budget trap to respect: past the ceiling, replication degrades *silently* (host traffic falls, crates lag on clients, nothing announces it), and 96 simultaneously tumbling crates all defeat the on-change replication optimisation at once.
+
+Which yields the one hard design rule: **a falling rack may shed its neighbour; it must never topple it.** The domino chain is the clip everyone wants and the failure mode the budget cannot survive. Cap the cascade structurally, not by tuning.
+
+### Constraints it must not break
+
+1. **Racks stay stable, not fragile.** The shed threshold's own code comment states the stance (ADR 4's spirit): a threshold for recklessness, not ambient noise. A topple must be rare and *earned* — deliberate speed into the frame — or racking stops feeling safe and "storage feels deliberate" dies. If racks fall over weekly, the punishment becomes weather.
+2. **No cascades.** See the sums.
+3. **Supply is conserved.** A toppled crate is damaged — DESTROYED at worst, which is a condition tier, not deletion. Nothing about a topple removes stock from the run.
+4. **It must feed the dilemma.** A topple is a mass damage event: a dozen simultaneous patch/confess/comp decisions under time pressure, with the crew watching. That is why this is native rather than bolted on — it is the pillar's delivery mechanism scaled up.
+5. **The parked doors stay parked.** Forklift and cleaning each need their own superseding ADR; this entry does not argue for either.
+
+### The cheap version
+
+Positional shedding + the wobble telegraph + the already-built static aftermath is most of the clip at a fraction of the cost: the rack lurches, the cells above the impact let go, the mess settles into everyone's way. No new physics objects beyond what 01-07 already sheds, no new ADR beyond the gate's own shed ruling, and the "vehicle" is two players sprinting a crate into the frame.
+
+The topple proper — the slow, creaking, full fall — is the headline slice. **Sequencing per ADR 23:** positional shed can enter through the Phase 1 gate ADR if ruled in; the wobble lands with Phase 6's juice pass; the topple is its own ADR and has the shape of a post-EA headline update, priced against real play data on how often players actually hit racks that hard.

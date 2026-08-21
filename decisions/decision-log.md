@@ -4,6 +4,8 @@ Append-only. Newest at the top. To change course, write a **new** ADR and mark t
 
 | Date | Decision | Status | ADR |
 |---|---|---|---|
+| 2026-08-21 | Rack geometry ratified: pallets, buried rows, two speeds of shelf | Accepted | [rack-presentation-ratified](2026-08-21-rack-presentation-ratified.md) |
+| 2026-08-20 | Early Access, not straight to 1.0 — same bar, two launch beats | Accepted | [early-access-launch](2026-08-20-early-access-launch.md) |
 | 2026-08-19 | Orders are manifests; reputation is a market position | Accepted | [orders-are-manifests-reputation-is-a-market](2026-08-19-orders-are-manifests-reputation-is-a-market.md) |
 | 2026-08-19 | Reputation expires with the run; the crew splits one pot | Accepted | [two-currencies-and-the-crew-split](2026-08-19-two-currencies-and-the-crew-split.md) |
 | 2026-08-19 | Detection and patch maths; reputation decays with the lease | Accepted | [detection-and-patch-maths](2026-08-19-detection-and-patch-maths.md) |

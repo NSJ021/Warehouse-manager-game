@@ -1,0 +1,20 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="AudioStream" path="res://assets/audio/rack_place.wav" id="1_sound"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_racked"]
+size = Vector3(0.5, 0.5, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_racked"]
+albedo_color = Color(0.72, 0.55, 0.36, 1)
+roughness = 0.85
+
+[node name="RackedItem" type="MeshInstance3D"]
+editor_description = "Deliberately a bare mesh - no body, no collision, no synchronizer (ADR 14). A rack holding 96 Smalls as such nodes would be two-thirds of the whole physics budget standing still. This is a pure visual consequence of Rack's occupancy data, rebuilt locally on every peer rather than replicated itself - see scripts/world/rack.gd."
+mesh = SubResource("BoxMesh_racked")
+material_override = SubResource("StandardMaterial3D_racked")
+
+[node name="PlaceSound" type="AudioStreamPlayer3D" parent="."]
+editor_description = "The placeholder thud (01-06) - see tools/make-placeholder-audio.ps1 for how it was made and how to remake or replace it. Positional (AudioStreamPlayer3D, not a UI blip) so a mate racking something across the warehouse is audible and located. Played once per travel by Rack.apply_cell_filled; not autoplay, and silent on the late-joiner snapshot path."
+stream = ExtResource("1_sound")
+autoplay = false
