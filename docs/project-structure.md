@@ -11,8 +11,14 @@ warehouse-manager/
 ├── scenes/
 │   ├── main/         main.tscn        Entry point and menu shell
 │   ├── levels/       test_room.tscn   Whole playable maps
-│   ├── world/                         Fixtures placed inside levels: racks, shelving, dock doors, zones
-│   ├── goods/                         Cargo and its size variants
+│   ├── world/        rack.tscn,       Fixtures placed inside levels: racks, shelving, dock doors, zones.
+│   │                 goods_zone.tscn  Phase 1: rack.tscn (instanced as rack_wall / rack_island in
+│   │                                  test_room.tscn) and goods_zone.tscn (instanced as GoodsIn /
+│   │                                  GoodsOut). racked_item.tscn, the zero-cost visual a filled
+│   │                                  cell shows, lives under goods/ instead — it is cargo, not a
+│   │                                  fixture.
+│   ├── goods/        crate.tscn,      Cargo and its size variants
+│   │                 racked_item.tscn
 │   ├── player/       player.tscn      The capsule
 │   ├── ui/                            HUD, prompts, menus beyond the shell
 │   └── components/                    Sub-scenes instanced into other scenes
