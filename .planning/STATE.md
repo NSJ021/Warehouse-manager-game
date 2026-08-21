@@ -14,10 +14,29 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: **01-01 through 01-06 complete** — waves 1–4 done, 3 of 9 plans remaining across waves 5–7
-Status: **Executing** — wave 4 (01-06 aim feedback and the snap) complete; wave 5 (01-07 shedding)
-unblocked
-Last activity: 2026-08-21 — 01-06 executed: a three-state cell highlight (none/actionable/blocked,
+Plan: **01-01 through 01-07 complete** — waves 1–5 done, 2 of 9 plans remaining across waves 6–7
+Status: **Executing** — wave 5 (01-07 shedding) complete; wave 6 (01-09 settled cargo) unblocked;
+wave 7 (01-08, the human gate) waits on it
+Last activity: 2026-08-21 — 01-07 executed: `Rack` gained a host-only `ImpactSensor` (`Area3D`,
+mask 4/cargo, speed-thresholded, cooldown-limited) and `CarryAuthority` gained `shed_top_row`,
+which clears exactly the occupied top-row cells over the existing `_cell_cleared` broadcast and
+spawns each as a real falling crate with an outward-and-up impulse, bounded three ways against
+ADR 14 (top row only, `MAX_SHED_PER_EVENT`, the rack's own cooldown). Proven on two real processes
+over three consecutive clean runs: two top-row cells filled through the real place path, a
+scripted high-speed impact, and — on both peers — both cells empty, the untouched mid-row cell
+(8 synthetic fillers) unaffected, the loose-crate count up by exactly the delta, both visuals
+gone. A small stacking step proved floor stacking still works. **Two deviations, both caught
+before the first test run rather than by a failing one**: the plan's own worked cell numbers (8,
+9, "for a 4×3 bay") don't exist as aimable cells on the actual `rack_wall` fixture — they're the
+same permanently-unaimable depth=0 row 01-04 already found — fixed by using 10 and 11 instead,
+the top-row cells on the aimable depth=1 side; and the plan's own impact-launch formula has no
+lateral offset, which spawns the crate directly inside a corner upright's collision box — fixed
+by centring the flight path on the rack's own width. **The audit's drag-speed/shed-threshold flag
+is preserved and expanded** in `rack.gd`'s own doc comment for the wave 7 gate: a dragged crate's
+~1.7 m/s ceiling can never reach the 4.0 m/s shed threshold, confirmed correct with a thrown
+crate, not yet with one in hand. **The floor-stacking "blocks pathing" tension is written down,
+not resolved** — full text in `01-07-SUMMARY.md`, carried verbatim for 01-08. Before that:
+01-06 executed: a three-state cell highlight (none/actionable/blocked,
 driven every frame from the local player's own aim and matching `try_toggle_hold`'s branch table
 exactly, including the two ADR 19 drag rows the plan itself flagged as missing when first written)
 and a tweened placement snap (travel-and-settle over 0.16s with a positional thud, replacing the
@@ -45,8 +64,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 (ADR 20); the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched
 for ADR 19 before execution
 
-Progress: [█████░░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-4 of 7 done
-(6/9 plans)
+Progress: [██████░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-5 of 7 done
+(7/9 plans)
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -84,9 +103,9 @@ Progress: [█████░░░░░] Phase 0 complete bar one blocked item
 > now reads the underscore key the template actually uses); verified against all nine plans.
 > The patch is machine-local and a tool update overwrites it — re-verify after any update.
 
-**Next session: wave 4 is complete, resume at wave 5.** 01-06 (aim feedback and the snap) landed.
-`/gsd:execute-phase 1` from a fresh context will skip the six plans with SUMMARYs and pick up
-wave 5 (01-07, shedding).
+**Next session: wave 5 is complete, resume at wave 6.** 01-07 (shedding) landed.
+`/gsd:execute-phase 1` from a fresh context will skip the seven plans with SUMMARYs and pick up
+wave 6 (01-09, settled cargo) — the last autonomous plan before wave 7's human gate (01-08).
 
 Things to carry in, from the audit above and from 01-04's and 01-05's own execution:
 
@@ -251,6 +270,50 @@ Things to carry in, from the audit above and from 01-04's and 01-05's own execut
 > the dragging-BLOCKED cue reads as "call someone over") that plan 01-08 needs to put in front of a
 > human at the wave 7 gate.
 
+> **01-07 resolved 2026-08-21: racks shed their top row, bounded and proven on two peers.**
+> `Rack` gained an `ImpactSensor` (`Area3D`, `collision_layer=0`/`collision_mask=4`, host-only —
+> disabled and disconnected on a client in `_ready`, the same split `Crate`'s own `PushSensor`
+> uses) that fires `_on_impact` when a real, host-simulated `linear_velocity` clears
+> `shed_impact_speed` (4.0) outside a `shed_cooldown` (1.5s) window, then resolves the referee
+> lazily by group — the same pattern `Carrier._authority()` already uses, deliberately not
+> cached. `CarryAuthority.shed_top_row` walks `rack.occupied_cells_in_top_row()` (bounded again by
+> `MAX_SHED_PER_EVENT`, a defensive ceiling that never actually trips under today's 2×2×3
+> geometry), broadcasts each clear over the same `_cell_cleared` RPC `request_retrieve` already
+> uses, and spawns a fresh crate through the `crate_source` group with an outward-and-up impulse
+> derived from the rack's own transform, so a rotated rack sheds forwards rather than sideways.
+> `storage_session.gd` extends the same two-process scenario with three more steps — fill two
+> top-row cells through the real grab-and-place path, launch a crate at the rack fast enough to
+> clear the threshold, and assert on **both** peers that both top-row cells empty, the untouched
+> mid-row cell (holding 8 synthetic fillers from an earlier step) is unaffected — the bound,
+> proven rather than assumed — the loose-crate count rises by exactly the delta, and both racked
+> visuals are gone. A small stacking step proves crates still rest on top of each other rather
+> than sinking through. Three consecutive full-suite runs, all green, no flakes.
+> **Two deviations, both caught before the first test run rather than by a failing one**: the
+> plan's own worked cell numbers (8 and 9, "for a 4×3 bay") don't exist as aimable cells on
+> `rack_wall` — they're the depth=0 row, the same permanently-unaimable row 01-04 already found
+> and 01-06 already had to account for — fixed by using cells 10 and 11, the top-level cells on
+> the depth=1 side `CELL_A`/`CELL_B` already proved aimable; and the plan's own impact-launch
+> position formula has no lateral offset, which spawns the crate directly inside
+> `UprightBackLeft`'s collision box — fixed with a lateral offset centring the flight path on the
+> rack's own width, clear of both corner uprights.
+> **The audit's drag-speed/shed-threshold flag (flagged, not patched, before execution) is
+> preserved and expanded**, in `rack.gd`'s own doc comment rather than only in this file: a
+> dragged crate's ADR 19 ceiling (~1.7 m/s) can never reach the 4.0 m/s shed threshold. That is
+> correct — two-player carry is the only way to hit something hard enough to matter — confirmed
+> with a thrown crate in the integration suite; a human check with one actually in hand is still
+> owed at the wave 7 gate, per the plan's own instruction.
+> **One finding surfaced rather than resolved, for 01-08 to put to NJ verbatim**: success
+> criterion 5 / STORE-04 say floor stacking "blocks pathing," and it does not, today, for an
+> empty-handed player — `player.tscn` stays at `collision_mask = 3` (no cargo layer), which is
+> deliberate and load-bearing (the 3.39 m vs 0.01 m bulldozing measurement `crate.gd` already
+> records). What is true: cargo *in transit* (a held crate) collides with a floor stack for real.
+> No collision layer or mask was touched anywhere in this plan — confirmed by grep on both
+> `player.tscn` and `crate.tscn`. Two options costed in `01-07-SUMMARY.md`: accept that "blocks
+> pathing" means blocks cargo, or give players a cargo mask and solve puppet-bulldozing another
+> way (an ADR 7-level change, not a tweak). Full detail:
+> `.planning/phases/01-storage/01-07-SUMMARY.md` (local-only, see the note above on
+> `.planning/phases/`).
+
 ## Accumulated Context
 
 ### Decisions
@@ -281,8 +344,18 @@ constrain upcoming work:
   wired (01-04): `CarryAuthority.request_place`/`request_retrieve` call `apply_cell_filled`/
   `apply_cell_cleared` over the real keypress path, proven over real ENet. **01-06 added aim
   feedback and the placement snap** — a three-state cell highlight and a tweened travel with a
-  positional thud, both proven to converge on both peers. **Not yet built**: the shed test for
-  the top row (01-07). Crate sizes must still match exactly before anyone builds art.
+  positional thud, both proven to converge on both peers. **01-07 added the shed**: a hard enough
+  impact clears exactly the occupied top-row cells and spawns each as a real falling crate,
+  bounded three ways against ADR 14 and proven on both peers. Crate sizes must still match
+  exactly before anyone builds art.
+- **Floor stacking's "blocks pathing" is an open fork, not yet ruled on** (01-07): true for cargo
+  in transit (a held crate collides with a stack for real), not true for an empty-handed player
+  (`player.tscn` deliberately has no cargo bit in its mask — see the 3.39 m vs 0.01 m bulldozing
+  measurement `crate.gd` records). Two costed options in `01-07-SUMMARY.md`, needs the wave 7 gate.
+- **The drag-speed/shed-threshold tension flagged before 01-07 was executed is confirmed correct,
+  not a gap**: a dragged crate's ADR 19 ceiling (~1.7 m/s) can never reach the 4.0 m/s shed
+  threshold, verified with a thrown crate in the integration suite. A human check with one
+  actually in hand is still owed at the wave 7 gate (the plan's own instruction, not a new ask).
 - **A rack backed against a wall (`rack_wall`) has a permanently unaimable back row** (found by
   01-04), independent of occupancy — see the 01-04 block above. **01-06 mirrored this as-built
   rather than working around it**, as instructed: an unaimable cell simply never highlights,
