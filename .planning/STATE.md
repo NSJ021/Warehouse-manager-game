@@ -14,15 +14,23 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 ## Current Position
 
 Phase: 1 of 7 (Storage)
-Plan: **01-01, 01-02, 01-03, 01-04 and 01-05 complete** — waves 1–3 done, 4 of 9 plans remaining
-across waves 4–7
-Status: **Executing** — wave 3 (01-04 place/retrieve, 01-05 Goods IN/OUT zones, run in parallel)
-complete; wave 4 unblocked
-Last activity: 2026-08-20 — 01-04 executed: `CarryAuthority.request_place`/`request_retrieve`
-landed, host-validated and ADR 19-aware, with `Carrier` resolving one aim ray to either a crate or
-a rack cell and the full place/refuse/retrieve branch table. The integration test that proves it
-found and fixed a structural bug in the aim mechanism itself — see the 01-04 block below, and
-read it before touching rack aiming again. Before that: 01-05 executed: `GoodsZone` (Area3D, zero
+Plan: **01-01 through 01-06 complete** — waves 1–4 done, 3 of 9 plans remaining across waves 5–7
+Status: **Executing** — wave 4 (01-06 aim feedback and the snap) complete; wave 5 (01-07 shedding)
+unblocked
+Last activity: 2026-08-21 — 01-06 executed: a three-state cell highlight (none/actionable/blocked,
+driven every frame from the local player's own aim and matching `try_toggle_hold`'s branch table
+exactly, including the two ADR 19 drag rows the plan itself flagged as missing when first written)
+and a tweened placement snap (travel-and-settle over 0.16s with a positional thud, replacing the
+instant teleport-in 01-04 shipped with) both landed. Two real issues, both caught before commit —
+see the 01-06 block below: the plan's own settle-assertion snippet compared against the bare cell
+centre rather than the ADR 18 lattice offset each Small actually rests at, and the new WAV asset
+needed a one-shot headless `--import` pass (editor closed, then reopened) before any test could
+load it, now recorded as a standing constraint. Before that: 01-04 executed:
+`CarryAuthority.request_place`/`request_retrieve` landed, host-validated and ADR 19-aware, with
+`Carrier` resolving one aim ray to either a crate or a rack cell and the full
+place/refuse/retrieve branch table. The integration test that proves it found and fixed a
+structural bug in the aim mechanism itself — see the 01-04 block below, and read it before
+touching rack aiming again. Before that: 01-05 executed: `GoodsZone` (Area3D, zero
 networking machinery, kind IN/OUT with the difference derived locally) landed, with
 `GoodsIn`/`GoodsOut` placed in the test room and both peers independently proven to agree on a
 zone's contents over real ENet. Two real bugs found and fixed only by running the suite repeatedly
@@ -37,8 +45,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 (ADR 20); the economy settled (ADRs 21–22); a `unit/` test layer now exists; plan 01-04 patched
 for ADR 19 before execution
 
-Progress: [████░░░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-3 of 7 done
-(5/9 plans)
+Progress: [█████░░░░░] Phase 0 complete bar one blocked item; Phase 1 waves 1-4 of 7 done
+(6/9 plans)
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -76,9 +84,9 @@ Progress: [████░░░░░░] Phase 0 complete bar one blocked item
 > now reads the underscore key the template actually uses); verified against all nine plans.
 > The patch is machine-local and a tool update overwrites it — re-verify after any update.
 
-**Next session: wave 3 is complete, resume at wave 4.** Both 01-04 (place/retrieve) and 01-05
-(Goods IN/OUT zones) landed. `/gsd:execute-phase 1` from a fresh context will skip the five plans
-with SUMMARYs and pick up wave 4.
+**Next session: wave 4 is complete, resume at wave 5.** 01-06 (aim feedback and the snap) landed.
+`/gsd:execute-phase 1` from a fresh context will skip the six plans with SUMMARYs and pick up
+wave 5 (01-07, shedding).
 
 Things to carry in, from the audit above and from 01-04's and 01-05's own execution:
 
@@ -209,6 +217,40 @@ Things to carry in, from the audit above and from 01-04's and 01-05's own execut
 > that plan exists to prevent. Full detail: `.planning/phases/01-storage/01-04-SUMMARY.md`
 > (local-only, see the note above on `.planning/phases/`).
 
+> **01-06 resolved 2026-08-21: aim feedback and the placement snap landed.** `Rack` gained a
+> `CellHighlight` mesh with three states (`NONE`/`ACTIONABLE`/`BLOCKED`), coloured via a
+> `resource_local_to_scene` material so two racks never share a mutable colour, and
+> `Carrier._process` paints it every frame from the exact same `_aim()` query and branch rules
+> `try_toggle_hold()` already enforces — including the two ADR 19 dragging rows the plan itself
+> had flagged as missing when first written (see the audit block above). Only the local player's
+> carrier runs `_process`; every other copy calls `set_process(false)` in `_ready()`, same as the
+> existing `set_process_unhandled_input(false)` guard. `apply_cell_filled`/`apply_cell_cleared`
+> were rewritten from "clear and rebuild the whole cell's visuals" to "spawn exactly the new
+> arrival, free exactly the LIFO-popped top" — necessary once placement animates, since the old
+> approach would restart every other item's already-finished tween on every unrelated change to
+> the same cell. A placed item now tweens from its pickup point to its cell's lattice position
+> over 0.16s (`TRANS_CUBIC`/`EASE_OUT`, plus a 1.06→1.0 scale settle) and plays a positional thud;
+> the late-joiner snapshot path (`Vector3.ZERO` sentinel) still places everything instantly and
+> silently. `tools/make-placeholder-audio.ps1` synthesises that thud from scratch — a RIFF header
+> and raw 16-bit PCM written directly, no external audio.
+> **Two real issues, both caught before anything broken was committed**: the plan's own
+> settle-assertion snippet (`visual.position.is_equal_approx(rack.cell_to_local_position(cell))`)
+> could never have passed — a Small's real resting spot is one of 8 lattice positions
+> (`StorageGrid.small_offset`), not a cell's mathematical centre, and no sub-index (including 0)
+> lands exactly on it; fixed by adding the offset into the comparison. And a new binary asset
+> (`rack_place.wav`) needs Godot's importer to run once — producing a `.import` sidecar (committed)
+> and a `.godot/imported/*.sample` cache (gitignored, machine-local) — before any headless test can
+> load it; neither this project's test scripts nor a plain file write can trigger that. Resolved by
+> closing the already-running GUI editor, running `godot --headless --path warehouse-manager
+> --import` once, verifying both artefacts existed, then reopening the editor with the same
+> `--editor --path` invocation the session-bootstrap hook uses. **Recorded as a standing
+> constraint below** — the next new binary asset (a texture, another sound) needs the same
+> treatment. Full detail: `.planning/phases/01-storage/01-06-SUMMARY.md` (local-only, see the note
+> above on `.planning/phases/`), including the five feel questions (snap cleanliness, highlight
+> legibility at distance/in dim light, colour-blind accessibility, whether 0.16s is right, whether
+> the dragging-BLOCKED cue reads as "call someone over") that plan 01-08 needs to put in front of a
+> human at the wave 7 gate.
+
 ## Accumulated Context
 
 ### Decisions
@@ -237,13 +279,16 @@ constrain upcoming work:
   gameplay** — the tape gun, handover and damage sources are still Phase 3.
 - **The storage unit is a 1.0 m cell** (ADR 18, superseding 16), and place/retrieve is now fully
   wired (01-04): `CarryAuthority.request_place`/`request_retrieve` call `apply_cell_filled`/
-  `apply_cell_cleared` over the real keypress path, proven over real ENet. **Not yet built**: any
-  visual feedback for which cell is aimed at, or a tween on the snap (01-06); the shed test for
+  `apply_cell_cleared` over the real keypress path, proven over real ENet. **01-06 added aim
+  feedback and the placement snap** — a three-state cell highlight and a tweened travel with a
+  positional thud, both proven to converge on both peers. **Not yet built**: the shed test for
   the top row (01-07). Crate sizes must still match exactly before anyone builds art.
 - **A rack backed against a wall (`rack_wall`) has a permanently unaimable back row** (found by
-  01-04), independent of occupancy — see the 01-04 block above. Needs a design decision before
-  01-06 or any future rack placement: island-only racks, a redesigned aim scheme for buried
-  cells, or an explicit acceptance that wall racks only expose their front row.
+  01-04), independent of occupancy — see the 01-04 block above. **01-06 mirrored this as-built
+  rather than working around it**, as instructed: an unaimable cell simply never highlights,
+  since `Carrier._aim()` never resolves a valid index for it. Still needs a design ruling at the
+  wave 7 gate: island-only racks, a redesigned aim scheme for buried cells, or an explicit
+  acceptance that wall racks only expose their front row.
 - Plans 01-02 and 01-03 were **reworked for ADR 18's cell model** and re-verified. The
   re-check found two blockers, both caused by the slot → cell rename being a text substitution
   rather than a semantic one: 01-04 still enforced one item per cell, and two broadcast methods
@@ -258,7 +303,7 @@ constrain upcoming work:
 - **`rack_wall`'s back row is permanently unaimable** (flagged by 01-04): the front row's
   sensors block the ray, the wall blocks the other side — wall racks are effectively 6 cells.
   Needs a design ruling; belongs with the gate's "does 2-deep read as one unit" question.
-  01-06 mirrors as-built behaviour and must not invent a fix.
+  01-06 (2026-08-21) mirrored as-built behaviour rather than inventing a fix, as instructed.
 
 ### Constraints learned the hard way
 
@@ -277,6 +322,12 @@ constrain upcoming work:
 - A new `class_name` is invisible to headless runs until the editor rescans.
 - One Godot editor at a time — the MCP bridge grabs port 9080 and will silently edit the wrong project.
 - Close the editor before any branch switch that touches `addons/`; it holds the Steam DLLs open.
+- A new binary asset (a `.wav`, a texture) needs Godot's importer to run once before any headless
+  test can load it — a `.import` sidecar (commit it) plus a `.godot/imported/` cache entry
+  (gitignored, machine-local), neither of which exists from a plain file write. With the GUI
+  editor already open, close it first (two processes writing the same `.godot/` cache is asking
+  for trouble), run `godot --headless --path warehouse-manager --import` once, verify both
+  artefacts exist, then reopen the editor (01-06).
 
 ## Phase 0 outcome
 
