@@ -423,6 +423,47 @@ Things to carry in, from the audit above and from 01-04's and 01-05's own execut
 > weakening the check. Three consecutive full clean suite runs after the fixes, with the regression
 > steps included.
 
+> **Reach ruling, 2026-08-21 (NJ, after it came up in two separate gate sessions): the whole
+> reach chain read too long in play, shortened 2.5 → 2.0 m.** `GrabRay`'s own `target_position`,
+> `CarryAuthority.GRAB_REACH` and `PLACE_REACH` (3.5 → 3.0, keeping PLACE_REACH's own
+> half-diagonal margin so a genuine ray-limited aim still can never be refused — see that
+> constant's own doc comment for the re-derived arithmetic) all moved together.
+>
+> Every stand point in the integration suite that assumed the old 2.5 m had to be checked against
+> the new number, not just retuned where an assertion happened to fail first — a couple already
+> had comfortable margin and needed nothing: `carry_session.gd`'s `HOST_STAND_OFFSET_Z` (1.6 →
+> 1.15; camera → crate distance was ~2.16 m, already past the new reach), `storage_session.gd`'s
+> `GRAB_STAND_OFFSET_Z` (1.5 → 1.15, the one number every loose-crate grab in the file shares),
+> `MAX_RANGE_STAND_OFFSET_Z` (2.85 → 2.35, the wave 7 gate's own regression 12, re-derived for the
+> new ray edge) and a new `STRANDED_STAND_OFFSET_Z` (regression 11's grab of a crate that settled
+> below the cell's own mathematical centre, onto the rack's deck — a case `RACK_STAND_OFFSET_Z`'s
+> own margin was never computed against).
+>
+> **Standing closer to grab a crate surfaced a real, separate hazard.** Walking a held crate from
+> the crate row to rack_island's top-row cells crosses that rack's own `ImpactSensor` footprint —
+> harmless while the rack is empty (`Rack._on_impact`'s own `is_empty()` guard), but once crate_6
+> already occupies cell 10, the same crossing sheds it back out from under crate_7's own
+> placement: `request_retrieve` then finds the cell already empty, `try_toggle_hold` grabs the
+> loose shed crate sitting in the way instead of resolving the cell, and the "retrieval" reads as
+> a hang waiting for a new body that was never minted. Reproduced with every reach constant held
+> at its OLD value and only the stand offset moved — this is about where the walk starts, not
+> about any reach distance check. Routed around it with a single corner-hugging waypoint
+> (`RACK_ISLAND_CORNER_WAYPOINT`) rather than the file's existing `ROW_DETOUR_Z`-style two-leg
+> detour, which added ~6.5 m of real walk and blew the client's own 15 s wait for the placement to
+> replicate.
+>
+> **One unrelated finding along the way, not fixed here:** `storage_session.gd`'s client process
+> intermittently leaked one resource at exit (`WARNING: ObjectDB instances leaked`, `ERROR: 1
+> resources still in use`) — reproduced on the unmodified pre-reach-change code too (commit
+> `2f1d9da`, same flake, roughly every other run across several attempts), so it predates and is
+> unrelated to the reach work. Godot's export build doesn't carry the `--verbose` object-name
+> detail needed to say what's actually leaking. Left alone — reach-only scope, and squarely inside
+> code the gate session's own three fixes above already touch. 3 consecutive clean runs achieved
+> for this change regardless.
+>
+> Two commits on `feat/phase-1-storage`: `9edf8db` (the production reach chain) and `a7fa715`
+> (the test retunes and the corner-hug fix).
+
 ## Accumulated Context
 
 ### Decisions
