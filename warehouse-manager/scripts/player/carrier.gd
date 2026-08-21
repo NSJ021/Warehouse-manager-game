@@ -33,6 +33,10 @@ var _held: Crate = null
 ## than recomputed — a client guessing from mass would disagree the moment a mate
 ## grabbed the other end.
 var _hold_mode := Crate.HoldMode.CARRY
+## The rack currently showing a highlight because of this carrier's aim, or
+## null. Tracked so a highlight can be hidden the instant the aim leaves it —
+## without this, walking away from a rack strands a lit cell behind you.
+var _highlighted_rack: Rack = null
 
 @onready var _player: Player = get_parent() as Player
 @onready var _ray: RayCast3D = get_node("../CameraPivot/GrabRay")
@@ -41,11 +45,36 @@ var _hold_mode := Crate.HoldMode.CARRY
 func _ready() -> void:
 	if not _player.is_multiplayer_authority():
 		set_process_unhandled_input(false)
+		# Aim feedback is local-only presentation (01-06): only the peer whose
+		# hands these are should pay for a raycast every frame. Everyone
+		# else's copy of this node does nothing at all.
+		set_process(false)
 		return
 	# So the HUD can find whose hands these are without knowing the level layout.
 	add_to_group("local_carrier")
 	# The ray starts inside our own capsule, so it has to be told to ignore it.
 	_ray.add_exception(_player)
+
+
+## Paints the cell we are aiming at, if any, using the exact same aim query
+## and branch rules [method try_toggle_hold] acts on — see
+## [method _highlight_state] for the table both follow. Local-only: see the
+## class doc and [method Rack.show_highlight] for why this is never
+## replicated.
+func _process(_delta: float) -> void:
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_hide_current_highlight()
+		return
+
+	var aim := _aim()
+	if aim.rack != _highlighted_rack:
+		_hide_current_highlight()
+
+	if aim.rack == null:
+		return
+
+	aim.rack.show_highlight(aim.cell_index, _highlight_state(aim))
+	_highlighted_rack = aim.rack
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -135,6 +164,45 @@ func _try_place(referee: CarryAuthority, aim: AimResult) -> void:
 		referee.request_place(aim.rack.name, aim.cell_index)
 	else:
 		referee.request_place.rpc_id(1, aim.rack.name, aim.cell_index)
+
+
+## What [method _process] should paint for the cell [param aim] is currently
+## resolved to — the exact table [method _try_place] enforces, expressed as
+## "what to show" instead of "what to do", so the two branch tables cannot
+## quietly drift apart. Only called with [param aim].rack already non-null.
+func _highlight_state(aim: AimResult) -> Rack.Highlight:
+	# Guards the same out-of-range case show_highlight() itself guards -
+	# belt and braces, since Array's negative-index wraparound would
+	# otherwise read the wrong cell's occupancy instead of failing loudly.
+	if aim.cell_index < 0 or aim.cell_index >= StorageGrid.cell_count():
+		return Rack.Highlight.NONE
+
+	if _held != null:
+		# Same two checks _try_place makes, in the same order: a dragged crate
+		# refuses anything above the floor row (ADR 19) before atomicity is
+		# even asked about, because that refusal holds regardless of room.
+		var floor_level := StorageGrid.cell_coords(aim.cell_index).z == 0
+		if is_dragging() and not floor_level:
+			return Rack.Highlight.BLOCKED
+		if aim.rack.can_accept(aim.cell_index, _held.kind):
+			return Rack.Highlight.ACTIONABLE
+		return Rack.Highlight.BLOCKED
+
+	if aim.rack.is_cell_empty(aim.cell_index):
+		# Empty and no hold: nothing would happen either way. Painting every
+		# empty cell in a rack while simply walking past it would be noise,
+		# not feedback.
+		return Rack.Highlight.NONE
+	return Rack.Highlight.ACTIONABLE
+
+
+## Hides whatever rack [member _highlighted_rack] currently is, if any, and
+## forgets it. Called whenever the aim moves to a different rack (including
+## none at all) so a highlight is never left glowing behind the player.
+func _hide_current_highlight() -> void:
+	if _highlighted_rack != null:
+		_highlighted_rack.hide_highlight()
+		_highlighted_rack = null
 
 
 ## Called by the host's referee once it has decided. Not a request — a verdict.

@@ -22,6 +22,17 @@ extends Node3D
 
 const RACKED_ITEM_SCENE := preload("res://scenes/goods/racked_item.tscn")
 
+## What [method show_highlight] paints on [member _cell_highlight]. Not two
+## states but three: an aim that will be refused has to look different from
+## an aim the game has not noticed, or a dragging player standing under a
+## shelf they cannot reach gets no signal that the refusal is deliberate.
+enum Highlight { NONE, ACTIONABLE, BLOCKED }
+
+## Colours for the two visible states. Exported, not constant, so they can be
+## judged and retuned in play rather than guessed once here.
+@export var highlight_actionable := Color(0.35, 0.85, 0.45)
+@export var highlight_blocked := Color(0.85, 0.30, 0.30)
+
 ## One entry per cell: `{ "kind": StringName, "ids": Array[int] }`. `ids` is a
 ## stack, last in first out, so [method occupied_count] is just its size and
 ## the two can never disagree. `kind` is `&""` when the cell is empty.
@@ -33,6 +44,7 @@ const RACKED_ITEM_SCENE := preload("res://scenes/goods/racked_item.tscn")
 var _cells: Array[Dictionary] = []
 
 @onready var _racked_items: Node3D = $RackedItems
+@onready var _cell_highlight: MeshInstance3D = $CellHighlight
 
 
 func _ready() -> void:
@@ -66,6 +78,36 @@ func cell_at_point(world_point: Vector3) -> int:
 func small_global_position(cell: int, sub_index: int) -> Vector3:
 	var local_position := StorageGrid.cell_centre(cell) + StorageGrid.small_offset(sub_index)
 	return global_transform * local_position
+
+
+# ----------------------------------------------------------------- feedback
+#
+# Purely local presentation (01-06). Driven every frame from Carrier._process,
+# using the exact same aim query the keypress itself uses, so what this paints
+# and what a press actually does can never diverge. Never replicated: this
+# sits on a node every peer *can* see, which is exactly the kind of thing
+# that invites someone to wire up a MultiplayerSynchronizer for it - don't.
+# A highlight is a question one player is asking the rack, not a fact every
+# peer needs to agree on.
+
+## Moves [member _cell_highlight] onto [param cell_index] and colours it for
+## [param state]. [constant Highlight.NONE], or an out-of-range index, hides
+## it instead - callers do not need their own branch for "nothing to show".
+func show_highlight(cell_index: int, state: Highlight) -> void:
+	if state == Highlight.NONE or cell_index < 0 or cell_index >= StorageGrid.cell_count():
+		hide_highlight()
+		return
+
+	_cell_highlight.position = cell_to_local_position(cell_index)
+	var colour := highlight_actionable if state == Highlight.ACTIONABLE else highlight_blocked
+	var material := _cell_highlight.material_override as StandardMaterial3D
+	material.albedo_color = Color(colour.r, colour.g, colour.b, material.albedo_color.a)
+	material.emission = colour
+	_cell_highlight.visible = true
+
+
+func hide_highlight() -> void:
+	_cell_highlight.visible = false
 
 
 # ---------------------------------------------------------------- occupancy
