@@ -46,6 +46,11 @@ extends Node
 ##      mints a fresh body — the placed one was freed outright, ADR 14, so
 ##      nothing kept the original in reserve to hand back. The cell ends
 ##      empty, which the client independently confirms on its own copy.
+##
+## 01-07 continues the same two peers straight on from step 6, with its own
+## numbered steps 7-9 (shed, then stack) — see the block of constants below
+## for the detail, kept there rather than here so the exact cell numbers and
+## the reasoning behind them sit next to each other.
 
 const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 
@@ -114,6 +119,75 @@ const CRATE_DRAG_ATTEMPT_NAME := "crate_3"
 ## be mistaken for, a real crate.
 const FILLER_ID_START := 9000
 const FILLER_COUNT := 8
+
+## --- 01-07: the shed, and the stack. ---
+##
+##   7. Host fills two top-row cells with two of the six starting crates that
+##      nothing above ever names (crate_4, crate_5 sit untouched in the row
+##      the whole time - reserved for exactly this), through the same real
+##      grab-and-place choreography steps 1-2 used.
+##   8. Host launches a third crate at the rack fast enough to clear
+##      Rack.shed_impact_speed, by direct property manipulation rather than a
+##      grab - the same determinism trick carry_session.gd's own _take()
+##      documents: a crate is always simulated for real on the host, so
+##      setting its transform and velocity by hand is a legitimate host
+##      action. Both peers then assert: both top-row cells empty; cell 6 (not
+##      top row) untouched, proving the bound; the loose-crate count up by
+##      exactly two, a delta against what was recorded before the impact, not
+##      an absolute; and both racked visuals gone.
+##   9. The same direct-manipulation trick places one loose crate directly
+##      above another, away from every other fixture, and both peers wait for
+##      the upper one to settle above the lower rather than sink through it -
+##      success criterion 5's first half. The "blocks pathing" half is a
+##      finding for a human, not a test - see 01-07-SUMMARY.md.
+
+## Both level 2 (top row - StorageGrid.cell_coords(i).z == RACK_LEVELS - 1)
+## and depth 1, the same aimable side CELL_A/CELL_B already established
+## above: rack_wall's depth-0 row is permanently unaimable regardless of
+## level (the front row's own CellSensor volumes block the ray to whatever
+## is behind them), so a depth-0 top-row cell would never be reachable
+## through the real grab-and-place path this step deliberately uses.
+const CELL_TOP_A := 10
+const CELL_TOP_B := 11
+
+## Two of the six starting crates nothing above this point ever names by
+## constant - see the step 7 note above for why that is deliberate rather
+## than an oversight.
+const CRATE_SHED_A_NAME := "crate_4"
+const CRATE_SHED_B_NAME := "crate_5"
+
+## Comfortably above Rack.shed_impact_speed (4.0) so a frame or two of drag
+## before body_entered fires can never flake the assertion.
+const IMPACT_SPEED := 8.0
+## Rack-local, along the rack's own +Z - the same axis RACK_STAND_OFFSET_Z
+## stands a player on, and the side ImpactSensor's own centre (z=1.0) sits
+## proud of at its far edge (z=1.45, half its 0.9 depth either side of
+## centre). 1.9 clears that with margin, so the crate starts genuinely
+## outside the sensor and body_entered fires as it arrives rather than on
+## the very first frame of the scenario.
+const IMPACT_START_OFFSET_Z := 1.9
+## Rack-local height for the impact - inside ImpactSensor's y-span (1.3 local
+## centre, 1.2 either side) with margin on both sides.
+const IMPACT_HEIGHT := 1.5
+## Rack-local, along the rack's own +X. Centred on the rack's own width
+## (matches ImpactSensor's own x centre) and deliberately not 0 - the corner
+## uprights (rack.tscn's UprightBackLeft/Right) sit right at the rack's own
+## x=0 and x=2 edges, and a crate launched with no lateral offset spawns
+## already overlapping one of them, which flings it in a direction this test
+## cannot predict rather than sending it into the sensor. 1.0 keeps the whole
+## crate (0.25 half-extent) inside the 0.1-1.9 aisle between them.
+const IMPACT_LATERAL_OFFSET := 1.0
+
+## Clear floor for the stacking check, away from the racks, the zones, the
+## crate row and PARK_POINT alike.
+const STACK_BASE := Vector3(4.0, 0.25, -4.0)
+## How far above STACK_BASE the upper crate starts - comfortably clear so it
+## visibly falls onto the lower one rather than starting embedded in it.
+const STACK_DROP_HEIGHT := 0.55
+## The stacked crate's own half-height (0.25) plus the lower crate's, less a
+## small margin - above this it is resting on top; at or below it, it has
+## sunk into (or through) the lower crate.
+const STACK_SETTLED_MIN_Y := 0.45
 
 var _role := "host"
 var _world: Node = null
@@ -349,16 +423,125 @@ func _run_host(rack: Rack) -> void:
 			return _crates().get_child_count() == EXPECTED_CRATES):
 		return _finish(false)
 
-	# The host's own view of the second retrieve is already correct here --
-	# call_local applies its own broadcast synchronously -- but the CLIENT's
-	# matching "cell is empty" check depends on the _cell_cleared RPC this
-	# retrieve just sent actually reaching the wire before quit() tears the
-	# peer down. get_tree().quit() does not wait for a pending reliable send
-	# to flush, so finishing immediately here raced the packet out from
-	# under itself the first time this scenario was run to a clean pass.
-	# Real wall time, not frames, for the same reason SPAWN_SETTLE_MS in
-	# carry_session.gd is: headless runs uncapped, so a frame count buys no
-	# fixed amount of real time for the network to actually do anything.
+	# --- 7: fill two top-row cells for the shed test (01-07). ---
+	#
+	# The host is still holding what the second retrieve above handed back --
+	# nothing in step 6 lets it go. Release it first, same empty-hands start
+	# as every other grab in this file.
+	await _release_held()
+
+	var crate_shed_a := _crate_named(CRATE_SHED_A_NAME)
+	if crate_shed_a == null:
+		_fail("find %s" % CRATE_SHED_A_NAME, "not present under Crates")
+		return _finish(false)
+	await _grab(crate_shed_a)
+	if not await _until("host holds %s" % CRATE_SHED_A_NAME, func() -> bool:
+			return crate_shed_a.holder_count() == 1):
+		return _finish(false)
+	await _place(rack, CELL_TOP_A, HOST_LATERAL)
+	if not await _until("%s racked into cell %d" % [CRATE_SHED_A_NAME, CELL_TOP_A], func() -> bool:
+			return rack.occupant(CELL_TOP_A) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_TOP_A, 0):
+		return _finish(false)
+
+	var crate_shed_b := _crate_named(CRATE_SHED_B_NAME)
+	if crate_shed_b == null:
+		_fail("find %s" % CRATE_SHED_B_NAME, "not present under Crates")
+		return _finish(false)
+	await _grab(crate_shed_b)
+	if not await _until("host holds %s" % CRATE_SHED_B_NAME, func() -> bool:
+			return crate_shed_b.holder_count() == 1):
+		return _finish(false)
+	await _place(rack, CELL_TOP_B, HOST_LATERAL)
+	if not await _until("%s racked into cell %d" % [CRATE_SHED_B_NAME, CELL_TOP_B], func() -> bool:
+			return rack.occupant(CELL_TOP_B) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_TOP_B, 0):
+		return _finish(false)
+
+	# Baselines the shed's own assertions are measured against, recorded now
+	# rather than as a literal constant -- everything above this point has
+	# already shifted the loose-crate count more than once, so only a delta
+	# from here is meaningful (see the file's own note on why).
+	var crates_before_shed := _crates().get_child_count()
+	var cell_b_before_shed := rack.occupied_count(CELL_B)
+
+	# --- 8: launch a crate at the rack hard enough to shed it. ---
+	#
+	# Direct property manipulation, not a grab -- the same determinism trick
+	# carry_session.gd's own _take() documents: a crate is always simulated
+	# for real on the host, so setting its transform and velocity by hand is
+	# a legitimate host action, not a workaround for one. crate_2 is loose
+	# and unheld -- the client released it after its own refused-placement
+	# check back in step 4.
+	var impactor := _crate_named(CRATE_FULL_ATTEMPT_NAME)
+	if impactor == null:
+		_fail("find %s" % CRATE_FULL_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	impactor.global_position = (rack.global_position
+			+ rack.global_transform.basis.x * IMPACT_LATERAL_OFFSET
+			+ rack.global_transform.basis.z * IMPACT_START_OFFSET_Z
+			+ Vector3.UP * IMPACT_HEIGHT)
+	impactor.sleeping = false
+	impactor.linear_velocity = -rack.global_transform.basis.z * IMPACT_SPEED
+	impactor.angular_velocity = Vector3.ZERO
+
+	if not await _until("the impact sheds cell %d" % CELL_TOP_A, func() -> bool:
+			return rack.occupied_count(CELL_TOP_A) == 0):
+		return _finish(false)
+	if not await _until("the impact sheds cell %d" % CELL_TOP_B, func() -> bool:
+			return rack.occupied_count(CELL_TOP_B) == 0):
+		return _finish(false)
+	_expect_now(
+		rack.occupied_count(CELL_B) == cell_b_before_shed,
+		"the bound holds: cell %d (not top row) is untouched by the shed" % CELL_B,
+	)
+	if not await _until("the shed spent exactly two new bodies", func() -> bool:
+			return _crates().get_child_count() == crates_before_shed + 2):
+		return _finish(false)
+	if not await _until("cell %d's racked visual is gone after the shed" % CELL_TOP_A, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_TOP_A) == null):
+		return _finish(false)
+	if not await _until("cell %d's racked visual is gone after the shed" % CELL_TOP_B, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_TOP_B) == null):
+		return _finish(false)
+
+	# --- 9: floor stacking still works (success criterion 5, first half). ---
+	#
+	# Same direct-manipulation trick as the impactor above. crate_2 (the
+	# impactor, now loose wherever the shed's own impulse and gravity left
+	# it) and crate_3 (loose since step 5) are both unheld and otherwise
+	# unused for the rest of this scenario.
+	var stack_bottom := impactor
+	var stack_top := _crate_named(CRATE_DRAG_ATTEMPT_NAME)
+	if stack_top == null:
+		_fail("find %s" % CRATE_DRAG_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	stack_bottom.global_position = STACK_BASE
+	stack_bottom.sleeping = false
+	stack_bottom.linear_velocity = Vector3.ZERO
+	stack_bottom.angular_velocity = Vector3.ZERO
+	stack_top.global_position = STACK_BASE + Vector3.UP * STACK_DROP_HEIGHT
+	stack_top.sleeping = false
+	stack_top.linear_velocity = Vector3.ZERO
+	stack_top.angular_velocity = Vector3.ZERO
+
+	if not await _until("the stacked crate rests on top rather than sinking through", func() -> bool:
+			return stack_top.global_position.y > STACK_SETTLED_MIN_Y):
+		return _finish(false)
+
+	# The host's own view of everything above is already correct here --
+	# call_local applies its own broadcasts synchronously -- but the CLIENT's
+	# matching checks each depend on an RPC (the second retrieve's
+	# _cell_cleared, then the shed's own pair of them) actually reaching the
+	# wire before quit() tears the peer down. get_tree().quit() does not wait
+	# for a pending reliable send to flush, so finishing immediately after
+	# issuing one raced the packet out from under itself the first time this
+	# scenario was run to a clean pass. Real wall time, not frames, for the
+	# same reason SPAWN_SETTLE_MS in carry_session.gd is: headless runs
+	# uncapped, so a frame count buys no fixed amount of real time for the
+	# network to actually do anything.
 	var settle_deadline := Time.get_ticks_msec() + EXIT_SETTLE_MS
 	while Time.get_ticks_msec() < settle_deadline:
 		await get_tree().process_frame
@@ -480,6 +663,55 @@ func _run_client(rack: Rack) -> void:
 		return _finish(false)
 	if not await _until("the client's own view has every crate id back as a body", func() -> bool:
 			return _crates().get_child_count() == EXPECTED_CRATES):
+		return _finish(false)
+
+	# --- 7: wait for the host to fill both top-row cells for the shed test. ---
+	if not await _until("cell %d holds the shed setup" % CELL_TOP_A, func() -> bool:
+			return rack.occupied_count(CELL_TOP_A) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_TOP_A, 0):
+		return _finish(false)
+	if not await _until("cell %d holds the shed setup" % CELL_TOP_B, func() -> bool:
+			return rack.occupied_count(CELL_TOP_B) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_TOP_B, 0):
+		return _finish(false)
+
+	# Baselines, recorded independently on this peer's own copy -- the point
+	# of proving both peers agree is that neither one is taking the other's
+	# word for it.
+	var crates_before_shed := _crates().get_child_count()
+	var cell_b_before_shed := rack.occupied_count(CELL_B)
+
+	# --- 8: the host launches the impact; confirm the shed on this peer's
+	# own copy, not the host's say-so. ---
+	if not await _until("the impact sheds cell %d" % CELL_TOP_A, func() -> bool:
+			return rack.occupied_count(CELL_TOP_A) == 0):
+		return _finish(false)
+	if not await _until("the impact sheds cell %d" % CELL_TOP_B, func() -> bool:
+			return rack.occupied_count(CELL_TOP_B) == 0):
+		return _finish(false)
+	_expect_now(
+		rack.occupied_count(CELL_B) == cell_b_before_shed,
+		"the bound holds: cell %d (not top row) is untouched by the shed" % CELL_B,
+	)
+	if not await _until("the shed spent exactly two new bodies", func() -> bool:
+			return _crates().get_child_count() == crates_before_shed + 2):
+		return _finish(false)
+	if not await _until("cell %d's racked visual is gone after the shed" % CELL_TOP_A, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_TOP_A) == null):
+		return _finish(false)
+	if not await _until("cell %d's racked visual is gone after the shed" % CELL_TOP_B, func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_TOP_B) == null):
+		return _finish(false)
+
+	# --- 9: floor stacking still works, confirmed on this peer's own copy. ---
+	var stack_top := _crate_named(CRATE_DRAG_ATTEMPT_NAME)
+	if stack_top == null:
+		_fail("find %s" % CRATE_DRAG_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	if not await _until("the stacked crate rests on top rather than sinking through", func() -> bool:
+			return stack_top.global_position.y > STACK_SETTLED_MIN_Y):
 		return _finish(false)
 
 	_finish(true)
