@@ -22,25 +22,34 @@ extends Node
 
 ## How close the hold point must be to grab. Generous, because the ray has
 ## already established the player is looking straight at it.
-const GRAB_REACH := 2.5
+##
+## 2.0 m, not the original 2.5 — shortened at the wave 7 gate (2026-08-21,
+## ruled by NJ after it came up in two separate gate sessions): the whole
+## reach chain read too long in play. See PLACE_REACH's own doc comment for
+## the re-derived arithmetic this drags along with it.
+const GRAB_REACH := 2.0
 ## How close a placement or retrieval must be to the cell it targets —
 ## measured camera → cell CENTRE, not camera → the ray's own hit point, and
-## that distinction is the whole reason this cannot just mirror GrabRay's 2.5 m
+## that distinction is the whole reason this cannot just mirror GrabRay's 2.0 m
 ## target_position. A cell is a 1.0 m cube (ADR 18), so its centre can sit up
 ## to half the cell's own space diagonal behind wherever the ray actually
 ## struck its face: sqrt(3)/2 × 1.0 m ≈ 0.87 m. A ray-limited aim can
-## therefore land a genuine hit as far out as 2.5 + 0.87 ≈ 3.37 m from the
+## therefore land a genuine hit as far out as 2.0 + 0.87 ≈ 2.87 m from the
 ## camera, measured to the cell centre this check actually uses — 2.6 was
-## short of that by nearly a full metre and silently refused real placements
-## in roughly the 2.1–2.5 m band while the highlight had already painted
-## green (found live at the wave 7 gate, 2026-08-21). 3.5 clears the 3.37 m
-## worst case with a small margin, so a genuine ray-limited aim can never
-## fail this check. It exists to reject a forged or stale request from a
-## client, not to gate normal play — do not "tune" it down toward the ray's
-## own reach; that is exactly the arithmetic mistake this comment now
-## documents. GRAB_REACH is a separate, deliberately untouched number — see
-## its own doc comment.
-const PLACE_REACH := 3.5
+## short of the original 3.37 m worst case (back when the ray was still
+## 2.5 m) by nearly a full metre and silently refused real placements in
+## roughly the 2.1–2.5 m band while the highlight had already painted green
+## (found live at the wave 7 gate, 2026-08-21). 3.0 clears the current
+## 2.87 m worst case with a small margin, so a genuine ray-limited aim can
+## never fail this check. It exists to reject a forged or stale request from
+## a client, not to gate normal play — do not "tune" it down toward the
+## ray's own reach; that is exactly the arithmetic mistake this comment now
+## documents. GRAB_REACH is a separate, deliberately untouched-by-this-
+## derivation number — see its own doc comment. (Both numbers shortened
+## together, 2.5 → 2.0 m ray / 3.5 → 3.0 m here, at the same wave 7 gate
+## ruling — the 0.87 m half-diagonal and the small safety margin are
+## unchanged, only the ray length that feeds them.)
+const PLACE_REACH := 3.0
 ## How many frames [method _hold_granted] will wait for a just-retrieved
 ## crate's spawn packet to land before giving up. [method request_retrieve]
 ## sends the spawn ahead of the grant on the same reliable channel, so under
