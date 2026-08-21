@@ -368,6 +368,61 @@ Things to carry in, from the audit above and from 01-04's and 01-05's own execut
 > full-suite runs, after the final fix. Full detail: `.planning/phases/01-storage/01-09-SUMMARY.md`
 > (local-only, see the note above on `.planning/phases/`).
 
+> **Wave 7 gate session findings, resolved 2026-08-21: three defects found live at the human gate
+> playtest, all fixed and proven against the real path.** Not a numbered plan — ad hoc fixes made
+> during the gate session itself, on `feat/phase-1-storage`, before 01-08's own write-up.
+>
+> **(1) Reach mismatch.** The cell highlight painted whenever the 2.5 m `GrabRay` connected, but
+> `CarryAuthority.PLACE_REACH` measured camera → cell *centre*, not camera → the ray's hit point —
+> and a cell centre can sit up to half the cell's own space diagonal (~0.87 m) behind that surface.
+> Genuine aims in roughly the 2.1–2.5 m band painted green and were then silently refused.
+> `PLACE_REACH` raised 2.6 → 3.5 (2.5 ray reach + 0.87 half diagonal + margin); its doc comment
+> rewritten to show the arithmetic rather than assert the old, disproven claim that a genuine aim
+> could never fail it. `GRAB_REACH` untouched — its own feel is a separate open question for the
+> gate.
+>
+> **(2) Self-shed on retrieval.** `request_retrieve` and `shed_top_row` both mint a fresh crate at
+> a cell's own centre — inside that rack's `ImpactSensor` volume by construction — so the hold
+> spring (a retrieval) or the launch impulse (a shed) could accelerate the new body past
+> `shed_impact_speed` while still overlapping the sensor it was born inside. Reproduced live:
+> retrieving from a loaded top row shed the row. Fixed with a mint-grace — `Crate` now records its
+> own spawn time in `_ready()` (`age_ms()`, host-side reasoning only, not replicated) and
+> `Rack._on_impact` ignores anything younger than `MINT_GRACE_MS` (700 ms) before checking impact
+> speed at all. The sensor's held-crate sensitivity is otherwise untouched — a swung or carried
+> crate still sheds.
+>
+> **(3) Sensor-stranded loose crates.** A loose crate resting inside a rack's `CellSensor` volume
+> (a shed crate landing there happened twice in play) was permanently unaimable: the combined ray
+> hit the sensor's own surface before ever reaching the crate behind it, resolved to an empty
+> cell, and `try_toggle_hold` did nothing — and supply conservation did not save it, since recovery
+> only fires below the world. `Carrier._aim()` now runs a cargo-only physics query first, but only
+> while empty-handed (same origin/length as `GrabRay`, masked to the cargo layer alone so the
+> storage layer cannot block it); only if that finds nothing does aim fall through to the existing
+> combined ray and cell resolution. While holding something, behaviour is unchanged — cells must
+> still win, or a loose crate in front of a rack face would hijack a placement aim.
+>
+> **Fixture bump, same session:** the gate protocol needs 9+ crates on hand (a full cell of 8
+> Smalls plus one in hand) — `TestRoom.crate_count` raised 6 → 12, a second row
+> (`CRATE_ROW2_ORIGIN`, z=-9.0) rather than extending the first row along x, which would have run
+> through rack_wall's own approach corridor and the integration suite's drag-avoidance detour. The
+> second row's z is derived against `carry_session.gd`'s own `CLIENT_STAND_OFFSET_Z`, not
+> guessed — a naive "one row back" at -7.5 would have sat the new crates inside that stand point's
+> own capsule radius.
+>
+> **All three fixes proven with new regression steps (10-12) in `storage_session.gd`**, against
+> `rack_island` rather than `rack_wall` so they cannot collide with rack_wall's already-exercised
+> cell states: retrieving a crate beside a still-loaded top-row neighbour does not shed it;
+> a crate teleported to rest inside a cell volume is grabbable through the real
+> `try_toggle_hold` path; and a placement from a genuine near-maximum-range aim
+> (`MAX_RANGE_STAND_OFFSET_Z`, deliberately near `GrabRay`'s own 2.5 m edge) succeeds. One test
+> harness finding along the way: the existing `PARK_POINT` is calibrated for rack_wall's own
+> corridor and sits over 11 m from rack_island — walking a release there and back left too little
+> of the client's own 15 s window for a 20 Hz replication tick to land before a hold ended again,
+> caught by an actual timeout on the first run of the stranded-crate step's cross-peer check. Fixed
+> with a second, much closer `GATE_PARK_POINT` and a deliberate short hold-confirm pause, not by
+> weakening the check. Three consecutive full clean suite runs after the fixes, with the regression
+> steps included.
+
 ## Accumulated Context
 
 ### Decisions
