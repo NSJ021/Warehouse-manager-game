@@ -34,6 +34,18 @@ var _checked := 0
 var _frames := 0
 var _aim_cases: Array = []
 
+## 01-09 (ADR 17): a settled crate freezes to FREEZE_MODE_STATIC and joins the
+## world layer, and three behaviours hold that decision up — all measured
+## before ADR 17 was written, not assumed, and named individually below
+## rather than folded into one boolean so a failure says which one broke.
+var _settled_body: RigidBody3D
+var _settled_body_start: Vector3
+var _settled_walker: CharacterBody3D
+var _settled_zone: Area3D
+var _settled_sensor_body: RigidBody3D
+var _settled_sensor_area: Area3D
+var _settled_sensor_walker: CharacterBody3D
+
 
 func _initialize() -> void:
 	_check_engine_apis()
@@ -41,13 +53,22 @@ func _initialize() -> void:
 	_check_godotsteam()
 	_check_decided_invariants()
 	_build_aim_scene()
+	_build_settle_scene()
 
 
 func _physics_process(_delta: float) -> bool:
 	_frames += 1
-	if _frames < 3:
+	# The force/impulse in _apply_settle_forces() needs a physics step to
+	# have any chance of moving something — applied once the server has a
+	# physics space to receive it (frame 3, the same gate everything else
+	# below needs anyway), then given three more frames before anything
+	# checks whether it worked.
+	if _frames == 3:
+		_apply_settle_forces()
+	if _frames < 6:
 		return false
 	_check_aim_behaviour()
+	_check_settle_behaviour()
 	_report()
 	return true
 
@@ -119,6 +140,140 @@ func _check_aim_behaviour() -> void:
 		ray.force_raycast_update()
 		var hit: bool = ray.is_colliding() and ray.get_collider() == entry[2]
 		_expect(hit, entry[0])
+
+
+## Settled cargo (ADR 17, 01-09) rests on four behaviours, none of them
+## specific to [Crate] — built from plain engine nodes here so a failure
+## points at the engine, not at anything this project wrote.
+func _build_settle_scene() -> void:
+	var world := Node3D.new()
+	get_root().add_child(world)
+
+	# 1 & 2: a frozen static body blocks a CharacterBody3D sharing its mask,
+	# and cannot itself be displaced by a force or an impulse.
+	_settled_body = RigidBody3D.new()
+	_settled_body.collision_layer = 1  # world - the bit a settled crate gains
+	_settled_body.collision_mask = 0
+	_settled_body.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	_settled_body.freeze = true
+	_settled_body.position = Vector3(20.0, 0.0, 0.0)
+	var body_shape := CollisionShape3D.new()
+	var body_box := BoxShape3D.new()
+	body_box.size = Vector3(0.5, 0.5, 0.5)
+	body_shape.shape = body_box
+	_settled_body.add_child(body_shape)
+	world.add_child(_settled_body)
+	# world sits at the origin with no rotation, so this equals global_position
+	# — read as the literal rather than via global_position here, because the
+	# body has no physics space to query yet on the very frame it is added
+	# (Jolt is explicit about this: apply_central_impulse/_force both need
+	# one, and this build step runs before the frame gate below gives the
+	# server a chance to create it).
+	_settled_body_start = Vector3(20.0, 0.0, 0.0)
+
+	_settled_walker = CharacterBody3D.new()
+	_settled_walker.collision_layer = 2
+	_settled_walker.collision_mask = 1
+	_settled_walker.position = Vector3(19.0, 0.0, 0.0)
+	var walker_shape := CollisionShape3D.new()
+	var walker_capsule := CapsuleShape3D.new()
+	walker_capsule.radius = 0.3
+	walker_capsule.height = 1.8
+	walker_shape.shape = walker_capsule
+	_settled_walker.add_child(walker_shape)
+	world.add_child(_settled_walker)
+
+	# 3: an Area3D that is NOT a child of the frozen body still sees it as an
+	# overlapping body - what lets a Goods zone (a level fixture, not a child
+	# of any crate) detect stock that has settled and sat there all day, the
+	# 01-05 <-> 01-09 interaction flagged in STATE.md.
+	_settled_zone = Area3D.new()
+	_settled_zone.collision_layer = 0
+	_settled_zone.collision_mask = 1
+	_settled_zone.monitoring = true
+	_settled_zone.monitorable = false
+	_settled_zone.position = Vector3(20.0, 0.0, 0.0)
+	var zone_shape := CollisionShape3D.new()
+	var zone_box := BoxShape3D.new()
+	zone_box.size = Vector3(2.0, 2.0, 2.0)
+	zone_shape.shape = zone_box
+	_settled_zone.add_child(zone_shape)
+	world.add_child(_settled_zone)
+
+	# 4: an Area3D CHILD of a frozen body still reports overlapping bodies -
+	# the exact shape of the crate's own PushSensor, and what lets a settled
+	# crate always be woken by a shove.
+	_settled_sensor_body = RigidBody3D.new()
+	_settled_sensor_body.collision_layer = 1
+	_settled_sensor_body.collision_mask = 0
+	_settled_sensor_body.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	_settled_sensor_body.freeze = true
+	_settled_sensor_body.position = Vector3(24.0, 0.0, 0.0)
+	var sensor_body_shape := CollisionShape3D.new()
+	var sensor_body_box := BoxShape3D.new()
+	sensor_body_box.size = Vector3(0.5, 0.5, 0.5)
+	sensor_body_shape.shape = sensor_body_box
+	_settled_sensor_body.add_child(sensor_body_shape)
+
+	_settled_sensor_area = Area3D.new()
+	_settled_sensor_area.collision_layer = 0
+	_settled_sensor_area.collision_mask = 2
+	_settled_sensor_area.monitoring = true
+	_settled_sensor_area.monitorable = false
+	var sensor_area_shape := CollisionShape3D.new()
+	var sensor_area_box := BoxShape3D.new()
+	sensor_area_box.size = Vector3(0.62, 0.62, 0.62)
+	sensor_area_shape.shape = sensor_area_box
+	_settled_sensor_area.add_child(sensor_area_shape)
+	_settled_sensor_body.add_child(_settled_sensor_area)
+	world.add_child(_settled_sensor_body)
+
+	_settled_sensor_walker = CharacterBody3D.new()
+	_settled_sensor_walker.collision_layer = 2
+	_settled_sensor_walker.collision_mask = 0
+	_settled_sensor_walker.position = Vector3(24.0, 0.0, 0.0)
+	var sensor_walker_shape := CollisionShape3D.new()
+	var sensor_walker_capsule := CapsuleShape3D.new()
+	sensor_walker_capsule.radius = 0.3
+	sensor_walker_capsule.height = 1.8
+	sensor_walker_shape.shape = sensor_walker_capsule
+	_settled_sensor_walker.add_child(sensor_walker_shape)
+	world.add_child(_settled_sensor_walker)
+
+
+## A real force and a real impulse, thrown at the frozen body once it has a
+## physics space to receive them. [method _check_settle_behaviour] checks a
+## few frames later whether either one moved it at all.
+func _apply_settle_forces() -> void:
+	_settled_body.apply_central_impulse(Vector3(500.0, 0.0, 0.0))
+	_settled_body.apply_central_force(Vector3(5000.0, 0.0, 0.0))
+
+
+func _check_settle_behaviour() -> void:
+	print("[api] settled cargo (ADR 17)")
+
+	var collision := _settled_walker.move_and_collide(Vector3(2.0, 0.0, 0.0))
+	_expect(
+		collision != null and collision.get_collider() == _settled_body,
+		"a frozen FREEZE_MODE_STATIC RigidBody3D blocks a CharacterBody3D sharing its mask",
+	)
+
+	_expect(
+		_settled_body.global_position.distance_to(_settled_body_start) < 0.001,
+		"a frozen static body cannot be displaced by a force or an impulse",
+	)
+
+	_expect(
+		_settled_zone.get_overlapping_bodies().has(_settled_body),
+		"an Area3D that is not a child of a frozen body still reports it overlapping " +
+		"(what lets a Goods zone see settled stock)",
+	)
+
+	_expect(
+		_settled_sensor_area.get_overlapping_bodies().has(_settled_sensor_walker),
+		"an Area3D child of a frozen body still reports overlapping bodies " +
+		"(what lets a settled crate always be woken)",
+	)
 
 
 # --------------------------------------------------------------- section 1
