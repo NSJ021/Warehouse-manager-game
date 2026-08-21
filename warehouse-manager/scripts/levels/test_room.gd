@@ -15,6 +15,30 @@ const CRATE_SCENE := preload("res://scenes/goods/crate.tscn")
 const CRATE_ROW_LIMIT := 12
 const CRATE_ROW_ORIGIN := Vector3(-2.5, 0.6, -6.0)
 const CRATE_ROW_SPACING := 1.0
+## How many crates the first row holds before [method _crate_position] moves
+## on to [constant CRATE_ROW2_ORIGIN]. Also what every integration scenario's
+## own crate-name table assumes (crate_0..crate_5 sit in this row, referenced
+## by name — see storage_session.gd and carry_session.gd's own allocation
+## comments) — do not change this without checking both.
+const CRATE_ROW_SIZE := 6
+## The gate playtest protocol needs 9+ crates on hand (a full cell of 8
+## Smalls plus one still in hand, 2026-08-21) — raised to 12, a second row
+## rather than one row of 12. Extending the first row out along x instead
+## would have run it straight through things the integration suite depends
+## on: rack_wall's own approach corridor (its aimable cells sit at
+## x=7.0/8.0, and storage_session.gd stands a player at their z+2.0=-6.5 to
+## reach them) and the same file's drag-avoidance detour, which sweeps
+## z=-3.0 clear across the room's x range.
+##
+## z=-9.0, not simply "the next row back" at -7.5: carry_session.gd's own
+## CLIENT_STAND_OFFSET_Z (-1.2) stands a player at z=-7.2 to grab a row-1
+## crate from the north side, and that capsule's own 0.4 m radius reaches
+## z=-7.6 — a row at -7.5 would have sat the new crates' own half-extent
+## (0.25) directly inside that stand point. -9.0 clears it by over a metre
+## (row-2 crates span z=[-9.25,-8.75]) and still leaves 0.75 m to the north
+## wall's inner face (z=-10.0). Same x=-2.5..2.5 as the first row, which is
+## nowhere near either rack (x=6.5) or either zone (x=-7).
+const CRATE_ROW2_ORIGIN := Vector3(-2.5, 0.6, -9.0)
 
 ## Beyond that it becomes a grid filling the floor, wrapping into layers above
 ## once the floor is full. 0.7 spacing against a 0.5 crate leaves a gap, so
@@ -28,9 +52,10 @@ const CRATE_LAYER_HEIGHT := 0.6
 const CRATE_LOG_LIMIT := 12
 
 ## Starting cargo. Exported so the physics budget stress test can turn one knob
-## instead of a second mechanism being invented for it. The first six sit in a
-## row, which is what Phase 0 hand-testing wants.
-@export var crate_count := 6
+## instead of a second mechanism being invented for it. The first twelve sit in
+## two rows of six (see CRATE_ROW_SIZE / CRATE_ROW2_ORIGIN), which is what
+## hand-testing — now including the gate's full-cell-plus-one protocol — wants.
+@export var crate_count := 12
 
 ## Host-only. The next id [method spawn_crate_at] mints — one counter shared
 ## with the starting batch below, so ids never collide and are never reused.
@@ -115,7 +140,10 @@ func spawn_crate_at(spawn_position: Vector3) -> Crate:
 ## stress run is repeatable and two runs are comparable.
 func _crate_position(index: int) -> Vector3:
 	if crate_count <= CRATE_ROW_LIMIT:
-		return CRATE_ROW_ORIGIN + Vector3(float(index) * CRATE_ROW_SPACING, 0.0, 0.0)
+		if index < CRATE_ROW_SIZE:
+			return CRATE_ROW_ORIGIN + Vector3(float(index) * CRATE_ROW_SPACING, 0.0, 0.0)
+		var row2_index := index - CRATE_ROW_SIZE
+		return CRATE_ROW2_ORIGIN + Vector3(float(row2_index) * CRATE_ROW_SPACING, 0.0, 0.0)
 
 	var per_layer := CRATE_GRID_COLUMNS * CRATE_GRID_ROWS
 	var layer := index / per_layer

@@ -52,7 +52,13 @@ const STEP_TIMEOUT_MS := 15000
 ## | crate_5 | LOST_CRATE_NAME - supply conservation                   |
 const CRATE_NAME := "crate_0"
 const EXPECTED_PLAYERS := 2
-const EXPECTED_CRATES := 6
+## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for
+## the gate playtest protocol (2026-08-21) — two rows of six rather than one
+## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why. Every
+## crate_0..crate_5 name and position the allocation table above depends on is
+## unchanged — the second row (crate_6..crate_11) is unclaimed by any step in
+## this file.
+const EXPECTED_CRATES := 12
 ## Cargo rests at about y=0.25 on the floor and hangs near y=0.9 when carried, so
 ## this separates "picked up" from "sat there" with room to spare.
 const LIFT_MIN_Y := 0.55
