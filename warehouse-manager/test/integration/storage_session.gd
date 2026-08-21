@@ -479,6 +479,7 @@ func _run_host(rack: Rack) -> void:
 	if impactor == null:
 		_fail("find %s" % CRATE_FULL_ATTEMPT_NAME, "not present under Crates")
 		return _finish(false)
+	_ensure_awake(impactor)
 	impactor.global_position = (rack.global_position
 			+ rack.global_transform.basis.x * IMPACT_LATERAL_OFFSET
 			+ rack.global_transform.basis.z * IMPACT_START_OFFSET_Z
@@ -518,10 +519,12 @@ func _run_host(rack: Rack) -> void:
 	if stack_top == null:
 		_fail("find %s" % CRATE_DRAG_ATTEMPT_NAME, "not present under Crates")
 		return _finish(false)
+	_ensure_awake(stack_bottom)
 	stack_bottom.global_position = STACK_BASE
 	stack_bottom.sleeping = false
 	stack_bottom.linear_velocity = Vector3.ZERO
 	stack_bottom.angular_velocity = Vector3.ZERO
+	_ensure_awake(stack_top)
 	stack_top.global_position = STACK_BASE + Vector3.UP * STACK_DROP_HEIGHT
 	stack_top.sleeping = false
 	stack_top.linear_velocity = Vector3.ZERO
@@ -634,7 +637,7 @@ func _run_client(rack: Rack) -> void:
 			return carrier.is_dragging()):
 		return _finish(false)
 
-	await _attempt_place(rack, CELL_A, CLIENT_LATERAL)
+	await _attempt_place(rack, CELL_A, CLIENT_LATERAL, true)
 	if not await _stays(
 			"ADR 19: still dragging %s, cell %d untouched" % [CRATE_DRAG_ATTEMPT_NAME, CELL_A],
 			func() -> bool:
@@ -719,6 +722,29 @@ func _run_client(rack: Rack) -> void:
 
 # -------------------------------------------------------------- action helpers
 
+## Host-only. A crate left loose and untouched for half a second settles to a
+## frozen, immovable body (ADR 17, 01-09) — which several direct-manipulation
+## tricks below now run straight into, since a frozen body ignores both an
+## assigned velocity and gravity: setting position teleports it (a transform
+## write, unaffected by freeze), but it then just sits at the new position
+## forever, never travelling anywhere and never falling. Both steps 8 and 9
+## reuse crates ([constant CRATE_FULL_ATTEMPT_NAME], [constant
+## CRATE_DRAG_ATTEMPT_NAME]) that have been sitting loose and unclaimed for
+## several real seconds by the time they get here — comfortably past
+## [member Crate.settle_frames] — so both need this first.
+##
+## Mirrors [method Crate._wake] rather than calling it: that method is
+## host-only and private by convention, and this is test code reaching into
+## a crate's own fields exactly the way the direct-manipulation tricks below
+## already do legitimately — a crate is always simulated for real on the
+## host (see [code]_take()[/code]'s own docstring in carry_session.gd).
+func _ensure_awake(crate: Crate) -> void:
+	crate.sync_settled = false
+	crate.collision_layer &= ~Crate.LAYER_WORLD
+	crate.freeze = false
+	crate.sleeping = false
+
+
 ## Teleport to the crate's row and press until it is ours.
 func _grab(crate: Crate, want_drag := false) -> void:
 	var me := _me()
@@ -782,10 +808,32 @@ func _walk_to(destination: Vector3) -> void:
 	me.teleport_to(destination)
 
 
+## South of TestRoom's crate row (CRATE_ROW_ORIGIN.z = -6.0), by a wide
+## margin, and clear of the rack, both zones and PARK_POINT alike. Only
+## needed for [param avoid_row] in [method _approach_cell] below.
+const ROW_DETOUR_Z := -3.0
+
 ## Walk to a cell and aim at its centre. Shared by every cell interaction.
-func _approach_cell(rack: Rack, cell_index: int, lateral: float) -> Vector3:
+##
+## [param avoid_row] routes via [constant ROW_DETOUR_Z] first rather than
+## walking a straight line. Needed once ADR 17 (01-09) landed: crate_4 and
+## crate_5 sit untouched in the row for this whole scenario (01-07's own
+## reservation, still unclaimed at this point) and settle to real, immovable
+## world geometry after half a second at rest. The rack's own approach point
+## sits barely south of the row itself (z=-6.5 against the row's z=-6.0), so
+## a straight walk from crate_3's own spot east toward the rack drags it
+## directly into crate_4's now-solid footprint and wedges it there
+## permanently — caught by this scenario's own drag-attempt step timing out
+## on a hold that had silently broken. Not needed for anything that does not
+## drag a crate through the row: a bare player walk here uses
+## [method Player.teleport_to], which bypasses collision entirely, so only a
+## dragged crate can actually get physically stuck on the way.
+func _approach_cell(rack: Rack, cell_index: int, lateral: float, avoid_row := false) -> Vector3:
 	var me := _me()
 	var target := rack.cell_to_global_position(cell_index)
+	if avoid_row:
+		await _walk_to(Vector3(me.global_position.x, STAND_HEIGHT, ROW_DETOUR_Z))
+		await _walk_to(Vector3(target.x + lateral, STAND_HEIGHT, ROW_DETOUR_Z))
 	await _walk_to(Vector3(target.x + lateral, STAND_HEIGHT, target.z + RACK_STAND_OFFSET_Z))
 	me.aim_at(target)
 	return target
@@ -812,10 +860,13 @@ func _place(rack: Rack, cell_index: int, lateral: float) -> void:
 
 ## A handful of presses at a cell expected to refuse. Deliberately bounded
 ## rather than looped to success — success here would be the bug.
-func _attempt_place(rack: Rack, cell_index: int, lateral: float) -> void:
+##
+## [param avoid_row] is passed straight through to [method _approach_cell] —
+## see its own doc for why the drag-attempt call site below needs it.
+func _attempt_place(rack: Rack, cell_index: int, lateral: float, avoid_row := false) -> void:
 	var me := _me()
 	var carrier: Carrier = me.get_node("Carrier")
-	var target := await _approach_cell(rack, cell_index, lateral)
+	var target := await _approach_cell(rack, cell_index, lateral, avoid_row)
 
 	for _i in 3:
 		me.aim_at(target)

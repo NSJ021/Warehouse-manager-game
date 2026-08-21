@@ -104,6 +104,20 @@ const DRAG_FOLLOW_MIN := 0.3
 ## Drag is deliberately slow (GDD §6.1). Asserted on the dragger's own machine,
 ## because movement is client-authoritative and this is the only place it applies.
 const DRAG_SPEED_SCALE := 0.4
+## How long to sit on "client released" before trusting it (01-09). [method
+## _take]'s own retry loop is deliberately unawaited (see its docstring) and
+## keeps a background press pending for up to six frames after the one that
+## actually succeeds — normally resolved in well under this margin, but
+## headless is uncapped, so six frames is a real wall-clock span that varies
+## with whatever else the process is doing, not a fixed handful of
+## milliseconds. Moving on to grab a different crate the instant both signals
+## in [code]_run_client[/code]'s own wait go true is not late enough to
+## guarantee that stale press has already fired and found nothing to do:
+## found by the join's own leftover press landing after crate_0 had already
+## been let go, and silently re-grabbing it instead of touching crate_3 at
+## all. Comfortably above six frames' worst observed span rather than tuned
+## to the minimum that happens to pass.
+const TAKE_TAIL_SETTLE_MS := 500
 
 var _role := "host"
 var _world: Node = null
@@ -271,7 +285,7 @@ func _check_goods_zones() -> bool:
 			return goods_out.count() == 0):
 		return false
 
-	# Host-only: let the probe settle back to sleep before the carry scenario
+	# Host-only: let the probe settle back to rest before the carry scenario
 	# starts. It was placed exactly at rest height with zero velocity, so this
 	# is normally immediate — but skipping it left a still-awake, still-
 	# replicating crate active on the exact frames the carry/handoff sequence
@@ -279,10 +293,22 @@ func _check_goods_zones() -> bool:
 	# 2026-08-20). Nothing here reads [member Crate.sleeping] from a client:
 	# clients never simulate cargo (only the host runs [method
 	# Crate._physics_process]), so only the host has anything to wait for.
+	#
+	# ⚠ Checks [member Crate.sync_settled] rather than [member
+	# Crate.sleeping] (01-09). Once ADR 17 landed, a still probe FREEZES to
+	# FREEZE_MODE_STATIC well before the engine's own sleep timer would ever
+	# fire — and a frozen body was measured to never report sleeping=true on
+	# its own, so the old sleeping-only wait hung the full 15s timeout every
+	# run. sync_settled is in every sense the stronger signal anyway: it is
+	# the point past which this crate stops replicating at all, which is the
+	# actual property this wait exists to guarantee. sleeping stays as a
+	# fallback in case a future tuning change ever raises settle_frames past
+	# the engine's own sleep timer, so this crate can rest asleep without
+	# ever freezing and still unblock this wait.
 	if _role == "host":
 		var probe := _crate_named(ZONE_PROBE_NAME)
 		if not await _until("zone probe settled", func() -> bool:
-				return probe != null and probe.sleeping):
+				return probe != null and (probe.sync_settled or probe.sleeping)):
 			return false
 	return true
 
@@ -421,6 +447,22 @@ func _run_client(crate: Crate) -> void:
 	if not await _until("client joined the carry", func() -> bool:
 			return crate.holder_count() == 2):
 		return _finish(false)
+
+	# [constant TAKE_TAIL_SETTLE_MS]'s own margin, as early as it can go: this
+	# join's own [method _take] call above is unawaited (see that function's
+	# docstring) and can still have one more retry press pending for up to six
+	# frames after the press that actually succeeded — headless is uncapped,
+	# so six frames is real, variable wall-clock time, not a fixed handful of
+	# milliseconds. Placed here rather than only right before the release
+	# later in this function so the whole rest of the carry/handoff sequence
+	# below (which itself takes real time) is extra margin on top, not the
+	# only margin there is. See that constant's own doc for the race this
+	# closes: a stale press from this exact loop landing after the crate had
+	# already been let go, and silently re-grabbing it.
+	var settle_deadline := Time.get_ticks_msec() + TAKE_TAIL_SETTLE_MS
+	while Time.get_ticks_msec() < settle_deadline:
+		await get_tree().process_frame
+
 	# Asserted on the client too: proves the lift replicated, not just that the
 	# host believes it happened.
 	if not await _until("client sees it lifted", func() -> bool:
@@ -432,7 +474,13 @@ func _run_client(crate: Crate) -> void:
 
 	var carrier: Carrier = _me().get_node("Carrier")
 	carrier.try_toggle_hold()
-	if not await _until("client released", func() -> bool: return crate.holder_count() == 0):
+	# Both signals, not just the replicated one (01-09 found the gap). Holder
+	# count updates as soon as the HOST's own [method Crate._physics_process]
+	# next runs; on_hold_granted's ray exception is only cleared once the
+	# separate _hold_revoked RPC actually reaches THIS client, and those two
+	# arrivals are not ordered against each other.
+	if not await _until("client released", func() -> bool:
+			return crate.holder_count() == 0 and carrier.held_crate() == null):
 		return _finish(false)
 
 	await _run_client_drag()
