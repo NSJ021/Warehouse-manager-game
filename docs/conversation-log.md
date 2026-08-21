@@ -4,6 +4,62 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 7 — 2026-08-21
+
+**Phase 1 finished — built, gated by a human across three play sessions, fixed same-day, merged. Then Phase 2 got designed in outline before a single plan exists.**
+
+### What was built
+
+Waves 4–6 executed back to back. **Aim feedback and the snap (01-06)** — a per-rack cell highlight with three states painted from the same aim query and branch table the real placement uses, a 0.16 s travel tween with a synthesised placement thud, and the late-joiner path deliberately instant and silent. One standing constraint discovered: a new binary asset needs a one-shot headless import pass with the editor closed before tests can load it. **Shedding (01-07)** — a host-side impact sensor (crates only, 4.0 m/s threshold, 1.5 s cooldown) sheds the top row as real falling crates; the drag cap (~1.7 m/s) can never trigger it, confirmed as a conscious call. **Settled cargo (01-09, ADR 17)** — cargo at rest freezes static and blocks players *and other cargo*; disturbance wakes it; a held or dragged crate never settles. Most of that plan's ~3 hours went on two pre-existing, intermittent harness races, not the settle machine, which worked first try. The 01-05↔01-09 flag closed properly: zones still count frozen bodies.
+
+### The gate
+
+Three play sessions against a written 26-item protocol (setup, per-check pass/fail criteria, three fix-verification passes). **It found three real defects that every green suite run had missed:**
+
+- **The green that refuses.** The highlight painted at ray range (2.5 m) but the host validated camera→cell-*centre* ≤ 2.6 m — a cell's centre sits up to 0.87 m behind the face the ray hit, so aims in the ~2.1–2.5 m band promised and then silently refused. The validation comment claimed a genuine aim could never fail it; the comment was wrong.
+- **The rack that shed itself.** A retrieved crate mints at the cell centre — inside the impact sensor — and the hold spring accelerates it past the shed threshold while still overlapping. Ordinary shelf work ejected a neighbour's stock. Fixed with a 700 ms mint-grace.
+- **Stranded stock.** A loose crate settling inside a rack's sensor volumes was unaimable — the ray hits the sensor face first, the cell's data is empty, nothing responds — and supply conservation only recovers out-of-world falls, so it was *permanently lost stock*. Fixed: an empty-handed aim probes cargo first, falling through to cells. While holding, cells still win, so placement is unaffected.
+
+All three fixed with regression tests through the real interact path, suite proven over repeated consecutive runs. The gate also disproved "the back row is permanently unaimable" — it is head-on, but the rack's end faces resolve back-row cells fine, which is now part of the ruling. And play set one tuning number: reach shortened 2.5 → 2.0 m end-to-end after feeling long from both first- and third-person viewpoints.
+
+### Decisions made
+
+**ADR 24 — rack presentation ratified.** The frame's proportions stand; the clipping resolution is the **pallet spec**: an empty cell shows nothing, the first item spawns a pallet, stock sits on it with side margins and ~¼-Small top clearance, and the pallet edge anchors future per-cell signage. Racked visuals inset to fit; ADR 18's logical sizes untouched. Wall racks are 6 cells head-on plus end access, accepted as a level-design rule. Top-shelf-effort versus bottom-shelf-turnaround named as an intended optimisation axis. **Verdict: storage feels deliberate — Phase 1 closed and merged (PR #11).**
+
+**STORE-07, the round-trip invariant**, added to requirements: racking frees the body and retrieval mints a fresh one, so per-crate state must ride the cell data and reconstitute exactly — `retrieve(place(crate)) == crate` for every field — or racking launders damage and deletes the Phase 3 pillar.
+
+**The timing guess held.** A relaxed intake→rack→outbound loop measured under 60 seconds (small room, perfect knowledge), inside the economy model's ~15-moves-per-player assumption.
+
+### Phase 2 designed in outline
+
+A long design pass, recorded for the planner rather than decided as ADRs:
+
+- **Cargo taxonomy:** ~10 mechanical *categories* (atomicity, weight band, fragility, value) × many comedy *variants* (manifest names, decals). Cells atomic by category; comping like-for-like at category level ("ordered porcelain ducks, comped porcelain badgers" is legal). The dodgy market ships its own self-labelled category — "Definately Legal Tobacco". Weight is per-category and deliberately deceptive.
+- **Day clock:** the roller door is the clock, governing commerce, never locking players out; morning truck dumps as a ceremony; full-day frame with open hours plus a skippable after-hours tidy; at midnight a pause — tally columns, rent deducted theatrically, then a host-decided "pick your poison" offer sheet for tomorrow (rep-generated options plus locked commitment rows from the day's phone calls). Day length stays an exported tunable — lease arithmetic (10/30 days × real minutes) is the constraint.
+- **Design principle, game-wide:** assume open comms; information asymmetry must live on the *screen*, never in audio. The office phone shows details only to the answerer; proximity voice is comedy on top, never load-bearing. The same principle already protects the tape gun.
+- **Missed collections:** walk-away (ADR 22 routes the consequence), redelivery priced as a locked row on tomorrow's offer sheet, or comp. The fraudulent fourth option — sign it off as collected — is **short-changing outbound**, recorded into the sales counter entry as strand 6 so both directions of the paperwork lie enter through one superseding ADR, if ever.
+- **Store-until:** an overdue client's stock costs capacity (cells blocked, offer sheet starved) — emergent, no new penalty system — plus token demurrage income and no spoilage timers. The lien sale stays the parked release valve.
+- **Larges:** both orientations, player-chosen at placement — side-by-side across a face or front-to-back through the depth, which gives a wall rack's dead row its one tenant with no aim change. Requires a rotate control on the placement ghost, promoting the ghost preview into Phase 2 scope.
+- **Heavy retrieval:** nothing floats — retrieval mints a real body resting on the deck. Solo grab is a drag grant and physics does the rest: slide, tip, crash (consequences, not refusals; Phase 3 prices the drop). Two players use the existing drag→carry promotion while it's still on the deck and walk it out through the pallet clearance.
+
+The idea book also gained **the rack topple** — the falling-rack clip decomposed into what's built (the ADR 17 aftermath), what the gate could rule on (positional shed), what needs its own ADR (a rare topple that may shed a neighbour but never topple it), and the parked doors it must not smuggle in (forklift, spills).
+
+### Housekeeping
+
+Publishing scans clean; PR #11 merged to `main`; `feat/phase-2-goods` branched from the merge. Follow-ups recorded in STATE: ghost preview, cell plaques, seeded organic jitter on racked visuals, a grabbable-target indicator, softer settle planting (per-kind feel later), sprint-speed hold-spring jam, the red highlight being invisible on a full cell, carried crates passing through racked stock, and a pre-existing intermittent one-resource leak at the storage test client's exit.
+
+### Open questions
+
+- The Steam join half still needs a second machine — unchanged, hardware-blocked.
+- Day length: structure agreed, the number deliberately not.
+- For Phase 2 planning: the exact category list, value bands spanning ADR 20's £50–£2000 envelope, and plaque content at category versus variant level.
+
+### Next steps
+
+Plan Phase 2 from a fresh context. The plans it produces get audited against `decisions/` before execution — today's direction is deliberately not ADR-grade yet, and the audit discipline exists precisely for that gap.
+
+---
+
 ## Session 6 — 2026-08-20
 
 **Wave 3 built the heart of the phase; the waiting time built the economy's first model; and the launch strategy stopped being an open question.**
