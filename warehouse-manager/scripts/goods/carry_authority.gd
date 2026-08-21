@@ -36,6 +36,22 @@ const PLACE_REACH := 2.6
 ## spawn a frame late.
 const GRANT_RESOLVE_FRAMES := 60
 
+## Belt and braces on top of the top-row bound itself (ADR 14, 01-07):
+## [method Rack.occupied_cells_in_top_row] can never return more than one
+## rack's own width x depth today (4, for the 2x2x3 bay), so this never
+## actually trips under the current geometry. It exists so a future rack with
+## a wider bay cannot quietly multiply what one impact spends - "a rack
+## shedding its top row is affordable; a rack shedding sixty crates is not"
+## (ADR 14) is the sentence this constant is the code for.
+const MAX_SHED_PER_EVENT := 8
+## An impulse, not a sustained force, so this reads as toppling off a shelf
+## rather than being launched across the room. Crate mass is 12 kg
+## (crate.tscn), so this is roughly 1.5 m/s outward.
+const SHED_IMPULSE := 18.0
+## A little lift on top of the outward push, so a shed item visibly leaves the
+## shelf edge rather than sliding along it.
+const SHED_UP_IMPULSE := 4.5
+
 @export var players_path: NodePath
 @export var crates_path: NodePath
 
@@ -222,6 +238,66 @@ func request_retrieve(rack_name: String, cell_index: int) -> void:
 		crate.hold_mode_changed.connect(_on_hold_mode_changed)
 	print("[carry] peer %d retrieved crate_%d from %s cell %d" % [peer_id, crate.id, rack_name, cell_index])
 	_answer_grant(peer_id, crate.name, crate.hold_mode())
+
+
+## Host-side. [param rack] calls this ([method Rack._on_impact]) the moment
+## an incoming crate clears both its speed threshold and its cooldown. A
+## plain method, not an RPC: the rack only ever calls it on the host (its own
+## sensor is disabled everywhere else), and everything every other peer needs
+## to learn from a shed already travels through [method _cell_cleared] - the
+## same broadcast [method request_retrieve] uses, so a shed and a retrieval
+## look identical to a peer that only sees the wire.
+##
+## Bounded three ways, each one load-bearing against ADR 14's physics budget:
+## only the [i]top row[/i] is ever a candidate ([method
+## Rack.occupied_cells_in_top_row]); [constant MAX_SHED_PER_EVENT] caps it
+## again regardless of how wide a future rack's top row gets; and [param rack]
+## itself will not call this again for [member Rack.shed_cooldown] seconds, so
+## one crate bouncing in the sensor cannot shed the same row twice.
+func shed_top_row(rack: Rack) -> void:
+	var cells := rack.occupied_cells_in_top_row()
+	var shed_count := 0
+
+	for cell_index in cells:
+		if shed_count >= MAX_SHED_PER_EVENT:
+			break
+
+		# Captured before the clear, exactly as request_retrieve captures
+		# from_position before queue_free()'ing the placed body - once the
+		# cell is cleared there is nothing left here that remembers where it
+		# was.
+		var world_position := rack.cell_to_global_position(cell_index)
+		_cell_cleared.rpc(rack.name, cell_index)
+
+		var source := _crate_source()
+		if source == null:
+			break
+		var crate := source.spawn_crate_at(world_position) as Crate
+		if crate == null:
+			continue
+
+		# Outward from the rack's own centre, not the world origin, so
+		# RackWest - rotated 90 degrees - sheds forwards rather than
+		# sideways. Falls back to the rack's own -Z when a cell sits directly
+		# above the rack's origin, where "outward" is not otherwise defined.
+		var outward := world_position - rack.global_position
+		outward.y = 0.0
+		if outward.length_squared() < 0.0001:
+			outward = -rack.global_transform.basis.z
+		else:
+			outward = outward.normalized()
+
+		# A crate asleep on a shelf will not wake for an applied impulse
+		# alone (the same reason _apply_shoves wakes what it pushes).
+		crate.sleeping = false
+		crate.apply_central_impulse(outward * SHED_IMPULSE + Vector3.UP * SHED_UP_IMPULSE)
+		shed_count += 1
+
+	# A shed is a consequence a player should be able to find in the log when
+	# working out what just happened - the same reasoning behind every other
+	# [carry] line in this file.
+	if shed_count > 0:
+		print("[carry] %s shed %d from its top row" % [rack.name, shed_count])
 
 
 func _sender_id() -> int:
