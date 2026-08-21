@@ -23,11 +23,24 @@ extends Node
 ## How close the hold point must be to grab. Generous, because the ray has
 ## already established the player is looking straight at it.
 const GRAB_REACH := 2.5
-## How close a placement or retrieval must be to the cell it targets. Just
-## past GrabRay's 2.5 m target_position, deliberately: a genuine aim can
-## therefore never fail this check. It exists to reject a forged or stale
-## request from a client, not to gate normal play — do not "tune" it.
-const PLACE_REACH := 2.6
+## How close a placement or retrieval must be to the cell it targets —
+## measured camera → cell CENTRE, not camera → the ray's own hit point, and
+## that distinction is the whole reason this cannot just mirror GrabRay's 2.5 m
+## target_position. A cell is a 1.0 m cube (ADR 18), so its centre can sit up
+## to half the cell's own space diagonal behind wherever the ray actually
+## struck its face: sqrt(3)/2 × 1.0 m ≈ 0.87 m. A ray-limited aim can
+## therefore land a genuine hit as far out as 2.5 + 0.87 ≈ 3.37 m from the
+## camera, measured to the cell centre this check actually uses — 2.6 was
+## short of that by nearly a full metre and silently refused real placements
+## in roughly the 2.1–2.5 m band while the highlight had already painted
+## green (found live at the wave 7 gate, 2026-08-21). 3.5 clears the 3.37 m
+## worst case with a small margin, so a genuine ray-limited aim can never
+## fail this check. It exists to reject a forged or stale request from a
+## client, not to gate normal play — do not "tune" it down toward the ray's
+## own reach; that is exactly the arithmetic mistake this comment now
+## documents. GRAB_REACH is a separate, deliberately untouched number — see
+## its own doc comment.
+const PLACE_REACH := 3.5
 ## How many frames [method _hold_granted] will wait for a just-retrieved
 ## crate's spawn packet to land before giving up. [method request_retrieve]
 ## sends the spawn ahead of the grant on the same reliable channel, so under
