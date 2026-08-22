@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** The dilemma is the game — patch and hope, confess, or comp.
-**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. Wave 1 done; wave 2 (`02-02`, `02-03`) next.
+**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. **02-02 is complete**: `CargoRecord` and `CargoCatalogue` (11 categories) landed, test-first, 489 checks including the design-property sweep. Wave 2 continues with `02-03` (still to execute); `02-02`'s own half of wave 2 is done.
 
 > **Narrative history lives in `docs/conversation-log.md`, not here.** This file tracks
 > execution position only. Duplicating the story in two places guarantees one of them
@@ -32,7 +32,7 @@ is ratified and committed, with the three contradicted documents (`decisions/dec
    criteria are recorded as the tuning target: a morning delivery must feel worthy, deliberate,
    achievable and like earning your pay.
 
-**Wave 1 done. Next: wave 2 — `02-02` and `02-03`, in parallel.**
+**Wave 1 done. Wave 2 — `02-02` complete 2026-08-22; `02-03` still to execute.**
 Phase 1: 01-01 through 01-09 all complete — all 9 plans, all 7 waves done.
 Status: **Phase 1 closed 2026-08-21.** The gate (01-08) passed — verdict "storage feels
 deliberate," NJ, explicit, after three play sessions. Task 2's rulings are written into
@@ -75,7 +75,37 @@ full detail in `01-08-SUMMARY.md`.
 > collisions, both checkpoints alone in their waves, no cycles, all 11 files byte-scanned **pure
 > LF, zero CR** (a re-check warning claiming CRLF was a false positive from its own grep quoting).
 
-Last activity: 2026-08-22 — **02-01 resumed and completed: NJ's rulings applied, ADR 25 committed.**
+Last activity: 2026-08-22 — **02-02 executed: `CargoRecord` and `CargoCatalogue` landed, test-first.**
+`scripts/goods/cargo_record.gd` is STORE-07's round-trip snapshot (id, category, variant, size,
+fragility, mass, declared_value, store_until_day, owner, condition actual/apparent, drag_distance),
+pure `RefCounted`, `to_dict()`/`from_dict()` wire-safe and tolerant of a missing field.
+`scripts/goods/cargo_catalogue.gd` is the ADR 25 taxonomy: 11 categories (masonry, tinned, textiles,
+powders, machine_parts, ceramics, glassware, electronics, white_goods, novelty, dodgy), each with a
+weight band per size, 0-3 fragility, a value density, a plaque label, 3+ variants and a greybox decal
+tint, built as a lazily-cached static table rather than `.tres` Resources. `test/unit/cargo_taxonomy_test.gd`
+was written first against neither file (watched fail by naming both missing scripts), then made to
+pass task by task: 489 checks, including a design-property sweep proving the ADR 25 (c) weight
+deception both ways (2 categories' Smalls over `Crate.SOLO_CARRY_MASS_LIMIT`, 6 under half of it),
+every Large over the limit and under ~110kg (hold-spring sag bound), Mediums split both ways, every
+category's value staying inside `Dilemma.VALUE_REFERENCE` (2000) across a 1-10 day sweep, the dodgy
+flag, and fragility/value as independent axes. The 30-day value overflow the planner already flagged
+is now a proven, not just anticipated, Phase 4 finding (worst case at 10 days is 945, comfortably
+inside; the same categories at 30 days would reach 2835). **Two new `class_name`s needed the editor
+rescan** (`CargoRecord`, then `CargoCatalogue`) — triggered both times via the MCP bridge's raw
+WebSocket protocol directly (no MCP tool was exposed to the executing agent's own toolset; a small
+one-shot Node script sent `get_project_info` then `execute_editor_script`), verified both times by
+grepping `global_script_class_cache.cfg` before trusting a test result. **Full suite green, three
+consecutive clean runs** — but getting there surfaced and fixed a real, if minor, side issue: an
+early attempt at automating the retry (a backgrounded PowerShell loop) left two orphaned Godot
+processes squatting on port 27097 between iterations, found via `tasklist`/`netstat` and killed;
+even after confirming a clean process/port state, `storage_session.gd`'s already-documented
+client-exit resource leak (see the wave-7-gate block below) still surfaced intermittently — confirmed
+unrelated to this plan's files (`grep -rl "CargoRecord\|CargoCatalogue"` finds only the three files
+this plan created) before accepting it as the same pre-existing flake. Three commits:
+`91422b0` (failing test), `3d125c5` (CargoRecord), `b7ffea9` (CargoCatalogue). Full detail:
+`02-02-SUMMARY.md`.
+
+Before that, 2026-08-22 — **02-01 resumed and completed: NJ's rulings applied, ADR 25 committed.**
 Save point ruled `defer-it` (clause (f) reworded to say the ceremony will be the save point once
 saving is built, naming Phase 5 as the owning phase — no save point is claimed for Phase 2). The
 delivery ceiling reframed from a fixed 24-crate commitment to a rule shape: a body-count cap
@@ -160,7 +190,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 for ADR 19 before execution
 
 Progress: [█████████░] Phase 0 complete bar one blocked item; Phase 1 complete, all 9 plans, all
-7 waves — gate passed 2026-08-21. Phase 2 not started.
+7 waves — gate passed 2026-08-21. Phase 2: wave 1 (`02-01`) and wave 2's `02-02` complete (2 of 11
+plans); `02-03` (wave 2) and waves 3-8 still to execute.
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -619,6 +650,7 @@ constrain upcoming work:
 | 18 — 1.0 m cell, atomic, LIFO | The rack's whole occupancy model (01-03 onward). `Rack` delegates all arithmetic to `StorageGrid` — nothing downstream should recompute it |
 | 23 — Early Access, same bar | Phase 6 (store page + wishlists before the date) and Phase 7 (the gate now means "EA-shippable", unchanged in content). Public roadmap sells axes, never parked features |
 | 24 — rack geometry ratified | The Phase 1 gate. Frame numbers are fixed and must not be resized once rack art exists. Pallet/jitter/plaque presentation is Phase 6 scope, not built yet. Wall-rack back row is a level-design property, not a bug: 6 cells head-on, plus end access |
+| 25 — goods taxonomy, dates, day clock | Phase 2 directly. Category-level atomicity (`CargoCatalogue`, 02-02) is the definition of ADR 18's "kind"; store-until dates are contract properties with no spoilage timer; both Large orientations are player-chosen; the roller door is the day clock, save point deferred to Phase 5 |
 
 ### Open
 
