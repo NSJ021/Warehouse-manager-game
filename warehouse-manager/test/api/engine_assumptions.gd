@@ -566,6 +566,85 @@ func _check_decided_invariants() -> void:
 	)
 	crate.free()
 
+	# ADR 18: Medium and Large exist from 02-04, both inherited scenes sharing
+	# crate.gd rather than duplicating it (see crate_medium.tscn's own
+	# editor_description for why). Checked here for the same reason the Small
+	# above is: a drifted dimension is a snapping problem, not a visual one.
+	var medium_scene := load("res://scenes/goods/crate_medium.tscn") as PackedScene
+	if medium_scene == null:
+		_fail("the crate_medium scene will not load, so its invariants cannot be checked")
+	else:
+		var medium := medium_scene.instantiate()
+		var medium_shape := medium.get_node("Collision").shape as BoxShape3D
+		_expect(
+			medium_shape != null and medium_shape.size.is_equal_approx(Vector3(1, 1, 1)),
+			"ADR 18 - a Medium is exactly 1.0 m, one whole cell (got %s)" % (medium_shape.size if medium_shape else "no shape"),
+		)
+		var medium_mesh := (medium.get_node("BodyMesh") as MeshInstance3D).mesh as BoxMesh
+		_expect(
+			medium_mesh != null and medium_mesh.size.is_equal_approx(Vector3(1, 1, 1)),
+			"ADR 18 - a Medium's mesh matches its collision, 1.0 m (got %s)" % (medium_mesh.size if medium_mesh else "no mesh"),
+		)
+		_expect(medium.mass > 0.0, "a Medium's fallback mass (pre-setup()) is positive (got %s)" % medium.mass)
+		_expect(medium.collision_layer == 4, "a Medium is on the cargo layer (got %d)" % medium.collision_layer)
+		_expect(medium.collision_mask == 5, "a Medium collides with world and cargo only (got %d)" % medium.collision_mask)
+		var medium_sensor := (medium.get_node("PushSensor/SensorShape") as CollisionShape3D).shape as BoxShape3D
+		_expect(
+			medium_shape != null and medium_sensor != null
+				and medium_sensor.size.x > medium_shape.size.x
+				and medium_sensor.size.y > medium_shape.size.y
+				and medium_sensor.size.z > medium_shape.size.z,
+			"a Medium's PushSensor is strictly larger than its own body on every axis (body %s, sensor %s)" % [
+				medium_shape.size if medium_shape else "?", medium_sensor.size if medium_sensor else "?",
+			],
+		)
+		medium.free()
+
+	var large_scene := load("res://scenes/goods/crate_large.tscn") as PackedScene
+	if large_scene == null:
+		_fail("the crate_large scene will not load, so its invariants cannot be checked")
+	else:
+		var large := large_scene.instantiate()
+		var large_shape := large.get_node("Collision").shape as BoxShape3D
+		_expect(
+			large_shape != null and large_shape.size.is_equal_approx(Vector3(2, 1, 1)),
+			"ADR 18 - a Large is exactly 2.0 x 1.0 x 1.0 m (got %s)" % (large_shape.size if large_shape else "no shape"),
+		)
+		# ADR 25 (d): the 2 m axis is local X - the convention 02-05 and 02-07
+		# both rotate against, so it earns its own assertion rather than only
+		# a comment in the scene.
+		_expect(
+			large_shape != null and is_equal_approx(large_shape.size.x, 2.0),
+			"ADR 25 (d) - a Large's 2 m axis is local X (got %s)" % (large_shape.size if large_shape else "no shape"),
+		)
+		var large_mesh := (large.get_node("BodyMesh") as MeshInstance3D).mesh as BoxMesh
+		_expect(
+			large_mesh != null and large_mesh.size.is_equal_approx(Vector3(2, 1, 1)),
+			"ADR 18 - a Large's mesh matches its collision, 2.0 x 1.0 x 1.0 (got %s)" % (large_mesh.size if large_mesh else "no mesh"),
+		)
+		# Belt and braces on top of 02-02's own catalogue assertion: the
+		# catalogue guarantees every REAL Large record is heavy enough, and
+		# this guarantees the SCENE's own fallback is too, so a Large spawned
+		# without a record (there is no such caller today) could still never
+		# be lifted.
+		_expect(
+			solo_limit > 0.0 and large.mass > solo_limit,
+			"ADR 25 (c) - every Large exceeds the solo-lift limit, even the un-setup() scene fallback (mass %s vs limit %s)" % [large.mass, solo_limit],
+		)
+		_expect(large.collision_layer == 4, "a Large is on the cargo layer (got %d)" % large.collision_layer)
+		_expect(large.collision_mask == 5, "a Large collides with world and cargo only (got %d)" % large.collision_mask)
+		var large_sensor := (large.get_node("PushSensor/SensorShape") as CollisionShape3D).shape as BoxShape3D
+		_expect(
+			large_shape != null and large_sensor != null
+				and large_sensor.size.x > large_shape.size.x
+				and large_sensor.size.y > large_shape.size.y
+				and large_sensor.size.z > large_shape.size.z,
+			"a Large's PushSensor is strictly larger than its own body on every axis (body %s, sensor %s)" % [
+				large_shape.size if large_shape else "?", large_sensor.size if large_sensor else "?",
+			],
+		)
+		large.free()
+
 	var player_scene := load("res://scenes/player/player.tscn") as PackedScene
 	if player_scene == null:
 		_fail("the player scene will not load, so its invariants cannot be checked")
