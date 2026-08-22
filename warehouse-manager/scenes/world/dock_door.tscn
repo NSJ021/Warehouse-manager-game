@@ -1,0 +1,50 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/dock_door.gd" id="1_door"]
+[ext_resource type="AudioStream" path="res://assets/audio/rack_place.wav" id="2_klaxon"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_slab"]
+size = Vector3(3.0, 4.0, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_slab"]
+size = Vector3(3.0, 4.0, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_slab"]
+albedo_color = Color(0.62, 0.58, 0.35, 1)
+roughness = 0.85
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sensor"]
+size = Vector3(3.0, 4.0, 2.0)
+
+[node name="DockDoor" type="Node3D"]
+script = ExtResource("1_door")
+
+[node name="Slab" type="AnimatableBody3D" parent="."]
+editor_description = "AnimatableBody3D, not StaticBody3D (ADR 25 (f)): sync_to_physics lets a driven transform push rigid bodies for real (real velocity for the solver), where a teleported StaticBody3D would let a crate tunnel through it or explode out. dock_door.gd lerps this node's own local Y toward the day-clock-derived target every frame. Collision layer 1 (world) is deliberate: the door blocks players and cargo alike while shut, same as any other wall — the personnel gap elsewhere in the level, not this slab, is what keeps a player from ever being locked in or out (ADR 25 (f))."
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+sync_to_physics = true
+collision_layer = 1
+collision_mask = 0
+
+[node name="SlabShape" type="CollisionShape3D" parent="Slab"]
+shape = SubResource("BoxShape3D_slab")
+
+[node name="SlabMesh" type="MeshInstance3D" parent="Slab"]
+mesh = SubResource("BoxMesh_slab")
+material_override = SubResource("StandardMaterial3D_slab")
+
+[node name="Klaxon" type="AudioStreamPlayer3D" parent="."]
+editor_description = "TODO(Phase 6): a real klaxon sound. Reusing assets/audio/rack_place.wav as a stand-in rather than paying for a new binary asset's importer pass (close editor, --import, verify the sidecar, reopen) for a placeholder — see .planning/STATE.md's standing constraint on new binary assets."
+stream = ExtResource("2_klaxon")
+autoplay = false
+
+[node name="PathSensor" type="Area3D" parent="."]
+editor_description = "Host-only in practice (DockDoor._ready turns monitoring off on a client) — the same split Crate.PushSensor and Rack.ImpactSensor already use. Covers the doorway's own footprint through the slab's full vertical travel, so the host can wake any settled crate here (ADR 17) before starting a close — a FREEZE_MODE_STATIC crate cannot be pushed by an AnimatableBody3D, only intersected."
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+collision_layer = 0
+collision_mask = 4
+monitorable = false
+monitoring = true
+
+[node name="SensorShape" type="CollisionShape3D" parent="PathSensor"]
+shape = SubResource("BoxShape3D_sensor")

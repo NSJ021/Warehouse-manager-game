@@ -54,11 +54,12 @@ const CRATE_NAME := "crate_0"
 const EXPECTED_PLAYERS := 2
 ## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for
 ## the gate playtest protocol (2026-08-21) — two rows of six rather than one
-## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why. Every
+## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why — then to 17
+## for 02-04's mixed heavy row (HEAVY_ROW_ORIGIN, crate_12..crate_16). Every
 ## crate_0..crate_5 name and position the allocation table above depends on is
-## unchanged — the second row (crate_6..crate_11) is unclaimed by any step in
-## this file.
-const EXPECTED_CRATES := 12
+## unchanged — the second row (crate_6..crate_11) and the heavy row
+## (crate_12..crate_16) are both unclaimed by any step in this file.
+const EXPECTED_CRATES := 17
 ## Cargo rests at about y=0.25 on the floor and hangs near y=0.9 when carried, so
 ## this separates "picked up" from "sat there" with room to spare.
 const LIFT_MIN_Y := 0.55
@@ -333,6 +334,21 @@ func _check_goods_zones() -> bool:
 		if not await _until("zone probe settled", func() -> bool:
 				return probe != null and (probe.sync_settled or probe.sleeping)):
 			return false
+
+	# The check this function's own ⚠ note above asked for, and nobody came back
+	# to add (2026-08-22). Everything above ran BEFORE the probe settled, so it
+	# only ever proved a zone sees an AWAKE crate. Goods OUT has to see stock
+	# that has sat there all day, which is the settled case and the one that was
+	# never asserted.
+	#
+	# It works because Crate ORs the world bit in on settle rather than replacing
+	# the layer, so a settled crate stays tagged as cargo and GoodsZone's mask
+	# still matches. That is one character of protection: change `|=` to `=` and
+	# Goods OUT silently stops seeing settled stock - the outbound half of the
+	# whole loop - with nothing failing. This is the guard for it.
+	if not await _until("GoodsIn STILL sees the crate now it has settled (ADR 17)", func() -> bool:
+			return goods_in.count() == 1):
+		return false
 	return true
 
 

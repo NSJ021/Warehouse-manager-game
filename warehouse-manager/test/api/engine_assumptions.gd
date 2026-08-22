@@ -46,6 +46,17 @@ var _settled_sensor_body: RigidBody3D
 var _settled_sensor_area: Area3D
 var _settled_sensor_walker: CharacterBody3D
 
+## 02-03: the dock door rests on an AnimatableBody3D displacing a dynamic
+## RigidBody3D for real, and NOT displacing a frozen FREEZE_MODE_STATIC one —
+## the second half is exactly why the door has to wake a settled crate before
+## it can push it (Crate.wake / DockDoor._wake_blocking_cargo).
+var _door_slab_dynamic: AnimatableBody3D
+var _door_dynamic_body: RigidBody3D
+var _door_dynamic_start: Vector3
+var _door_slab_static: AnimatableBody3D
+var _door_static_body: RigidBody3D
+var _door_static_start: Vector3
+
 
 func _initialize() -> void:
 	_check_engine_apis()
@@ -54,6 +65,7 @@ func _initialize() -> void:
 	_check_decided_invariants()
 	_build_aim_scene()
 	_build_settle_scene()
+	_build_door_scene()
 
 
 func _physics_process(_delta: float) -> bool:
@@ -62,13 +74,16 @@ func _physics_process(_delta: float) -> bool:
 	# have any chance of moving something — applied once the server has a
 	# physics space to receive it (frame 3, the same gate everything else
 	# below needs anyway), then given three more frames before anything
-	# checks whether it worked.
+	# checks whether it worked. The door slabs are driven the same way, on
+	# the same frame, for the same reason.
 	if _frames == 3:
 		_apply_settle_forces()
+		_apply_door_forces()
 	if _frames < 6:
 		return false
 	_check_aim_behaviour()
 	_check_settle_behaviour()
+	_check_door_behaviour()
 	_report()
 	return true
 
@@ -276,6 +291,91 @@ func _check_settle_behaviour() -> void:
 	)
 
 
+## 02-03: the dock door's whole design rests on an AnimatableBody3D pushing a
+## dynamic RigidBody3D for real, and doing nothing at all to a frozen
+## FREEZE_MODE_STATIC one. Two independent slab/target pairs rather than one
+## reused slab, so each half of the assertion gets a clean, unambiguous start
+## position instead of racing the other's result.
+func _build_door_scene() -> void:
+	var world := Node3D.new()
+	get_root().add_child(world)
+
+	_door_slab_dynamic = AnimatableBody3D.new()
+	_door_slab_dynamic.sync_to_physics = true
+	_door_slab_dynamic.collision_layer = 1
+	_door_slab_dynamic.collision_mask = 0
+	_door_slab_dynamic.position = Vector3(30.0, 0.0, 0.0)
+	var slab_dynamic_shape := CollisionShape3D.new()
+	var slab_dynamic_box := BoxShape3D.new()
+	slab_dynamic_box.size = Vector3(1.0, 1.0, 1.0)
+	slab_dynamic_shape.shape = slab_dynamic_box
+	_door_slab_dynamic.add_child(slab_dynamic_shape)
+	world.add_child(_door_slab_dynamic)
+
+	_door_dynamic_body = RigidBody3D.new()
+	_door_dynamic_body.collision_layer = 4
+	_door_dynamic_body.collision_mask = 5
+	_door_dynamic_body.position = Vector3(32.0, 0.0, 0.0)
+	var dyn_shape := CollisionShape3D.new()
+	var dyn_box := BoxShape3D.new()
+	dyn_box.size = Vector3(0.5, 0.5, 0.5)
+	dyn_shape.shape = dyn_box
+	_door_dynamic_body.add_child(dyn_shape)
+	world.add_child(_door_dynamic_body)
+	_door_dynamic_start = _door_dynamic_body.position
+
+	_door_slab_static = AnimatableBody3D.new()
+	_door_slab_static.sync_to_physics = true
+	_door_slab_static.collision_layer = 1
+	_door_slab_static.collision_mask = 0
+	_door_slab_static.position = Vector3(40.0, 0.0, 0.0)
+	var slab_static_shape := CollisionShape3D.new()
+	var slab_static_box := BoxShape3D.new()
+	slab_static_box.size = Vector3(1.0, 1.0, 1.0)
+	slab_static_shape.shape = slab_static_box
+	_door_slab_static.add_child(slab_static_shape)
+	world.add_child(_door_slab_static)
+
+	_door_static_body = RigidBody3D.new()
+	_door_static_body.collision_layer = 4
+	_door_static_body.collision_mask = 5
+	_door_static_body.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	_door_static_body.freeze = true
+	_door_static_body.position = Vector3(42.0, 0.0, 0.0)
+	var static_shape := CollisionShape3D.new()
+	var static_box := BoxShape3D.new()
+	static_box.size = Vector3(0.5, 0.5, 0.5)
+	static_shape.shape = static_box
+	_door_static_body.add_child(static_shape)
+	world.add_child(_door_static_body)
+	_door_static_start = _door_static_body.position
+
+
+## Jumps both slabs directly onto their own target body's position — a huge,
+## deliberate overlap, so [member RigidBody3D.sync_to_physics]'s implicit
+## velocity (derived from the transform delta between physics ticks) is
+## unambiguous rather than borderline. Same timing as [method
+## _apply_settle_forces]: applied once the server has a physics space to
+## receive it, then given three more frames before anything checks.
+func _apply_door_forces() -> void:
+	_door_slab_dynamic.position = _door_dynamic_body.position
+	_door_slab_static.position = _door_static_body.position
+
+
+func _check_door_behaviour() -> void:
+	print("[api] AnimatableBody3D vs the dock door (02-03)")
+
+	_expect(
+		_door_dynamic_body.global_position.distance_to(_door_dynamic_start) > 0.05,
+		"an AnimatableBody3D moved into a dynamic RigidBody3D displaces it",
+	)
+	_expect(
+		_door_static_body.global_position.distance_to(_door_static_start) < 0.001,
+		"an AnimatableBody3D moved into a frozen FREEZE_MODE_STATIC RigidBody3D does not displace it " +
+		"(why the door has to wake a settled crate before it can push it)",
+	)
+
+
 # --------------------------------------------------------------- section 1
 
 func _check_engine_apis() -> void:
@@ -314,8 +414,30 @@ func _check_engine_apis() -> void:
 	_expect_methods("ENetConnection", ["pop_statistic"])
 	_expect_methods("ENetMultiplayerPeer", ["get_host", "create_server", "create_client"])
 
+	# rpc_id's peer argument, pinned because getting it wrong is invisible.
+	#
+	# 0 is broadcast, and any POSITIVE value targets one peer. Godot 3's
+	# "negative means everyone except this peer" form does NOT exist in Godot
+	# 4 -- there is no exclude form at all, and you must loop
+	# multiplayer.get_peers() and skip the id yourself.
+	#
+	# This is asserted because of how it fails rather than how likely it is.
+	# rpc_id(-1, ...) does not raise where you wrote it: the engine drops the
+	# call with "Attempt to call RPC with unknown peer ID: -1" into stderr,
+	# the host's own state stays perfectly correct, and the symptom surfaces
+	# as a TIMEOUT in whichever client assertion was waiting on the state
+	# that never arrived -- potentially dozens of steps away. It cost about
+	# ninety minutes on 02-06 for exactly that reason.
+	_expect(
+		MultiplayerPeer.TARGET_PEER_BROADCAST == 0,
+		"rpc_id(0) is broadcast; there is no negative 'all except' peer id in Godot 4",
+	)
+
 	_expect_methods("CharacterBody3D", ["move_and_slide", "is_on_floor"])
 	_expect_properties("CharacterBody3D", ["velocity", "collision_layer", "collision_mask"])
+
+	# The dock door (02-03) drives its slab by moving this every frame.
+	_expect_properties("AnimatableBody3D", ["sync_to_physics"])
 
 
 # --------------------------------------------------------------- section 2
@@ -406,6 +528,8 @@ func _check_godotsteam() -> void:
 func _check_decided_invariants() -> void:
 	print("[api] invariants fixed by decisions")
 
+	_check_crates_fit_their_shelf()
+
 	var crate_scene := load("res://scenes/goods/crate.tscn") as PackedScene
 	if crate_scene == null:
 		_fail("the crate scene will not load, so its invariants cannot be checked")
@@ -427,7 +551,30 @@ func _check_decided_invariants() -> void:
 	var sync := crate.get_node("Synchronizer") as MultiplayerSynchronizer
 	_expect(
 		sync != null and is_equal_approx(sync.replication_interval, 0.05),
-		"ADR 14 - cargo still replicates at 20 Hz (got %s)" % (sync.replication_interval if sync else "no synchronizer"),
+		"ADR 14 - cargo replicates at 20 Hz, the INTERVAL half (got %s)" % (sync.replication_interval if sync else "no synchronizer"),
+	)
+
+	# The other half, and the one that actually did the work. 1497 -> 93 kb/s
+	# came from ON_CHANGE, not from the interval; the interval only smooths what
+	# is already being sent. Until 2026-08-22 only the interval was pinned, under
+	# a label that read as covering the whole decision - so a green suite looked
+	# like it guarded ADR 14 and did not. One property reverted to ALWAYS (a
+	# copy-paste from an older crate template would do it) reopens a 16x host
+	# upload regression, and ADR 14 warns its own failure mode is SILENT in play:
+	# host traffic FALLS as crate count rises, crates lag on clients, nothing
+	# announces it. Asserted per property rather than once, because one is enough.
+	var config := sync.replication_config if sync != null else null
+	var always_mode := 0
+	var on_change_mode := 0
+	if config != null:
+		for property_path: NodePath in config.get_properties():
+			if config.property_get_replication_mode(property_path) == SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE:
+				on_change_mode += 1
+			else:
+				always_mode += 1
+	_expect(
+		config != null and on_change_mode > 0 and always_mode == 0,
+		"ADR 14 - every replicated cargo property is ON_CHANGE, the half that cut 1497 kb/s to 93 (%d on-change, %d not)" % [on_change_mode, always_mode],
 	)
 
 	# Players deliberately do not share a mask with cargo. Undoing this brings
@@ -463,6 +610,95 @@ func _check_decided_invariants() -> void:
 	)
 	crate.free()
 
+	# ADR 18: Medium and Large exist from 02-04, both inherited scenes sharing
+	# crate.gd rather than duplicating it (see crate_medium.tscn's own
+	# editor_description for why). Checked here for the same reason the Small
+	# above is: a drifted dimension is a snapping problem, not a visual one.
+	#
+	# ⚠ HEIGHT IS 0.9 m, NOT 1.0 — amended 2026-08-22 (NJ's ruling) because the
+	# original 1.0 m did not physically fit the shelf it was stored in. ADR 24's
+	# decks are 0.05 m thick and sit ON the cell boundaries, so a cell's nominal
+	# metre is 0.95 m of clear air; a 1.0 m crate minted at the cell centre
+	# interpenetrated BOTH decks by 2.5 cm and jammed on retrieval, intermittently.
+	# Footprint is untouched at 1.0 (Medium) and 2.0 x 1.0 (Large) — the cell
+	# model, capacity and the eight-Small lattice all key off the footprint, and
+	# none of them care about height. See _check_crates_fit_their_shelf, which is
+	# the assertion that caught this and now passes.
+	var medium_scene := load("res://scenes/goods/crate_medium.tscn") as PackedScene
+	if medium_scene == null:
+		_fail("the crate_medium scene will not load, so its invariants cannot be checked")
+	else:
+		var medium := medium_scene.instantiate()
+		var medium_shape := medium.get_node("Collision").shape as BoxShape3D
+		_expect(
+			medium_shape != null and medium_shape.size.is_equal_approx(Vector3(1, 0.9, 1)),
+			"ADR 18 (amended) - a Medium is 1.0 m square, 0.9 m tall to clear the decks (got %s)" % (medium_shape.size if medium_shape else "no shape"),
+		)
+		var medium_mesh := (medium.get_node("BodyMesh") as MeshInstance3D).mesh as BoxMesh
+		_expect(
+			medium_mesh != null and medium_mesh.size.is_equal_approx(Vector3(1, 0.9, 1)),
+			"ADR 18 (amended) - a Medium's mesh matches its collision, 1.0 x 0.9 x 1.0 (got %s)" % (medium_mesh.size if medium_mesh else "no mesh"),
+		)
+		_expect(medium.mass > 0.0, "a Medium's fallback mass (pre-setup()) is positive (got %s)" % medium.mass)
+		_expect(medium.collision_layer == 4, "a Medium is on the cargo layer (got %d)" % medium.collision_layer)
+		_expect(medium.collision_mask == 5, "a Medium collides with world and cargo only (got %d)" % medium.collision_mask)
+		var medium_sensor := (medium.get_node("PushSensor/SensorShape") as CollisionShape3D).shape as BoxShape3D
+		_expect(
+			medium_shape != null and medium_sensor != null
+				and medium_sensor.size.x > medium_shape.size.x
+				and medium_sensor.size.y > medium_shape.size.y
+				and medium_sensor.size.z > medium_shape.size.z,
+			"a Medium's PushSensor is strictly larger than its own body on every axis (body %s, sensor %s)" % [
+				medium_shape.size if medium_shape else "?", medium_sensor.size if medium_sensor else "?",
+			],
+		)
+		medium.free()
+
+	var large_scene := load("res://scenes/goods/crate_large.tscn") as PackedScene
+	if large_scene == null:
+		_fail("the crate_large scene will not load, so its invariants cannot be checked")
+	else:
+		var large := large_scene.instantiate()
+		var large_shape := large.get_node("Collision").shape as BoxShape3D
+		_expect(
+			large_shape != null and large_shape.size.is_equal_approx(Vector3(2, 0.9, 1)),
+			"ADR 18 (amended) - a Large is 2.0 x 0.9 x 1.0 m (got %s)" % (large_shape.size if large_shape else "no shape"),
+		)
+		# ADR 25 (d): the 2 m axis is local X - the convention 02-05 and 02-07
+		# both rotate against, so it earns its own assertion rather than only
+		# a comment in the scene.
+		_expect(
+			large_shape != null and is_equal_approx(large_shape.size.x, 2.0),
+			"ADR 25 (d) - a Large's 2 m axis is local X (got %s)" % (large_shape.size if large_shape else "no shape"),
+		)
+		var large_mesh := (large.get_node("BodyMesh") as MeshInstance3D).mesh as BoxMesh
+		_expect(
+			large_mesh != null and large_mesh.size.is_equal_approx(Vector3(2, 0.9, 1)),
+			"ADR 18 (amended) - a Large's mesh matches its collision, 2.0 x 0.9 x 1.0 (got %s)" % (large_mesh.size if large_mesh else "no mesh"),
+		)
+		# Belt and braces on top of 02-02's own catalogue assertion: the
+		# catalogue guarantees every REAL Large record is heavy enough, and
+		# this guarantees the SCENE's own fallback is too, so a Large spawned
+		# without a record (there is no such caller today) could still never
+		# be lifted.
+		_expect(
+			solo_limit > 0.0 and large.mass > solo_limit,
+			"ADR 25 (c) - every Large exceeds the solo-lift limit, even the un-setup() scene fallback (mass %s vs limit %s)" % [large.mass, solo_limit],
+		)
+		_expect(large.collision_layer == 4, "a Large is on the cargo layer (got %d)" % large.collision_layer)
+		_expect(large.collision_mask == 5, "a Large collides with world and cargo only (got %d)" % large.collision_mask)
+		var large_sensor := (large.get_node("PushSensor/SensorShape") as CollisionShape3D).shape as BoxShape3D
+		_expect(
+			large_shape != null and large_sensor != null
+				and large_sensor.size.x > large_shape.size.x
+				and large_sensor.size.y > large_shape.size.y
+				and large_sensor.size.z > large_shape.size.z,
+			"a Large's PushSensor is strictly larger than its own body on every axis (body %s, sensor %s)" % [
+				large_shape.size if large_shape else "?", large_sensor.size if large_sensor else "?",
+			],
+		)
+		large.free()
+
 	var player_scene := load("res://scenes/player/player.tscn") as PackedScene
 	if player_scene == null:
 		_fail("the player scene will not load, so its invariants cannot be checked")
@@ -491,6 +727,33 @@ func _check_decided_invariants() -> void:
 	_expect(
 		ray != null and ray.target_position.is_equal_approx(Vector3(0.0, 0.0, -2.0)),
 		"the grab ray reaches 2.0 m, not the original 2.5 (got %s)" % (ray.target_position if ray else "no ray"),
+	)
+
+	# The comment above says GRAB_REACH and PLACE_REACH "move with this number",
+	# and until 2026-08-22 nothing made them. The ray was pinned, the two
+	# referee-side constants were not, and the relationship between them existed
+	# only in prose - while the number has already moved once (2.5 -> 2.0). Pin
+	# the DERIVATION, not the value: PLACE_REACH is the ray plus half a cell's
+	# diagonal, because a cell CENTRE can sit that much further away than the
+	# cell FACE the ray actually strikes. Pinning 3.0 as a literal would just
+	# have to be edited alongside every future retune, which is how a guard
+	# becomes a chore and then gets deleted.
+	# Read from source text, NOT by touching CarryAuthority. Referencing that
+	# class statically pulls in the Net autoload, which does not exist in a
+	# --script run - the documented trap - and the resulting compile error would
+	# fail this suite's zero-tolerance bar even while the assertions passed.
+	var half_cell_diagonal := StorageGrid.CELL_SIZE * sqrt(3.0) * 0.5
+	var grab_reach := _const_from_source("res://scripts/goods/carry_authority.gd", "GRAB_REACH")
+	var place_reach := _const_from_source("res://scripts/goods/carry_authority.gd", "PLACE_REACH")
+	_expect(
+		is_equal_approx(grab_reach, 2.0),
+		"GRAB_REACH tracks the grab ray, both 2.0 m (got %s)" % grab_reach,
+	)
+	_expect(
+		place_reach >= grab_reach + half_cell_diagonal - 0.001,
+		"PLACE_REACH still covers GRAB_REACH plus half a cell diagonal (%.3f vs needed %.3f)" % [
+			place_reach, grab_reach + half_cell_diagonal,
+		],
 	)
 	player.free()
 
@@ -576,6 +839,29 @@ func _check_decided_invariants() -> void:
 		"two holders remains the carry ceiling (got %s)" % constants.get("MAX_HOLDERS", "missing"),
 	)
 
+	# 02-03 / RUN-02: the day clock's own bounds, not its value — ADR 25 (f)
+	# deliberately leaves day_length_seconds unagreed, so pinning today's
+	# default would fail the moment NJ tunes it in play, which is the
+	# opposite of what this section is for.
+	var clock_scene := load("res://scenes/world/day_clock.tscn") as PackedScene
+	if clock_scene == null:
+		_fail("the day clock scene will not load, so its invariants cannot be checked")
+	else:
+		var clock := clock_scene.instantiate()
+		_expect(
+			clock.day_length_seconds >= 360.0 and clock.day_length_seconds <= 600.0,
+			"RUN-02 - a day runs in 6-10 minutes (got %s)" % clock.day_length_seconds,
+		)
+		_expect(
+			clock.open_fraction >= 0.5 and clock.open_fraction <= 0.8,
+			"ADR 25 (f) - roughly two-thirds of the day is open trading (got %s)" % clock.open_fraction,
+		)
+		_expect(
+			clock.morning_seconds >= 20.0,
+			"the morning ceremony (02-06) needs at least 20s to spread a delivery across (got %s)" % clock.morning_seconds,
+		)
+		clock.free()
+
 
 # --------------------------------------------------------------- helpers
 
@@ -629,3 +915,85 @@ func _expect_signal(object: Object, signal_name: String, arg_count: int) -> void
 			_expect(actual == arg_count, "Steam signal %s has %d args (got %d)" % [signal_name, arg_count, actual])
 			return
 	_expect(false, "Steam signal %s exists" % signal_name)
+
+
+## Reads a `const NAME := <float>` out of a script's SOURCE TEXT rather than
+## loading the class.
+##
+## Needed because several of this project's `class_name` scripts touch the
+## `Net` autoload, and an autoload does not exist in a `--script` run. Loading
+## one here raises `Compile Error: Identifier not found: Net`, which this
+## suite's zero-tolerance-on-errors bar treats as a failure even when every
+## assertion passed. Returns NAN when the constant is absent, so a rename
+## fails the assertion that uses it rather than silently reading zero.
+func _const_from_source(script_path: String, const_name: String) -> float:
+	var file := FileAccess.open(script_path, FileAccess.READ)
+	if file == null:
+		return NAN
+	var regex := RegEx.new()
+	regex.compile(r"^const\s+%s\s*:=\s*([0-9.]+)" % const_name)
+	while not file.eof_reached():
+		var found := regex.search(file.get_line())
+		if found != null:
+			return float(found.get_string(1))
+	return NAN
+
+
+## Does a crate of each size PHYSICALLY FIT the shelf it is stored in?
+##
+## Nothing checked this until 2026-08-22, which is how a 1.0 m Medium came to be
+## specified into a 0.95 m gap and stayed there. Two ratified decisions meet and
+## neither is wrong alone: ADR 18 fixes a Medium at 1.0 m and a cell at 1.0 m,
+## while ADR 24's decks are 0.05 m thick and sit ON the cell boundaries — so
+## every cell's nominal metre of height is really 0.95 m of clear air.
+##
+## The symptom NJ found in play: a retrieved Medium mints at the cell centre
+## interpenetrating BOTH decks by 2.5 cm, and whether the solver squeezes it
+## free or jams it decides whether that retrieval works. Sometimes smooth,
+## sometimes stuck. A Large is the same height but twice as long, so rotation
+## has twice the leverage to bind it, and is worse. A Small has 0.45 m to spare
+## and is unaffected — which is exactly the size pattern reported.
+##
+## It hid for so long because the racked VISUAL is inset to 78% and looks
+## comfortable on the shelf. Only the real body is full size, and that body only
+## exists during a retrieval.
+##
+## **This assertion is EXPECTED TO FAIL until the geometry is ruled on.** That is
+## deliberate. It was already found once — 02-06 measured the same contact
+## deadlock at 0.0024 m of drift over 2000 frames — and then routed its test
+## around it to a non-floor-level cell, so the suite went green and the defect
+## stayed in the game until a human hit it. A red assertion naming the shortfall
+## is the honest state; a green suite that avoids the cell is not.
+func _check_crates_fit_their_shelf() -> void:
+	# Read from the built scenes rather than restating them, so a resize is
+	# caught here rather than agreeing with a stale copy of itself.
+	var deck_thickness := 0.05  ## rack.tscn's DeckBottom/Mid/Top CSGBox3D size.y
+	var clear_height := StorageGrid.CELL_SIZE - deck_thickness
+
+	for entry in [
+		["Small", "res://scenes/goods/crate.tscn"],
+		["Medium", "res://scenes/goods/crate_medium.tscn"],
+		["Large", "res://scenes/goods/crate_large.tscn"],
+	]:
+		var scene := load(entry[1]) as PackedScene
+		if scene == null:
+			_expect(false, "%s crate scene loads" % entry[0])
+			continue
+		var body := scene.instantiate() as Node3D
+		# "Collision", not "CollisionShape3D" — crate_medium/crate_large are
+		# INHERITED scenes, so they carry crate.tscn's own node names and merely
+		# override the shape resource. A rename there is a protocol change here.
+		var shape := body.get_node_or_null("Collision") as CollisionShape3D
+		var box := shape.shape as BoxShape3D if shape != null else null
+		if box == null:
+			_expect(false, "%s crate has a box collision shape" % entry[0])
+			body.free()
+			continue
+
+		_expect(
+			box.size.y <= clear_height,
+			"a %s (%.2f m tall) fits the %.2f m of clear air between decks — shortfall %.2f m" % [
+				entry[0], box.size.y, clear_height, maxf(0.0, box.size.y - clear_height),
+			],
+		)
+		body.free()

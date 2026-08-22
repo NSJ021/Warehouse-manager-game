@@ -43,10 +43,13 @@ signal hold_mode_changed(peer_id: int, mode: HoldMode)
 ## pick up, and deliberately worse in every way except that it is always possible.
 enum HoldMode { CARRY, DRAG }
 
-## This crate's kind, for storage (01-03 onward). A cell is atomic — one kind
-## at a time (ADR 18) — so racking needs to know what it is holding. Phase 1
-## has exactly one cargo size, so this is the only kind that exists; Phase 2
-## turns it into a real size class rather than a single constant.
+## The bare fallback category for pre-record callers only — 01-04/01-07's
+## [code]TestRoom.spawn_crate_at[/code] compatibility shim, never a real
+## placement. ADR 25 (a) repurposes "kind" into [b]category[/b]: cell
+## atomicity ([method Rack.can_accept]) keys off it exactly as it always did,
+## which is the point — nothing there needed to change. Still referenced by
+## [code]Rack.apply_cell_filled[/code]; 02-05 retires both that reference and
+## this constant once every placement carries a real record.
 const KIND_SMALL := &"small"
 
 ## Two is the ceiling by design — two-player carry, not four (GDD §6.1).
@@ -54,11 +57,17 @@ const MAX_HOLDERS := 2
 ## Above this, one player cannot get a crate off the floor and is given a drag
 ## whether they asked for one or not. Two players can always lift.
 ##
-## Provisional, and keyed off [member RigidBody3D.mass] alone: size classes do not
-## exist yet. ADR 18 fixes the crate [i]dimensions[/i] (Small 0.5 m, Medium 1.0 m,
-## Large 2.0 × 1.0 × 1.0) but says nothing about their masses, so there is no
-## Large to calibrate against. Revisit when there is — the intent is that Large is
-## the only thing a solo player cannot lift.
+## No longer provisional — this is the revisit ADR 19's own "Watch for" named
+## ahead of time, closed by ADR 25 (c). [CargoCatalogue]'s mass table now
+## guarantees two rules by construction rather than by hoping the numbers land
+## right: [b]every Large exceeds this limit, always[/b] (the closest is
+## machine_parts at 108 kg — see that file's own doc comment for the
+## hold-spring sag ceiling that number is measured against), and [b]a Medium
+## may fall on either side of it[/b], because weight decides, not size — a
+## light Medium (textiles, 17 kg) carries normally despite occluding the view;
+## a heavy one (masonry, 68 kg) does not. Heavy Smalls exist too, deliberately
+## (masonry 34 kg, machine_parts 32) — see [code]cargo_catalogue.gd[/code]'s
+## own table comment for the full per-category reasoning.
 const SOLO_CARRY_MASS_LIMIT := 30.0
 ## How fast a client puppet catches up to the host's last known transform.
 const PUPPET_SMOOTHING := 20.0
@@ -73,7 +82,11 @@ const MIN_ALIGN_ANGLE := 0.001
 @export_group("Hold")
 ## Stiffness against crate mass sets the sag, and the sag is deliberate feedback
 ## about weight (ADR 13) — not a bug to tune out. sag = mass × gravity /
-## stiffness, so at mass 12 this gives roughly 4.9 cm of hang.
+## stiffness, so at mass 12 this gives roughly 4.9 cm of hang, and at the
+## heaviest Large this project mints (machine_parts, 108 kg — cargo_catalogue.gd)
+## roughly 44 cm — measured, not guessed, and deliberately left untuned here.
+## Whether that reads as "heavy" or as "the hold is broken" is a question for
+## a human at the wave 7 (02-10) gate, not something to pre-tune against a guess.
 @export var hold_stiffness := 2400.0
 ## Critical damping is 2 × √(stiffness × mass) ≈ 339 here, so this is deliberately
 ## *over*-damped at about 1.35×. That is what reads as heavy: an over-damped
@@ -195,9 +208,22 @@ var _settle_frames_at_rest := 0
 ## every crate is minted with an id, and racking (01-03 onward) needs it to
 ## turn stored occupancy data back into a real crate.
 var id := -1
-## Always [constant KIND_SMALL] in Phase 1. A real field rather than the
-## constant read directly, so 01-04 onward can ask "what kind is this crate"
-## without caring whether the answer is fixed or, later, per-instance.
+## This crate's full data — category, variant, fragility, declared value,
+## store-until day, condition, drag history (ADR 25). [code]null[/code] only
+## before [method setup] runs; every real crate gets one at mint time.
+var record: CargoRecord = null
+
+## [code]CargoCatalogue.Size[/code]. Mirrored here rather than read through
+## [member record] on every access, for the same reason [member kind] stands
+## alone below: readers of this field (aim/highlight code, in particular)
+## should not need a null-record guard once [method setup] has actually run.
+var size := CargoCatalogue.Size.SMALL
+
+## This crate's category — ADR 25 (a) finally defines what ADR 18's "kind"
+## always meant. Defaults to [constant KIND_SMALL] before [method setup]
+## runs; setup sets it from [member record].[member CargoRecord.category] on
+## every real crate. [method Rack.can_accept] keys atomicity off this field
+## alone, unchanged by any of ADR 25 — a category is what a cell holds.
 var kind := KIND_SMALL
 
 ## Where this crate came into the world. Kept so a crate that falls out of it has
@@ -347,6 +373,13 @@ func age_ms() -> int:
 	return Time.get_ticks_msec() - _spawn_ms
 
 
+## Footprint cells, for storage/billing purposes (ADR 18/25) — delegates
+## entirely to [member record] so nothing downstream re-derives "a Large is
+## two cells" on its own. See [method CargoRecord.cells].
+func size_cells() -> int:
+	return record.cells()
+
+
 ## Host-only. Two holders always carry, so a mate walking over and grabbing a
 ## dragged crate lifts it off the floor — and letting go drops it back to a drag.
 ## That falls out of re-deciding here rather than needing its own code path.
@@ -379,13 +412,26 @@ func is_held_by(peer_id: int) -> bool:
 	return _holders.has(peer_id)
 
 
-## Called on every peer by the spawner before the node enters the tree.
-func setup(crate_id: int, spawn_point: Vector3) -> void:
-	id = crate_id
+## Called on every peer by the spawner before the node enters the tree, with
+## identical [param record_data] on every peer (the zero-cost static-data
+## channel — see [code]TestRoom._spawn_crate[/code]'s own doc comment). Rebuilds
+## [member record] from the wire-safe dictionary and applies its static
+## fields — [member id], [member kind] (= [member CargoRecord.category]),
+## [member size], and [member RigidBody3D.mass] — all copied from the record
+## itself rather than passed as separate parameters, so one Medium can be
+## textiles and the next masonry with no change to this signature.
+func setup(record_data: Dictionary, spawn_point: Vector3) -> void:
+	record = CargoRecord.from_dict(record_data)
+	id = record.id
+	kind = record.category
+	size = record.size
+	mass = record.mass
 	# Deterministic on every machine: this name is how peers agree which crate is
 	# which, so it is protocol rather than decoration (ADR 12). Do not rename it
 	# for cosmetic reasons — it would fail on remote peers only, and silently.
-	name = "crate_%d" % crate_id
+	# NOT sized ("crate_medium_%d" or similar): a size prefix would break every
+	# existing crate-name lookup on remote peers only, silently.
+	name = "crate_%d" % id
 	position = spawn_point
 	sync_position = spawn_point
 	_spawn_point = spawn_point
@@ -505,6 +551,23 @@ func _wake() -> void:
 	freeze = false
 	sleeping = false
 	_settle_frames_at_rest = 0
+
+
+## Host-only. Public entry point to [method _wake] for callers outside this
+## file — today, [code]DockDoor._wake_blocking_cargo[/code] (`dock_door.gd`,
+## Phase 2), which must unfreeze a settled crate before a closing
+## [AnimatableBody3D] door tries to push it. An [AnimatableBody3D] cannot
+## displace a [constant RigidBody3D.FREEZE_MODE_STATIC] body — it drives
+## straight through instead — so a door meeting settled cargo has to wake it
+## first or it merely intersects the crate rather than shoving it clear (see
+## `test/api/engine_assumptions.gd`'s own measured assertion of both halves
+## of that behaviour). Delegates to [method _wake] rather than duplicating
+## it, and does not merely set [member sleeping] to false — 01-09 already
+## proved that alone does not unfreeze anything.
+func wake() -> void:
+	if not Net.is_host():
+		return
+	_wake()
 
 
 func _apply_hold_forces(delta: float) -> void:

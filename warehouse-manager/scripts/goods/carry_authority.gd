@@ -13,12 +13,17 @@ extends Node
 ## exactly this and none of it is level-specific. Pure logic, no node tree of
 ## its own, so it is a plain script rather than a scene (ADR 12).
 ##
-## Placing a crate does not replicate the racked item itself. The three
-## broadcasts below carry a handful of bytes — (rack, cell, crate id) — and
-## every peer derives identical local state (Rack.apply_cell_filled) from
-## that alone, against the 93–115 kb/s ADR 14 measured for loose cargo.
-## Reintroducing per-item replication for racked stock would silently reopen
-## exactly the cost grid storage exists to avoid.
+## Placing a crate does not replicate the racked item itself. [method
+## _cell_filled] carries the crate's whole [CargoRecord] (02-06, STORE-07) —
+## not merely its id and kind — because racking frees the body outright
+## (ADR 14) and retrieval mints a fresh one: anything not captured onto the
+## wire at the moment of placement is gone for good, and losing so much as one
+## field is exactly how racking would silently launder a damaged crate into a
+## pristine one. Every peer derives identical local state
+## ([method Rack.apply_cell_filled]) from that record alone, still against the
+## 93–115 kb/s ADR 14 measured for loose cargo — a record is a one-time cost
+## per placement, not a per-frame channel, so this does not reopen the cost
+## grid storage exists to avoid.
 
 ## How close the hold point must be to grab. Generous, because the ray has
 ## already established the player is looking straight at it.
@@ -49,6 +54,20 @@ const GRAB_REACH := 2.0
 ## together, 2.5 → 2.0 m ray / 3.5 → 3.0 m here, at the same wave 7 gate
 ## ruling — the 0.87 m half-diagonal and the small safety margin are
 ## unchanged, only the ray length that feeds them.)
+##
+## ⚠ A Large's own target is a PAIR of cells (02-08), and this is measured
+## against the ANCHOR cell's centre alone — the cell the aim actually
+## resolved — not the pair's own midpoint. The obvious-looking extension
+## would be to measure against [method StorageGrid.pair_centre] instead,
+## which sits up to a further 0.5 m away and would need this constant widened
+## to roughly 3.5 to keep the same "a genuine aim can never fail" guarantee.
+## Rejected: the anchor is what the aim itself established, and the partner
+## is derived arithmetic on the SAME rack, at most one cell away from a
+## reach check that already passed — a security constant that exists to
+## reject a forged or stale request should not be loosened to accommodate a
+## case it was never actually at risk from. Keeping the check on the anchor
+## means the derivation above stays true, unchanged, exactly as measured at
+## the wave 7 gate.
 const PLACE_REACH := 3.0
 ## How many frames [method _hold_granted] will wait for a just-retrieved
 ## crate's spawn packet to land before giving up. [method request_retrieve]
@@ -69,6 +88,14 @@ const MAX_SHED_PER_EVENT := 8
 ## An impulse, not a sustained force, so this reads as toppling off a shelf
 ## rather than being launched across the room. Crate mass is 12 kg
 ## (crate.tscn), so this is roughly 1.5 m/s outward.
+##
+## [b]Unchanged for 02-06, but worth recording for the gate:[/b] `impulse =
+## mass x delta_v`, so the same 18.0 gives a 12 kg Small ~1.5 m/s outward and a
+## ~100 kg heavy Medium/Large (cargo_catalogue.gd's own masonry/machine_parts/
+## white_goods rows) barely a fifth of that — it barely moves. Arguably
+## correct (a heavy crate should topple rather than fly), but "the shed did
+## nothing" and "the shed is broken" look identical from outside the game, so
+## a human should see this at the gate before either number is retuned.
 const SHED_IMPULSE := 18.0
 ## A little lift on top of the outward push, so a shed item visibly leaves the
 ## shelf edge rather than sliding along it.
@@ -148,12 +175,28 @@ func request_release() -> void:
 
 ## Store a held crate into a rack cell. Validated in order: the sender is
 ## actually holding something; a dragged crate may only reach the floor row
-## (ADR 19, see the note below); the rack and cell resolve; the cell has room
-## for this kind (ADR 18); the holder is actually close enough. Any failure
+## (ADR 19, see the note below); the rack and cell resolve; the cell (or, for
+## a Large, BOTH cells of the pair — see the note below) has room for this
+## category (ADR 18/25); the holder is actually close enough. Any failure
 ## returns silently — the idiom this whole file uses, a client that disagrees
 ## with the host simply does not get what it asked for.
+##
+## [param orientation] is the client's CHOICE, not a claim about geometry —
+## the host derives the partner cell itself from it
+## ([method StorageGrid.large_partner_cell]) rather than ever accepting a
+## second cell index from the wire. Say why in plain terms, since it would be
+## easy to "simplify" this back the other way later: this file's entire
+## posture is that clients never grant themselves a hold, and never rack or
+## unrack anything unilaterally either — they ask, the host decides. A
+## client-supplied PARTNER CELL INDEX would be a client granting itself half
+## a placement outright. An orientation is a two-value choice the host
+## validates completely by deriving the partner and checking
+## [method Rack.can_accept_large] itself; a cell index is a claim about
+## geometry the host would have to re-check anyway — re-deriving is strictly
+## cheaper than validating a second claim, on top of being the only version
+## of this that keeps the "the host decides" rule intact.
 @rpc("any_peer", "call_local", "reliable")
-func request_place(rack_name: String, cell_index: int) -> void:
+func request_place(rack_name: String, cell_index: int, orientation: int) -> void:
 	if not Net.is_host():
 		return
 
@@ -178,18 +221,38 @@ func request_place(rack_name: String, cell_index: int) -> void:
 		return
 	# StorageGrid.cell_coords() returns (column, depth, level) — .z is level,
 	# not .y (see the coordinate-order note on that method). Floor is level 0.
+	# A Large's pair always shares one level (both Orientation values flip
+	# column or depth, never level), so checking the anchor cell alone is
+	# sufficient here too.
 	if dragging and StorageGrid.cell_coords(cell_index).z != 0:
 		return
-	if not rack.can_accept(cell_index, crate.kind):
+	# .size travels alongside .kind (02-05) — see the matching note in
+	# carrier.gd. A Large routes to can_accept_large instead of can_accept
+	# (02-08): a different question (are BOTH of a pair's cells empty), not
+	# an overloaded meaning of "accept" for one.
+	if crate.size == CargoCatalogue.Size.LARGE:
+		if not rack.can_accept_large(cell_index, crate.kind, orientation):
+			return
+	elif not rack.can_accept(cell_index, crate.kind, crate.size):
 		return
 
 	var holder := _player_for(peer_id)
 	if holder == null:
 		return
+	# Measured against the ANCHOR cell's centre, unchanged — see PLACE_REACH's
+	# own doc comment for why a two-cell target does not widen this constant.
 	if holder.camera_pivot.global_position.distance_to(rack.cell_to_global_position(cell_index)) > PLACE_REACH:
 		return
 
-	var crate_id := crate.id
+	# Captured HERE, before queue_free() below — after that line this crate
+	# object is gone, and anything not read off it by then is lost for good.
+	# That is STORE-07's exact failure mode: retrieve(place(crate)) must equal
+	# crate for every field, and the round trip only has this one moment to
+	# capture what "crate" even means. record.to_dict() is the whole snapshot
+	# (id, category, variant, size, fragility, mass, declared_value,
+	# store_until_day, owner, both condition ints, drag_distance) — not just
+	# the id/kind pair this used to carry.
+	var record_data := crate.record.to_dict()
 	var from_position := crate.global_position
 
 	# Release every holder, not just the asker — a crate can be held by two
@@ -207,8 +270,8 @@ func request_place(rack_name: String, cell_index: int) -> void:
 	# per-crate figure ADR 14 measured, whether or not it ever moves again —
 	# do not "improve" this into pausing the body instead of freeing it.
 	crate.queue_free()
-	_cell_filled.rpc(rack_name, cell_index, crate_id, from_position)
-	print("[carry] peer %d racked crate_%d into %s cell %d" % [peer_id, crate_id, rack_name, cell_index])
+	_cell_filled.rpc(rack_name, cell_index, record_data, from_position, orientation)
+	print("[carry] peer %d racked crate_%d into %s cell %d" % [peer_id, int(record_data["id"]), rack_name, cell_index])
 
 
 ## Take a stored crate back into the sender's hands — the mirror of
@@ -219,7 +282,17 @@ func request_place(rack_name: String, cell_index: int) -> void:
 ## never sits loose for a frame and never falls out of the rack in front of
 ## the player. Retrieval always grants a normal carry (see the ADR 19 note on
 ## [method request_place]); do not change that to preserve whatever hold mode
-## put the crate away.
+## put the crate away. ADR 19's own mass rule ([method Crate._refresh_hold_mode])
+## is what turns a "normal carry" request into a drag when the retrieved
+## record is too heavy to lift — the host decides, the asker never negotiates
+## it (a heavy retrieval never gets a choice in the matter).
+##
+## [param cell_index] may name EITHER half of a Large (02-08) — nothing here
+## needs to know which: [method Rack.remove_large], reached through
+## [method Rack.apply_cell_cleared] below, already resolves whichever half it
+## is handed back to the true anchor and clears both. Hands back exactly ONE
+## crate either way; see the broadcast comment below for why this is a single
+## [signal _cell_cleared] call, never two.
 @rpc("any_peer", "call_local", "reliable")
 func request_retrieve(rack_name: String, cell_index: int) -> void:
 	if not Net.is_host():
@@ -247,9 +320,62 @@ func request_retrieve(rack_name: String, cell_index: int) -> void:
 	if source == null:
 		return
 
+	# Captured before the clear, exactly as request_place captures a record
+	# before its own queue_free() and for the same reason (STORE-07): once
+	# _cell_cleared.rpc below actually runs, this cell's stored dictionary is
+	# gone and there is nothing left here that remembers what it held.
+	var record_data := rack.occupant_record(cell_index)
+	var size := int(record_data.get("size", CargoCatalogue.Size.SMALL))
+	# Rack.cell_orientation reads the ACTUAL stored orientation (02-08) — 0
+	# (SIDE_BY_SIDE) for anything but a Large, which is also correct for a
+	# Large stored that way, so one call covers every size with no branch
+	# needed here. A hard-coded SIDE_BY_SIDE, as this line used to read, was
+	# never wrong for a Small or Medium (whose stored orientation is always
+	# 0), only incomplete for a Large — see this method's own reasoning below
+	# for why re-minting at the wrong orientation would matter.
+	var orientation := rack.cell_orientation(cell_index)
+	# Rack.mint_position, never cell_to_global_position, for anything but a
+	# Small (ADR 24): a Medium or Large minted at a cell's bare centre
+	# intersects the rack's own corner uprights and Jolt flings it across the
+	# room. mint_position already folds StorageGrid.mint_offset's clearance in.
+	# For a Large, cell_index may be EITHER half of the pair (see this
+	# method's own doc comment) — mint_position/large_partner_cell are
+	# symmetric under either half, so no extra resolution is needed here.
+	var mint_position := rack.mint_position(cell_index, size, orientation)
+	# Named for the [carry] log line below, before the clear — once
+	# _cell_cleared fires this cell's own stored "partner" field is gone.
+	var partner_cell := int(record_data.get("partner", -1))
+
+	# ONE broadcast for the cell the player actually aimed at, whichever half
+	# that was — Rack.apply_cell_cleared (via _cell_cleared below) already
+	# clears BOTH halves of a Large from that single cell index. Two
+	# broadcasts for one crate is how a double-free bug is born, and supply
+	# conservation (Crate._recover) depends on nothing ever minting the same
+	# stock twice.
 	_cell_cleared.rpc(rack_name, cell_index)
-	var crate := source.spawn_crate_at(rack.cell_to_global_position(cell_index)) as Crate
+	var crate := source.spawn_crate_at(mint_position, record_data) as Crate
 	if crate == null:
+		return
+
+	# Mint at rest (ADR 25 (c): "mint at rest, let hold mode decide"), not
+	# with the hold spring already yanking at whatever velocity a brand-new
+	# body happens to carry. Zeroing the velocities is belt and braces — a
+	# freshly spawned body has had no frames to pick any up — the load-bearing
+	# part is granting the hold one physics frame later rather than in this
+	# same call, so gravity and the rack's own deck get to resolve this
+	# crate's real resting height BEFORE add_holder()'s spring starts pulling
+	# it toward the holder. Observed: without this deferral, a heavy retrieval
+	# still correctly resolved to HoldMode.DRAG (ADR 19's mass rule), but the
+	# very first physics frame computed its drag target from the holder's
+	# eyeline before gravity had touched the crate at all, giving it a brief
+	# upward tug off the deck on the frame it spawned. Deferred a frame, the
+	# crate is already resting under gravity by the time the spring engages,
+	# so a heavy crate comes to rest on the deck and is hauled along it
+	# (ADR 19's floor-plane-only spring), never lifted.
+	crate.linear_velocity = Vector3.ZERO
+	crate.angular_velocity = Vector3.ZERO
+	await get_tree().physics_frame
+	if not is_instance_valid(crate):
 		return
 
 	crate.add_holder(peer_id, holder)
@@ -258,7 +384,13 @@ func request_retrieve(rack_name: String, cell_index: int) -> void:
 		crate.hold_broken.connect(_on_hold_broken)
 	if not crate.hold_mode_changed.is_connected(_on_hold_mode_changed):
 		crate.hold_mode_changed.connect(_on_hold_mode_changed)
-	print("[carry] peer %d retrieved crate_%d from %s cell %d" % [peer_id, crate.id, rack_name, cell_index])
+	# Names the pair for a Large (a player reconstructing what happened should
+	# be able to see both cells it came from), and reads exactly as before for
+	# everything else, since partner_cell is -1 there.
+	if partner_cell != -1:
+		print("[carry] peer %d retrieved crate_%d from %s cells %d+%d" % [peer_id, crate.id, rack_name, cell_index, partner_cell])
+	else:
+		print("[carry] peer %d retrieved crate_%d from %s cell %d" % [peer_id, crate.id, rack_name, cell_index])
 	_answer_grant(peer_id, crate.name, crate.hold_mode())
 
 
@@ -284,17 +416,28 @@ func shed_top_row(rack: Rack) -> void:
 		if shed_count >= MAX_SHED_PER_EVENT:
 			break
 
-		# Captured before the clear, exactly as request_retrieve captures
-		# from_position before queue_free()'ing the placed body - once the
-		# cell is cleared there is nothing left here that remembers where it
-		# was.
-		var world_position := rack.cell_to_global_position(cell_index)
+		# Captured before the clear, exactly as request_retrieve now captures
+		# its own record — once the cell is cleared there is nothing left
+		# here that remembers what it held. A shed mints from the RECORD too
+		# (STORE-07): supply conservation means the crate that lands on the
+		# floor is the same stock that was racked, not a fresh default.
+		var record_data := rack.occupant_record(cell_index)
+		var size := int(record_data.get("size", CargoCatalogue.Size.SMALL))
+		# Rack.cell_orientation reads the ACTUAL stored orientation (02-08) —
+		# occupied_cells_in_top_row() only ever returns a Large's ANCHOR cell
+		# (Rack's own doc comment on that method), so this is always the
+		# correct half to read it from.
+		var orientation := rack.cell_orientation(cell_index)
+		# mint_position, never cell_to_global_position — a shed Large minted
+		# at a bare cell centre would launch from inside two corner uprights,
+		# which is spectacular and wrong (ADR 24).
+		var world_position := rack.mint_position(cell_index, size, orientation)
 		_cell_cleared.rpc(rack.name, cell_index)
 
 		var source := _crate_source()
 		if source == null:
 			break
-		var crate := source.spawn_crate_at(world_position) as Crate
+		var crate := source.spawn_crate_at(world_position, record_data) as Crate
 		if crate == null:
 			continue
 
@@ -429,11 +572,18 @@ func _hold_mode_set(mode: Crate.HoldMode) -> void:
 ## goes through the identical code path as every client — same shape as
 ## Net._sync_roster. Contains no logic beyond the null guard: the rack owns
 ## the state, this referee owns only the decision.
+##
+## [param record_data] is [method CargoRecord.to_dict]'s own wire-safe shape
+## (02-06, STORE-07) — the crate's WHOLE record, not merely an id and a kind.
+## [param orientation] is a [enum StorageGrid.Orientation] int — live as of
+## 02-08, [method request_place]'s own choice, re-derived host-side from the
+## client's request rather than trusted; meaningless for anything but a
+## Large, which [method Rack.apply_cell_filled] already knows how to ignore.
 @rpc("authority", "call_local", "reliable")
-func _cell_filled(rack_name: String, cell_index: int, crate_id: int, from_position: Vector3) -> void:
+func _cell_filled(rack_name: String, cell_index: int, record_data: Dictionary, from_position: Vector3, orientation: int) -> void:
 	var rack := _rack_for(rack_name)
 	if rack != null:
-		rack.apply_cell_filled(cell_index, crate_id, from_position)
+		rack.apply_cell_filled(cell_index, record_data, orientation, from_position)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -441,6 +591,29 @@ func _cell_cleared(rack_name: String, cell_index: int) -> void:
 	var rack := _rack_for(rack_name)
 	if rack != null:
 		rack.apply_cell_cleared(cell_index)
+
+
+## Broadcasts an edit to a record already sitting in a rack cell — the wire
+## half of [method Rack.apply_record_update] (local-only write-through,
+## 02-05). [b]Nothing in this plan calls this.[/b] It exists for 02-10, which
+## bumps a missed collection's [code]store_until_day[/code] while the crate is
+## still racked, and the host silently editing only its own copy would leave
+## every client's plaque reading LATE forever — this is the broadcast that
+## stops that. Belongs here rather than in [code]rack.gd[/code] because this
+## file is where every rack mutation goes on the wire, and [Rack] itself has
+## zero RPCs of its own by design (02-09's own verification greps for that).
+## An unused RPC sitting here is deliberate, not dead code.
+@rpc("authority", "call_local", "reliable")
+func _record_updated(rack_name: String, cell_index: int, crate_id: int, changes: Dictionary) -> void:
+	var rack := _rack_for(rack_name)
+	if rack == null:
+		return
+	var applied := rack.apply_record_update(cell_index, crate_id, changes)
+	# Every peer applies the same edit above, identically — this print is
+	# host-only so a call landing here (unexpectedly, since nothing sends one
+	# yet) is findable in exactly one place rather than once per peer.
+	if applied and Net.is_host():
+		print("[carry] %s cell %d crate_%d record updated: %s" % [rack_name, cell_index, crate_id, changes])
 
 
 ## Sent only to a late joiner (see [method _on_player_ready_for_spawn]), never

@@ -4,6 +4,178 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 10 — 2026-08-22
+
+**Phase 2 reached 7 of 11 plans. Two real defects were found by playing the game, not by the test suite — and both had been sitting there for weeks. The process changes that came out of that matter more than the fixes.**
+
+### What was built
+
+Waves 1–6, eleven plans planned and seven executed: [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md) ratifying the cargo taxonomy and the day clock; the `CargoRecord` and a ten-category catalogue; the roller-door day clock and dock door; Medium and Large crates with weight deciding the hold; a size-aware rack that remembers whole records; STORE-07 proven field-for-field on two peers; the scripted-day manifest and morning truck dump — including **the first thing in this project ever to start the day clock**; and both Large orientations, player-chosen, with the rotate control.
+
+### The two defects, and why the suite never saw them
+
+**A dragged crate stalled.** Root cause was in the harness: `_wait_for_crate_catch_up` shared `STEP_TIMEOUT_MS` with the client's own wait, on opposite sides of a race. A dragged Large that snags never catches up, so the host burned the full ceiling in silence — twice, 46 seconds each — and the client gave up and quit about 59 seconds before the host broadcast. The host then sent to `get_peers() == []`, which is why the message looked *absent* rather than late.
+
+**That shared constant is why raising the timeout from 45 s to 180 s to 300 s changed nothing, three times.** Each raise extended the host's stall and the client's patience equally. Fixed with a separate `CATCH_UP_CEILING_MS`, and the wait now reports when it gives up instead of stalling silently.
+
+**A Medium did not fit the shelf it was stored in.** ADR 18 fixes a Medium at 1.0 m and a cell at 1.0 m; ADR 24's decks are 0.05 m thick and sit *on* the cell boundaries, so a cell's nominal metre is **0.95 m of clear air**. A retrieved Medium minted interpenetrating both decks by 2.5 cm and jammed — sometimes. It hid because the racked visual is inset to 78% and has no collision, so a shelved crate always looked comfortable; the full-size body existed only during a retrieval.
+
+[ADR 27](../decisions/2026-08-22-crate-height-clears-the-deck.md) shrank Medium and Large to 0.9 m — **height only**. Every footprint is untouched, which is why that option was chosen: a Medium still fills one cell, a Large still spans two, a cell still holds eight Smalls on a lattice needing 0.5 × 2 = 1.0 exactly, and `StorageGrid`'s arithmetic and its 491 assertions never moved.
+
+### The thing worth taking from the day
+
+**Twice, a symptom was explained away instead of escalated.**
+
+The intermittent suite failure that survived from Phase 1 was recorded as a "known flake" and agents were told in `STATE.md` to re-run past it. It was a rack placement's sound still playing at `quit()`, found in three minutes with `--verbose` against the editor binary.
+
+And the clearance defect had already been found: 02-06 hit the same contact deadlock, diagnosed it correctly, measured a body drifting **0.0024 m over 2000 frames** — then moved its test to a different cell. The suite went green and the defect shipped.
+
+Both times a green suite was what made it possible. A green suite means the assertions someone wrote still hold; it never means the code is right.
+
+### What changed because of it
+
+- **`touches`** — a blast-radius audit required *before* execution: what does this mechanic touch, change or interact with, and does the rig register it, **YES or NO**. Every NO closed or declared. Enforced by the plan-checker's new **Dimension 9**.
+- **`guards`** — what assertion covers each thing a plan builds, `UNGUARDED` being an acceptable and *tracked* answer. Enforced by **Dimension 8**.
+- **30-minute agent check-ins on a timer**, not on memory. One plan ran three hours; the bug blocking it was diagnosed in three minutes once someone actually read the other log stream.
+- **The harness prints the engine's own error text in the verdict block**, not just a count — the cause and the failing assertion live in different log files, which cost ninety minutes.
+- **`tools/is-behavioural-change.ps1`** — a *mechanical* exemption from the triple-run rule for provably inert changes, because a discretionary one gets rationalised into.
+- **Opus across all eleven planning agents.** Execution had been running the cheaper model the whole project, unnoticed, because the profile default upgrades the planner but not the executor.
+
+`touches` earned itself immediately: applied to 02-09 and 02-10 it produced fifteen NOs, including a staleness created the same evening — ADR 27 changed crate heights *after* 02-09 was written, so anything that plan sizes against a crate is now wrong.
+
+### Still open
+
+The **aim-resolution defect** — a Medium or Large on a bottom shelf needs you to aim at the deck *above* to register. The geometry says the aim volume is a full 1 m cube and the crate is drawn inside it, so the target is *larger* than what you can see: this is resolution, not hitboxes, and `CELL_RESOLVE_NUDGE` is the suspect. No grab indicator exists for loose crates at all. **Two-player carry feel has never been judged**, because two instances on one keyboard cannot perform one — and ADR 13 makes it the efficient path. And crates need labelling so a specific one can be referenced.
+
+### Next steps
+
+Wave 7 (02-09, 02-10), both already carrying their `touches` and `guards` audits, then the 02-11 gate — which now walks in with a real agenda rather than a blank sheet.
+
+---
+
+## Session 9 — 2026-08-22
+
+**The Phase 2 plan check ran, and earned its keep: three blockers, all of them the same species. Seven waves became eight. Both pre-execution blockers are now closed.**
+
+### What the check found
+
+Session 8 stopped before verification. Running it found **three blockers, and they shared a root cause**: the wave graph was arithmetically perfect — every wave equal to `max(dependency waves) + 1`, no cycles — but it ignored what `.planning/config.json` actually does at execution time (plan-level parallelism, three concurrent agents). **Every wave holding more than one plan had a coordination hazard.**
+
+1. **The ADR checkpoint did not gate its own wave-mates.** 02-01 is the human checkpoint whose own text reads "do not begin any other Phase 2 work while this is open" — yet 02-02 and 02-03 sat in wave 1 with an empty `depends_on`. The execution workflow lets parallel agents *complete* while a checkpoint waits, so both would have written and committed GDScript against an unratified ADR 25. The empty dependency was a frontmatter error, not a design choice: both plans already cite ADR 25 ten-plus times.
+2. **One plan deliberately reds the suite while its wave-mate demanded it green.** 02-05 declares its own integration stage expected-to-fail ("that is 02-06's job"); same-wave 02-07 required green over three consecutive runs. One working tree, no isolation — structurally unreachable.
+3. **An undeclared `rack.gd` conflict.** 02-09 and 02-10 both edited it in wave 6, undeclared in 02-10's `files_modified`.
+
+### How they were fixed
+
+Dependency edges for the first two. The third was fixed **at source rather than by serialising**: the write-through API `Rack.apply_record_update()` moved into 02-05, which owns the cell-record data model — but its RPC wrapper went to 02-06 instead, because 02-05 is deliberately wire-free and `rack.gd` has **no RPCs at all**, a property 02-09's verification greps to preserve. 02-10 now touches neither file and carries an assertion that `rack.gd`'s diff is empty.
+
+Result: **11 plans, 8 waves** — 02-01 alone in wave 1, 02-11 alone in wave 8, and no plan's build content changed otherwise.
+
+### The save-point clause, settled as a routing question
+
+The check confirmed the clause is **purely declarative**: no Phase 2 plan reads or writes anything surviving a process restart, and the gate never asks for a quit-and-reload. The join-window half is genuinely built, but that is live-session catch-up, not persistence — so it never blocked execution.
+
+The real risk was narrower: 02-01 would have committed an ADR asserting a save point no code backs, while its checkpoint only asked about the door, commerce, day length and Phase 4 routing. That is now an explicit **named ruling — `plan-it` / `defer-it` / `cut-it`** — with the ADR held uncommitted until NJ answers and a bare "approved" rejected as a resume signal. 02-03 and 02-10, which had been hard-coding "the save point" as settled fact, now read the ADR's committed text instead, so no plan can contradict whichever way he rules.
+
+### Two claims checked rather than trusted
+
+The re-check reported all 11 plan files as CRLF and STATE.md's "all files LF" claim as false. A byte-level scan found **zero CR bytes in any of them** — a false positive from the checker's own grep quoting. Worth recording, because CRLF frontmatter is this project's documented checkpoint-stripping hazard, and acting on it would have been churn built on a wrong premise. The wave graph was likewise recomputed independently rather than taken from the planner's summary.
+
+### Next steps
+
+`/gsd:execute-phase 2` from a fresh context. Wave 1 stops at the 02-01 checkpoint, where NJ owes the save-point ruling by name.
+
+---
+
+## Session 8 — 2026-08-21
+
+**Phase 2 planned: eleven plans in seven waves, from context to disk in one pass. The verification loop was deliberately stopped short — two blockers stand between the plans and execution.**
+
+### What was planned
+
+Session 7's design outline had already been distilled into `02-CONTEXT.md` (locked decisions, discretion areas, deferred ideas) and researched into `02-RESEARCH.md` earlier in the day; this session ran the planner over both. Output: **11 plans, 7 waves** in `.planning/phases/02-goods/` — the phase ADR and GOODS-03 wording fix first (02-01, a human checkpoint before nine plans build on it), then taxonomy + the `CargoRecord`, the day clock (inert by default), Medium/Large crates with weight deciding the hold, size-aware record-carrying rack occupancy, the STORE-07 wire path proven field-for-field on two peers, scripted days and the truck dump, both Large orientations with the rotate control, the placement ghost + cell plaques, door-down collections with lateness and the midnight tally, and the gate (02-11, "the loop closes").
+
+All three Phase 1 carry-ins landed in concrete tasks: Large orientation (02-01's ADR clause + 02-08, including proof that front-to-back fills a wall rack's dead back row without touching `Carrier._aim()`), STORE-07's data shape (02-02, 02-06, 02-08), and cell plaques (02-09, anchored to ADR 24's pallet front edge).
+
+### What planning found that the design pass didn't
+
+- **The rack's corner uprights sit inside a corner cell's footprint.** A Small minted at the cell centre clears them — which is why Phase 1 never saw it — but a Medium or Large minted there spawns inside two static bodies. ADR 24 rules out resizing the frame, so 02-05 defines `StorageGrid.mint_offset` and 02-06 forbids bare-centre minting for anything bigger than a Small.
+- **A live day clock in `test_room.tscn` would silently break both existing integration scenarios** — doors closing and trucks dumping mid-assertion. The clock ships inert until `begin_run()`, called only by `main.gd`, with a byte-identical check on the existing test session scripts.
+- **Value bands overflow ADR 20's £2000 detection ceiling on 30-day contracts** (a precious Large reaches ~£5670, past where the detection curve saturates). The assertion is bounded at 10 days and the overflow recorded as a Phase 4 finding — densities ADR 20 calibrated stay untouched.
+
+### Deliberately left undone — the two blockers
+
+NJ stopped the workflow after the planner, before the plan-checker. Both blockers are recorded in `.planning/STATE.md`'s Current Position block, and both must clear before `/gsd:execute-phase 2`:
+
+1. **The plan check has not run.** The standing audit rule applies in full: unexecuted plans are unverified until checked against `decisions/`. Re-running `/gsd:plan-phase 2` detects the plans and offers verification.
+2. **The save logic is unagreed.** The ADR 25 draft carries the locked wording "the midnight ceremony is the save point AND the v1 join window" — the join window is built across three plans; the save point is implemented by *no plan*, and no requirement asks for a save system before Phase 5. The planner flagged it rather than inventing scope. NJ decides at or before the 02-01 checkpoint: plan it, defer it, or cut the clause.
+
+### Housekeeping
+
+Roadmap updated and committed (`5d930a2` on `feat/phase-2-goods`, plans themselves repo-excluded, nothing pushed). The CRLF frontmatter trap was explicitly checked — all plan files are LF and the tool's plan index matches on-disk frontmatter, so the locally-patched bug is not biting. STATE.md and the local project brief now carry the not-cleared-for-execution status.
+
+### Next steps
+
+Run the Phase 2 plan check, settle the save-point question with NJ, then `/gsd:execute-phase 2` from a fresh context — wave 1 stops at the 02-01 checkpoint for the ADR 25 ruling either way.
+
+---
+
+## Session 7 — 2026-08-21
+
+**Phase 1 finished — built, gated by a human across three play sessions, fixed same-day, merged. Then Phase 2 got designed in outline before a single plan exists.**
+
+### What was built
+
+Waves 4–6 executed back to back. **Aim feedback and the snap (01-06)** — a per-rack cell highlight with three states painted from the same aim query and branch table the real placement uses, a 0.16 s travel tween with a synthesised placement thud, and the late-joiner path deliberately instant and silent. One standing constraint discovered: a new binary asset needs a one-shot headless import pass with the editor closed before tests can load it. **Shedding (01-07)** — a host-side impact sensor (crates only, 4.0 m/s threshold, 1.5 s cooldown) sheds the top row as real falling crates; the drag cap (~1.7 m/s) can never trigger it, confirmed as a conscious call. **Settled cargo (01-09, ADR 17)** — cargo at rest freezes static and blocks players *and other cargo*; disturbance wakes it; a held or dragged crate never settles. Most of that plan's ~3 hours went on two pre-existing, intermittent harness races, not the settle machine, which worked first try. The 01-05↔01-09 flag closed properly: zones still count frozen bodies.
+
+### The gate
+
+Three play sessions against a written 26-item protocol (setup, per-check pass/fail criteria, three fix-verification passes). **It found three real defects that every green suite run had missed:**
+
+- **The green that refuses.** The highlight painted at ray range (2.5 m) but the host validated camera→cell-*centre* ≤ 2.6 m — a cell's centre sits up to 0.87 m behind the face the ray hit, so aims in the ~2.1–2.5 m band promised and then silently refused. The validation comment claimed a genuine aim could never fail it; the comment was wrong.
+- **The rack that shed itself.** A retrieved crate mints at the cell centre — inside the impact sensor — and the hold spring accelerates it past the shed threshold while still overlapping. Ordinary shelf work ejected a neighbour's stock. Fixed with a 700 ms mint-grace.
+- **Stranded stock.** A loose crate settling inside a rack's sensor volumes was unaimable — the ray hits the sensor face first, the cell's data is empty, nothing responds — and supply conservation only recovers out-of-world falls, so it was *permanently lost stock*. Fixed: an empty-handed aim probes cargo first, falling through to cells. While holding, cells still win, so placement is unaffected.
+
+All three fixed with regression tests through the real interact path, suite proven over repeated consecutive runs. The gate also disproved "the back row is permanently unaimable" — it is head-on, but the rack's end faces resolve back-row cells fine, which is now part of the ruling. And play set one tuning number: reach shortened 2.5 → 2.0 m end-to-end after feeling long from both first- and third-person viewpoints.
+
+### Decisions made
+
+**ADR 24 — rack presentation ratified.** The frame's proportions stand; the clipping resolution is the **pallet spec**: an empty cell shows nothing, the first item spawns a pallet, stock sits on it with side margins and ~¼-Small top clearance, and the pallet edge anchors future per-cell signage. Racked visuals inset to fit; ADR 18's logical sizes untouched. Wall racks are 6 cells head-on plus end access, accepted as a level-design rule. Top-shelf-effort versus bottom-shelf-turnaround named as an intended optimisation axis. **Verdict: storage feels deliberate — Phase 1 closed and merged (PR #11).**
+
+**STORE-07, the round-trip invariant**, added to requirements: racking frees the body and retrieval mints a fresh one, so per-crate state must ride the cell data and reconstitute exactly — `retrieve(place(crate)) == crate` for every field — or racking launders damage and deletes the Phase 3 pillar.
+
+**The timing guess held.** A relaxed intake→rack→outbound loop measured under 60 seconds (small room, perfect knowledge), inside the economy model's ~15-moves-per-player assumption.
+
+### Phase 2 designed in outline
+
+A long design pass, recorded for the planner rather than decided as ADRs:
+
+- **Cargo taxonomy:** ~10 mechanical *categories* (atomicity, weight band, fragility, value) × many comedy *variants* (manifest names, decals). Cells atomic by category; comping like-for-like at category level ("ordered porcelain ducks, comped porcelain badgers" is legal). The dodgy market ships its own self-labelled category — "Definately Legal Tobacco". Weight is per-category and deliberately deceptive.
+- **Day clock:** the roller door is the clock, governing commerce, never locking players out; morning truck dumps as a ceremony; full-day frame with open hours plus a skippable after-hours tidy; at midnight a pause — tally columns, rent deducted theatrically, then a host-decided "pick your poison" offer sheet for tomorrow (rep-generated options plus locked commitment rows from the day's phone calls). Day length stays an exported tunable — lease arithmetic (10/30 days × real minutes) is the constraint.
+- **Design principle, game-wide:** assume open comms; information asymmetry must live on the *screen*, never in audio. The office phone shows details only to the answerer; proximity voice is comedy on top, never load-bearing. The same principle already protects the tape gun.
+- **Missed collections:** walk-away (ADR 22 routes the consequence), redelivery priced as a locked row on tomorrow's offer sheet, or comp. The fraudulent fourth option — sign it off as collected — is **short-changing outbound**, recorded into the sales counter entry as strand 6 so both directions of the paperwork lie enter through one superseding ADR, if ever.
+- **Store-until:** an overdue client's stock costs capacity (cells blocked, offer sheet starved) — emergent, no new penalty system — plus token demurrage income and no spoilage timers. The lien sale stays the parked release valve.
+- **Larges:** both orientations, player-chosen at placement — side-by-side across a face or front-to-back through the depth, which gives a wall rack's dead row its one tenant with no aim change. Requires a rotate control on the placement ghost, promoting the ghost preview into Phase 2 scope.
+- **Heavy retrieval:** nothing floats — retrieval mints a real body resting on the deck. Solo grab is a drag grant and physics does the rest: slide, tip, crash (consequences, not refusals; Phase 3 prices the drop). Two players use the existing drag→carry promotion while it's still on the deck and walk it out through the pallet clearance.
+
+The idea book also gained **the rack topple** — the falling-rack clip decomposed into what's built (the ADR 17 aftermath), what the gate could rule on (positional shed), what needs its own ADR (a rare topple that may shed a neighbour but never topple it), and the parked doors it must not smuggle in (forklift, spills).
+
+### Housekeeping
+
+Publishing scans clean; PR #11 merged to `main`; `feat/phase-2-goods` branched from the merge. Follow-ups recorded in STATE: ghost preview, cell plaques, seeded organic jitter on racked visuals, a grabbable-target indicator, softer settle planting (per-kind feel later), sprint-speed hold-spring jam, the red highlight being invisible on a full cell, carried crates passing through racked stock, and a pre-existing intermittent one-resource leak at the storage test client's exit.
+
+### Open questions
+
+- The Steam join half still needs a second machine — unchanged, hardware-blocked.
+- Day length: structure agreed, the number deliberately not.
+- For Phase 2 planning: the exact category list, value bands spanning ADR 20's £50–£2000 envelope, and plaque content at category versus variant level.
+
+### Next steps
+
+Plan Phase 2 from a fresh context. The plans it produces get audited against `decisions/` before execution — today's direction is deliberately not ADR-grade yet, and the audit discipline exists precisely for that gap.
+
+---
+
 ## Session 6 — 2026-08-20
 
 **Wave 3 built the heart of the phase; the waiting time built the economy's first model; and the launch strategy stopped being an open question.**

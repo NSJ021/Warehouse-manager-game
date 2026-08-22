@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** The dilemma is the game — patch and hope, confess, or comp.
-**Current focus:** Phase 1 complete (gate passed 2026-08-21). Next up: Phase 2, Goods.
+**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. **02-02 is complete**: `CargoRecord` and `CargoCatalogue` (11 categories) landed, test-first, 489 checks including the design-property sweep. **02-03 is complete**: `DayClock` (host-authoritative, replicated `IDLE→MORNING→SHIFT→AFTER_HOURS→MIDNIGHT`) and `DockDoor` (an `AnimatableBody3D` roller door deriving itself from the clock) landed — inert until `main.gd` calls `begin_run()`, proven on two real headless peers, both existing integration scenarios byte-identical to before. **02-04 is complete**: Medium and Large crate scenes (inherited from `crate.tscn`) landed, `Crate.setup()` now rebuilds a full `CargoRecord` at spawn, and a mixed heavy row in `test_room.tscn` makes ADR 25 (c)'s weight deception real. Found and fixed a genuine bug along the way — `Rack.apply_cell_filled` hard-coded the stored cell kind to `&"small"`, silently correct only while every crate's kind really was that literal constant; this plan's own repurposing of `kind` into a real category broke that silently, caught before any test ran. **Wave 3 is now fully done.** **02-05 is complete**: `StorageGrid` gained ADR 25 (d)'s Large-pair geometry and ADR 24's corner-upright `mint_offset`, and `Rack`'s whole occupancy model was rebuilt around whole `CargoRecord` dictionaries and self-describing Large pairs — see the block below for the full detail, including the exact, single-line integration failure this plan hands to 02-06 by design. **Wave 4 is now done.** **02-06 is complete**: STORE-07's round-trip invariant proven field-for-field on two peers, the storage integration suite green again. **Wave 5 is now done. 02-07 is complete**: `DayManifest`/`DaySchedule` (a pure, deterministic, capacity-bounded scripted-day author), `DayClock` now posts a broadcast manifest at MORNING, `TestRoom` runs a paced truck-dump ceremony into Goods IN, and a third integration scenario (`goods_session.gd`, port 27095) is the first and only thing that ever calls `DayClock.begin_run()` — proven on two real peers across all seven of the plan's own numbered assertions. Found and fixed a real, previously untested bug along the way: `request_call_it_a_night` let ANY peer's request succeed, not just the host's — see the resolved block below. **Wave 6 is now done.**
 
 > **Narrative history lives in `docs/conversation-log.md`, not here.** This file tracks
 > execution position only. Duplicating the story in two places guarantees one of them
@@ -13,13 +13,366 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods).
-Plan: **01-01 through 01-09 all complete** — all 9 plans, all 7 waves done.
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **7 of 11 plans done. Waves 1-6 complete (02-01 … 02-08).** Wave 7 (02-09, 02-10) and the 02-11 gate remain, both planned with `touches` and `guards` audits already applied.
+
+> **Session end 2026-08-22.** Suite green, 122 api assumptions, tree clean, branch pushed and a
+> draft PR open that stays open until the Phase 2 gate signs off.
+>
+> **Two real defects were found by NJ playing, not by the suite**, and both are fixed and confirmed
+> in play:
+> 1. **A dragged crate stalled.** Root cause was a test-harness one — `_wait_for_crate_catch_up`
+>    shared `STEP_TIMEOUT_MS` with the client's own wait, on opposite sides of a race, so the host
+>    burned 46 s in silence twice and the client quit ~59 s before the host broadcast. It then sent
+>    to `get_peers() == []`. **That shared constant is why raising the timeout 45s → 180s → 300s
+>    changed nothing three times.** Fixed with a separate `CATCH_UP_CEILING_MS`, and the wait now
+>    reports instead of stalling silently (`94adcc6`).
+> 2. **A Medium did not fit the shelf it was stored in.** ADR 18 fixes it at 1.0 m; ADR 24's decks
+>    are 0.05 m and sit on the cell boundaries, leaving **0.95 m of clear air**. Retrieval minted it
+>    interpenetrating both decks and it jammed intermittently.
+>    **[ADR 27](../decisions/2026-08-22-crate-height-clears-the-deck.md)** shrank Medium and Large to
+>    0.9 m — **height only**, every footprint untouched, so the cell model, capacities, the
+>    eight-Small lattice and `StorageGrid`'s 491 assertions are all undisturbed (`f7f71cd`).
+>
+> **The process lesson matters more than either bug.** Twice in one day a symptom was explained away
+> rather than escalated: the "known flake" that was really a sound still playing at `quit()`, and
+> this clearance defect, which 02-06 **found, measured at 0.0024 m of drift over 2000 frames, and
+> then routed its test around** — the suite went green and it shipped. Both times a green suite was
+> what made it possible.
+>
+> **What changed because of it**, all live now: `touches` (a blast-radius audit — what does this
+> mechanic interact with, and does the rig register it, YES/NO) enforced by the plan-checker's new
+> **Dimension 9**; `guards` (what asserts what you built) enforced by **Dimension 8**; **30-minute
+> agent check-ins on a timer**; the harness **printing the engine's own error text in the verdict
+> block**; `tools/is-behavioural-change.ps1` so the triple-run rule has a *mechanical* exemption
+> rather than a judgement call; and **Opus across all eleven agents**. The three planning-tool
+> patches die on an update — the reapply instructions are in the local project brief.
+>
+> **Still open, all recorded for the gate:** the aim-resolution defect (a Medium or Large on a bottom
+> shelf needs you to aim at the deck *above* — the geometry says the aim volume is larger than the
+> crate, so it is resolution, not hitboxes); no grab indicator exists for loose crates; two-player
+> carry feel has **never been judged** because two instances on one keyboard cannot perform one; and
+> NJ's ask for crate labelling so specific crates can be referenced.
+
+> **02-07's own guard note for whoever plans 02-08/02-09/02-10 next:** `DockDoor._wake_blocking_cargo`
+> still has no LIVE-FIRE integration proof — only the `engine_assumptions.gd`-level mechanical check
+> (an `AnimatableBody3D` cannot displace a `FREEZE_MODE_STATIC` body without waking it first). A real
+> scenario step (settle a crate in the door's own path, close the door, assert it moved rather than
+> clipped through) is still owed. See `02-07-SUMMARY.md`'s own "Next Phase Readiness" section.
+
+**02-07 complete, 2026-08-22.** Scripted days and the morning delivery. `DayManifest`/`DaySchedule`
+(pure, deterministic, capacity-bounded) landed test-first — 1738 unit checks, including a 360
+(seed, crew, day) cap sweep proving all three delivery axes (body, cell-equivalent volume,
+per-size composition) hold separately across days 1-30. `DayClock` now builds and broadcasts a
+manifest at MORNING (`call_local` plus a targeted late-joiner catch-up), gained `census()` (every
+cargo record in the building, loose or racked) and a cached due-today count; `TestRoom` runs the
+truck-dump ceremony, paced by wall-clock time into Goods IN, derived from the zone's own collision
+shape. A third integration scenario, `goods_session.gd` (port 27095), is the first and only thing
+that ever calls `begin_run()` — all seven of the plan's own numbered assertions proven on two real
+peers, three consecutive clean full-suite runs, 177s each.
+**Two real, previously untested things were found and fixed, not merely exercised:**
+(1) `@export` cannot apply to a static variable — confirmed with a throwaway probe rather than
+assumed, so the three delivery caps live on `DayClock` (a real Node, already the home for
+`day_length_seconds`) rather than on the all-static `DaySchedule` the plan's text asked for.
+(2) `request_call_it_a_night` let ANY peer's request succeed, not just the host's own — the
+existing `if not Net.is_host(): return` guard only checks whether the *executing* peer is the
+host, and every caller (host or client) targets peer 1 via `.rpc_id(1, ...)`, so it always passed
+once the call landed on the host's machine. Confirmed empirically with a throwaway two-process
+probe (never committed) before touching the file: a client's own call genuinely flipped the host
+to `MIDNIGHT`. Fixed by also checking the actual sender (`_sender_id() != 1`), re-verified with the
+same probe, then proven permanently by the new scenario's own assertion 7.
+**One real regression found on the first full-suite run, fixed, not re-run past:** the goods-client
+process failed its own preamble (`all 17 starting crates replicated`) after a full 20s timeout, with
+day already at 2 on the host by the time it gave up — the starting batch spawns in one tight burst
+at world load and can arrive on a slower peer as a single jump past an exact count check. Fixed by
+loosening that check to `>=`, and — the more important fix — abandoning a before/after crate-name
+snapshot (unsafe once more crates can appear mid-run, which is what a truck dump is) in favour of
+identifying a delivered crate by its own `store_until_day` (always above the starting batch's fixed
+placeholder), immune to snapshot timing entirely. Three consecutive clean runs after the fix.
+**`DockDoor._wake_blocking_cargo` still has no live-fire scenario proof** — carried forward
+explicitly, see the note under Current Position above. Four commits: `59eefc1` (manifest +
+schedule, test-first), `32880b1` (the clock posts, the level dumps), `f5a233a` (the third
+scenario + the call-it-a-night fix), `df2bcbc` (the content-based delivered-crate fix). Full
+detail: `02-07-SUMMARY.md`.
+
+**02-06 complete, 2026-08-22 — finished by the orchestrator, not the executing agent.** STORE-07 is
+proven field-for-field on two peers over real ENet: 96 host steps and 81 client steps, up from 51 and
+42. The agent was stopped mid-verification at ~3 hours; the revert, a blocked-term fix, three green
+runs, the commit and the summary were done directly. Commits `260b53f` and `2fda621`.
+**The most valuable thing in it is a negative control** — the record's `mass` field was deliberately
+dropped on the wire and the suite went red naming that exact field, then the break was reverted and
+the greens re-obtained on the reverted tree. An assertion only ever seen passing is not evidence of a
+guard. Full detail, including why it took three hours and every guard added because of it, in
+`02-06-SUMMARY.md`.
+Plan: Phase 2 planned 2026-08-21, revised 2026-08-22 — 11 plans (02-01 … 02-11) in **8 waves**, `.planning/phases/02-goods/`.
+**02-01 complete, 2026-08-22.** ADR 25 (`decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md`)
+is ratified and committed, with the three contradicted documents (`decisions/decision-log.md`,
+`.planning/REQUIREMENTS.md`, `docs/GDD.md`) brought into line with it. NJ's rulings, verbatim per
+`02-01-SUMMARY.md`:
+1. **Save point — `defer-it`.** Clause (f) now says the ceremony *will be* the save point once
+   saving is built, and names **Phase 5 (the run)** as the phase that owns it — the Lease Run
+   wrapper lives there, and a 30-day term at 6–10 minutes a day makes saving mandatory. Phase 2
+   builds no persistence.
+2. **The delivery ceiling — rule shape, not a fixed number.** NJ agreed a ceiling is needed but
+   rejected fixing 24 (or any number) in the ADR. Clause (f) now commits to two exported-tunable
+   caps — a body-count cap guarding ADR 14's ~150-body envelope, and a separate cell-equivalent
+   volume cap (a Large is 16× a Small in cell-equivalents per `storage_grid.gd`, mirroring ADR
+   18's volume-not-items reasoning for storage fees) — plus per-size composition limits (Larges,
+   Mediums), all scaling with crew size and settled in play at the Phase 2 gate. Four feel
+   criteria are recorded as the tuning target: a morning delivery must feel worthy, deliberate,
+   achievable and like earning your pay.
+
+**Waves 1-4 done (`02-01`, `02-02`, `02-03`, `02-04`, `02-05`). Wave 5 (`02-06`) is next.**
+Phase 1: 01-01 through 01-09 all complete — all 9 plans, all 7 waves done.
 Status: **Phase 1 closed 2026-08-21.** The gate (01-08) passed — verdict "storage feels
 deliberate," NJ, explicit, after three play sessions. Task 2's rulings are written into
 [ADR 24](../decisions/2026-08-21-rack-presentation-ratified.md) and `.planning/REQUIREMENTS.md`;
-full detail in `01-08-SUMMARY.md`. Phase 2 has not started.
-Last activity: 2026-08-21 — 01-08 executed, closing the phase: see the resolved block below for
+full detail in `01-08-SUMMARY.md`.
+
+> **✓ BOTH PRE-EXECUTION BLOCKERS RESOLVED 2026-08-22. Phase 2 is cleared for `/gsd:execute-phase 2`.**
+>
+> 1. **Plan check — DONE.** Ran plan-check → revise → re-check. The first pass found **three
+>    blockers, all the same species**: the wave graph was arithmetically sound but ignored what
+>    `.planning/config.json` actually does (`plan_level` parallelism, 3 concurrent agents), so
+>    **every multi-plan wave had a coordination hazard**. (a) 02-01, the ADR checkpoint whose own
+>    text says "do not begin any other Phase 2 work while this is open", shared wave 1 with 02-02
+>    and 02-03 — `execute-phase.md:203` lets parallel agents *complete* while a checkpoint waits,
+>    so both would have committed code against an unratified ADR. (b) 02-05 declares its own
+>    integration stage red ("that is 02-06's job") while same-wave 02-07 required a green suite
+>    over three runs — structurally unreachable in one working tree. (c) 02-09 and 02-10 both
+>    edited `rack.gd` in wave 6, undeclared in 02-10's `files_modified`. All three fixed by
+>    dependency edges and one API relocation; re-check returned **zero blockers**.
+> 2. **Save logic — RULED.** NJ ruled **`defer-it`** at the 02-01 checkpoint, 2026-08-22: the
+>    midnight ceremony's save-point clause in ADR 25 is reworded to say it *will be* the save
+>    point once saving is built, naming **Phase 5 (the run)** as the phase that owns it — the
+>    Lease Run wrapper lives there, and a 30-day term at 6–10 minutes a day makes saving
+>    mandatory. Phase 2 builds no persistence of any kind; the day boundary and the v1 join
+>    window are the only two of the three ceremony roles this phase actually builds, and ADR 25
+>    now says so plainly rather than asserting a save point nothing implements.
+
+> **Revision detail (2026-08-22), since `.planning/phases/` is repo-excluded and this is the durable record:**
+> Wave graph went 7 → **8 waves**: w1 `02-01` (alone) | w2 `02-02`, `02-03` | w3 `02-04` |
+> w4 `02-05` | w5 `02-06` | w6 `02-07`, `02-08` | w7 `02-09`, `02-10` | w8 `02-11` (gate, alone).
+> 02-07's new dependency on 02-06 is a **scheduling fence, not a code dependency** — a note in the
+> plan tells its agent that a red suite on arrival is a real regression to diagnose, not 02-05
+> leftovers. The `rack.gd` conflict was fixed **at source** rather than by serialising: the
+> write-through API `Rack.apply_record_update(cell, crate_id, changes)` moved into 02-05 (which
+> owns the cell-record data model), while its RPC wrapper `CarryAuthority._record_updated(...)`
+> went to 02-06 — because 02-05 is deliberately wire-free and `rack.gd` has **no RPCs at all**, a
+> property 02-09's verification greps to preserve. 02-10 now touches neither file and carries a
+> `git diff --stat …/rack.gd shows nothing` assertion. **No plan's build content changed otherwise.**
+> Verified independently: every wave == max(dep waves)+1, zero same-wave `files_modified`
+> collisions, both checkpoints alone in their waves, no cycles, all 11 files byte-scanned **pure
+> LF, zero CR** (a re-check warning claiming CRLF was a false positive from its own grep quoting).
+
+Last activity: 2026-08-22 — **02-05 executed: the rack holds three sizes and remembers whole
+records, wave 4 complete.** `scripts/world/storage_grid.gd` gained ADR 25 (d)'s Large-across-
+two-cells arithmetic — `capacity_for_size`/`cells_for_size` (deliberately different questions:
+a Large's capacity in a cell is 1, its footprint is 2, and conflating them is how a Large ends
+up thought of as "capacity 0.5"), `large_partner_cell` (the `1 - n` flip that only works because
+ADR 18 fixes `RACK_COLUMNS`/`RACK_DEPTH` at exactly 2, asserted directly rather than merely relied
+on), `pair_centre`, `large_yaw` — and ADR 24's corner-upright fix, `mint_offset`: a body minted at
+a bare cell centre intersects the rack's own uprights unless it's small enough to clear them
+(true of nothing bigger than a Small), so a Medium or Large now mints shifted toward the rack's
+own horizontal centre by `MINT_CLEARANCE` (0.12 m) on whichever axis it doesn't already span the
+full 2 m width. **The occupancy DECISIONS moved here too** — `cell_can_accept` and
+`cell_apply_record_update` — specifically so a bare `--script` unit test could call the real
+production rule rather than reimplement it a second time and risk the two silently disagreeing
+(`Rack` is a `Node3D` and cannot be instantiated in that kind of run). `scripts/world/rack.gd`'s
+whole `_cells` shape was rebuilt: `{kind, ids}` (bare crate ids) became
+`{category, items, size, partner, anchor, orientation}` (a LIFO stack of **whole** `CargoRecord`
+dictionaries), and all seven of 01-03's Small-shaped methods were re-decided against it rather
+than patched — `can_accept` now delegates to `StorageGrid.cell_can_accept` and gained a `size`
+argument (a Large routes to the new `can_accept_large` instead); `add_to_cell`/`remove_from_cell`
+move whole records; `add_large`/`remove_large` are the only two functions ever allowed to touch a
+Large's `partner`/`anchor`/`orientation` fields, and a Large's two cells each hold their **own**
+duplicated copy of the same record (self-describing halves, not one record plus a link — a late
+joiner or a future plaque reads either half with no link to resolve first); `apply_cell_filled`/
+`apply_cell_cleared` handle a Large's two halves as one unit and stop hard-coding
+`Crate.KIND_SMALL`; `occupancy_snapshot` ships full records for a late joiner; and
+`occupied_cells_in_top_row` returns a Large's anchor only, so a shed can never spawn the same
+Large twice (supply conservation). **`apply_record_update(cell, crate_id, changes)` is new**: the
+write-through editor for a record already racked (02-10 needs this to bump a missed collection's
+`store_until_day`), local-only — `rack.gd` still has zero RPC annotations of any kind, verified by
+grep, and two doc comments were rewritten mid-plan once that same grep turned up 4 hits from
+**prose describing the property**, not real ones. Racked visuals now scale the node per size
+(base 0.5 m mesh unchanged, so the api layer's own mesh-size assertion stays true) with ADR 24's
+inset applied on top, and 01-06's placement tween was fixed to animate from/to that inset scale
+rather than the literal `1.0`/`1.06` it used before — unfixed, a Medium or Large would have
+snapped to roughly a quarter size mid-flight.
+**One real, deliberate deviation, empirically verified rather than assumed**: `apply_cell_filled`'s
+two new parameters (a record, an orientation) are left **without a GDScript static type**,
+confirmed by three isolated headless experiments that a statically-typed mismatch against a
+known-typed caller (`carry_authority.gd`'s `rack: Rack`) is a **parse-time** failure in this
+engine, not a runtime one — typing them properly would have made the still-stale
+`_cell_filled` RPC handler fail to *load*, taking every scene using `CarryAuthority` down with it
+in `smoke`, rather than the clean, isolated `integration`-only runtime failure this plan is
+supposed to end with. **`can_accept`'s three call sites, in `carrier.gd` and `carry_authority.gd`,
+were fixed in this plan** (not left stale) — the plan's own Task 2 text explicitly instructed
+this, a mechanical `.size` argument addition using a field `Crate` already has (02-04); a Large
+still cannot be racked through either path, since nothing chooses an orientation yet.
+**`./tools/run-tests.ps1` confirms exactly the intended shape, twice, byte-identical**: `api`
+(115 assumptions) / `unit` (491 cell-arithmetic checks, up from 183, plus the existing 489+56) /
+`smoke` (11 scenes) all green; `integration`'s `carry` scenario is fully green and untouched
+(27/23 steps); its `storage` scenario fails **exactly once**, on both peers, at
+`Rack.apply_cell_filled` (`rack.gd:628`), reached via `CarryAuthority._cell_filled` — the exact
+call site this plan's own doc comments named as 02-06's to fix, with the wire itself needing a
+record and an orientation instead of a bare crate id and kind. No other engine error, warning,
+leak or crash anywhere in either run. Two commits: `7bef143` (StorageGrid geometry + occupancy
+rules + 308 new unit checks), `76cd7b2` (Rack's rewrite + the two mandated caller fixes). Full
+detail, including the exact cell shape and the precise call-site fix 02-06 inherits:
+`02-05-SUMMARY.md`.
+
+Before that, 2026-08-22 — **02-04 executed: Medium and Large cargo landed, weight decides the
+hold, wave 3 complete.** `crate.gd` gained a real `record: CargoRecord`, a `size`
+(`CargoCatalogue.Size`), and repurposed `kind` (ADR 25 (a): "kind" is now the category — atomicity
+in `Rack.can_accept` keys off it exactly as it always did, unchanged). `setup()` widened to
+`setup(record_data: Dictionary, spawn_point: Vector3)`, rebuilding the record with
+`CargoRecord.from_dict()` and applying `id`/`kind`/`size`/`mass` from it — mass comes from the
+record, never the scene, so one Medium can be light textiles and the next heavy masonry.
+`crate_medium.tscn` (1.0 m cube) and `crate_large.tscn` (2.0 × 1.0 × 1.0 m) both **inherit**
+`crate.tscn` rather than duplicating it, each resizing `Collision`/`BodyMesh` to ADR 18's exact
+dimensions and `PushSensor` to body size + 0.12 m on every axis; the Large's `editor_description`
+fixes the orientation convention 02-05/02-07 depend on — **the 2 m axis is local X**. `test_room.gd`
+spawns through a size-keyed `CRATE_SCENES` dictionary and mints every starting crate's full
+`CargoRecord`; rows 1-2 (`crate_0`..`crate_11`) stay Small in the same positions (every category
+checked in code against `SOLO_CARRY_MASS_LIMIT`, printed rather than `push_warning`'d), and a new
+mixed heavy row (`crate_12`..`crate_16`, checked against every corridor and fixture before
+placement) adds a heavy masonry Small, a light textiles Medium, a heavy masonry Medium, and two
+Larges of different categories (machine_parts 108 kg, white_goods 96 kg) — `crate_count` 12 → 17.
+`engine_assumptions.gd` gained ADR 18's Medium/Large dimensions, the always-strictly-larger
+`PushSensor` rule, the pinned layer/mask, the Large's 2 m-axis-is-X assertion (ADR 25 (d)), and
+confirmation the Large scene's own fallback mass alone exceeds the solo-carry limit.
+**One real bug found and fixed before any test ran, not by a red run**: `Rack.apply_cell_filled`
+hard-coded the stored cell kind to `Crate.KIND_SMALL`, silently correct only because every crate's
+own `kind` was *also* always that same literal constant before this plan. The moment `kind` became
+a real category, the hard-code became actively wrong — the first crate into an empty cell always
+succeeds, but the *stored* kind stays `&"small"`, so a second, same-category crate into that cell
+would be refused as a false mismatch (`storage_session.gd`'s own "client racks crate_1 into the same
+cell" step exercises exactly this). Fixed by threading the crate's real kind through
+`Rack.apply_cell_filled` (now takes a `kind: StringName` parameter) and `CarryAuthority._cell_filled`
+(the RPC gained the matching parameter) — **`rack.gd` still has zero `@rpc` of its own**, so 02-09's
+"no RPCs in rack.gd" property (see the wave-revision block above) still holds; verified by grep.
+`crate_0`/`crate_1` (the pair `storage_session.gd` racks into one cell) are deliberately given the
+same category (`textiles`) so that step keeps proving genuine same-category stacking. **Touches two
+files outside this plan's own `files_modified`** (`rack.gd`, `carry_authority.gd`) — a deliberate,
+narrow Rule 1 fix, not scope creep; full reasoning in `02-04-SUMMARY.md`. **02-05, which owns the
+rack's full occupancy-model redesign, should build on this rather than revert it** —
+`apply_cell_filled`'s signature is now `(cell, crate_id, kind, from_position)`, not the 3-arg form
+the wave-revision notes above were written against. No live human playtest of the heavy row was
+performed (this plan has no checkpoint); the mass→drag wiring is proven by 02-02's own catalogue
+sweep plus the untouched, already-tested `_refresh_hold_mode()` mass check, not by a new interactive
+session — the heaviest Large's hold-spring sag (~44 cm at 108 kg) is measured and recorded as a
+question for the wave-7-equivalent gate (02-10), not pre-tuned. `./tools/run-tests.ps1` green three
+consecutive runs (no red seen at any point — the atomicity bug was caught by code review before the
+first run, not by a failing one); `./tools/run-stress.ps1` re-run clean, host upstream unchanged at
+93.4 kb/s across the sweep. Three commits: `8825b8f` (crate scenes + record), `c871368` (spawn by
+size + heavy row + the atomicity fix), `f7f0fba` (api layer invariants). Full detail:
+`02-04-SUMMARY.md`.
+
+Before that, 2026-08-22 — **02-03 executed: `DayClock` and `DockDoor` landed, wave 2 complete.**
+`scripts/world/day_clock.gd` (`class_name DayClock`) is a level-scoped, host-authoritative,
+group-found `Node` (never an autoload — the exact temptation `docs/project-structure.md` names ahead
+of time), replicating `sync_day`/`sync_phase`/`sync_elapsed` at 5 Hz via a `MultiplayerSynchronizer`
+(day/phase on-change, elapsed always). Five phases (`IDLE→MORNING→SHIFT→AFTER_HOURS→MIDNIGHT`), five
+past-tense signals, `begin_run()`/`advance_to_next_day()`/host-gated `request_call_it_a_night()`
+(ADR 21's precedent — ignored from a non-host or outside `AFTER_HOURS`). **Inert by construction**:
+`_advance_host()`'s first line returns while `sync_phase == IDLE`, and nothing but `main.gd`'s
+`_on_session_started()` (host-only) ever calls `begin_run()` — `TestRoom` itself was not touched.
+`scripts/world/dock_door.gd` (`class_name DockDoor`) derives its own open/closed position from the
+clock's replicated phase every physics frame (zero networking of its own, `GoodsZone`'s own shape),
+driven by an `AnimatableBody3D` slab (`sync_to_physics`) lerped toward a target rather than a `Tween`
+— self-correcting for a late joiner or a missed update, no special case needed. Before a close starts,
+the host wakes any settled (`FREEZE_MODE_STATIC`) crate caught in the doorway via a new public
+`Crate.wake()` (delegates to the existing private `_wake()`) — an `AnimatableBody3D` cannot displace a
+frozen static body, only intersect it, measured and pinned in `engine_assumptions.gd` rather than
+assumed. `test_room.tscn`'s north wall is cut around a 3.0 m door gap (above `GoodsIn`) and its west
+wall around a permanent, doorless 2.0 m personnel gap (ADR 25 (f): a player is never locked in or out
+— the simplest possible implementation is a hole, not a mechanic); neither cut touches any
+integration-suite corridor, checked against the actual stand-points and waypoints in both test files
+before either position was chosen. `main.gd` calls `begin_run()` once, host-only, after the world
+loads; a new `--day-length=N` launch arg overrides it for hand-testing; the HUD gained a
+day/phase/countdown line that reads "DOORS CLOSING IN" inside the klaxon window (ADR 25 (f):
+information asymmetry lives on the screen, never only in audio); "N" (`call_it_a_night`, added
+through the running editor's own `ProjectSettings` + `save()`, not a direct file edit, since the open
+editor rewrites `project.godot` from its in-memory copy) requests the early close. `engine_assumptions.gd`
+gained RUN-02's day-length **bound** (360–600s, not a value — ADR 25 (f) leaves the number unagreed),
+`open_fraction`'s and `morning_seconds`' own bounds, and a measured AnimatableBody3D-vs-dynamic/frozen-
+static behaviour pin. **Both existing integration scenarios are byte-identical to before this plan**
+(`git diff --stat` empty on both) — proven, not merely intended, across five full-suite runs at
+identical step counts. A real two-headless-peer run through `main.tscn` (`--day-length=48`, outside
+the committed suite) showed the whole loop close on both peers' own logs: `day 1 -> MORNING -> SHIFT
+-> AFTER-HOURS -> MIDNIGHT -> day 2 -> MORNING`. **Two new `class_name`s needed the editor rescan**
+(`DayClock`, `DockDoor`) — same raw-WebSocket approach as 02-02, verified against
+`global_script_class_cache.cfg` before trusting a result. The plan's summary reported the
+`storage_session.gd` client-exit leak recurring twice across five runs and recorded it as a standing
+flake; **that was re-checked immediately afterwards and is not reproducible — the leak was fixed in
+`2300da7` and has since passed 11 consecutive clean runs.** See the corrected note in the traps
+list below for what actually explains a red storage run. Three
+commits: `8d54e6f` (the clock), `c9fd83b` (the door), `631970c` (wiring + the HUD + the bound). Full
+detail: `02-03-SUMMARY.md`.
+
+Before that, 2026-08-22 — **02-02 executed: `CargoRecord` and `CargoCatalogue` landed, test-first.**
+`scripts/goods/cargo_record.gd` is STORE-07's round-trip snapshot (id, category, variant, size,
+fragility, mass, declared_value, store_until_day, owner, condition actual/apparent, drag_distance),
+pure `RefCounted`, `to_dict()`/`from_dict()` wire-safe and tolerant of a missing field.
+`scripts/goods/cargo_catalogue.gd` is the ADR 25 taxonomy: 11 categories (masonry, tinned, textiles,
+powders, machine_parts, ceramics, glassware, electronics, white_goods, novelty, dodgy), each with a
+weight band per size, 0-3 fragility, a value density, a plaque label, 3+ variants and a greybox decal
+tint, built as a lazily-cached static table rather than `.tres` Resources. `test/unit/cargo_taxonomy_test.gd`
+was written first against neither file (watched fail by naming both missing scripts), then made to
+pass task by task: 489 checks, including a design-property sweep proving the ADR 25 (c) weight
+deception both ways (2 categories' Smalls over `Crate.SOLO_CARRY_MASS_LIMIT`, 6 under half of it),
+every Large over the limit and under ~110kg (hold-spring sag bound), Mediums split both ways, every
+category's value staying inside `Dilemma.VALUE_REFERENCE` (2000) across a 1-10 day sweep, the dodgy
+flag, and fragility/value as independent axes. The 30-day value overflow the planner already flagged
+is now a proven, not just anticipated, Phase 4 finding (worst case at 10 days is 945, comfortably
+inside; the same categories at 30 days would reach 2835). **Two new `class_name`s needed the editor
+rescan** (`CargoRecord`, then `CargoCatalogue`) — triggered both times via the MCP bridge's raw
+WebSocket protocol directly (no MCP tool was exposed to the executing agent's own toolset; a small
+one-shot Node script sent `get_project_info` then `execute_editor_script`), verified both times by
+grepping `global_script_class_cache.cfg` before trusting a test result. **Full suite green, three
+consecutive clean runs** — but getting there surfaced and fixed a real, if minor, side issue: an
+early attempt at automating the retry (a backgrounded PowerShell loop) left two orphaned Godot
+processes squatting on port 27097 between iterations, found via `tasklist`/`netstat` and killed;
+even after confirming a clean process/port state, `storage_session.gd`'s already-documented
+client-exit resource leak (see the wave-7-gate block below) still surfaced intermittently — confirmed
+unrelated to this plan's files (`grep -rl "CargoRecord\|CargoCatalogue"` finds only the three files
+this plan created) before accepting it as the same pre-existing flake. Three commits:
+`91422b0` (failing test), `3d125c5` (CargoRecord), `b7ffea9` (CargoCatalogue). Full detail:
+`02-02-SUMMARY.md`.
+
+Before that, 2026-08-22 — **02-01 resumed and completed: NJ's rulings applied, ADR 25 committed.**
+Save point ruled `defer-it` (clause (f) reworded to say the ceremony will be the save point once
+saving is built, naming Phase 5 as the owning phase — no save point is claimed for Phase 2). The
+delivery ceiling reframed from a fixed 24-crate commitment to a rule shape: a body-count cap
+guarding ADR 14, a separate cell-equivalent volume cap (a Large is 16× a Small in cell-equivalents
+per `storage_grid.gd`, mirroring ADR 18's volume-not-items reasoning), and per-size composition
+limits, all exported tunables scaling with crew size, tuned in play against four named feel
+criteria (worthy, deliberate, achievable, earning your pay) rather than fixed in the ADR. One
+commit: `docs(02-01): ratify the goods taxonomy, Large orientation, dates and the day clock`. Full
+detail: `02-01-SUMMARY.md`. Before that, same day — **02-01 execution started, Tasks 1–2 done,
+paused at the Task 3 checkpoint.** ADR 25 drafted in full (six clauses, all four Consequences
+sub-headings, four alternatives) and `decisions/decision-log.md` / `.planning/REQUIREMENTS.md` /
+`docs/GDD.md` brought into line with it. **Nothing committed at that point** — the plan's own
+instruction held the ADR uncommitted until NJ named the save-point ruling, since it could still
+change clause (f)'s wording. One deviation beyond the plan's literal task list: the plan named only
+GOODS-01/02/03 for `REQUIREMENTS.md`, but its own verification greps both `REQUIREMENTS.md` and
+`GDD.md` for the word "spoilage" and expects nothing left claiming it damages cargo — that also
+caught `DMG-01` (still listing spoilage as a damage source) and one flavour line in GDD §4's 90-day
+row (a different, pre-existing spoilage mention, about a future 90-day term's own environmental
+pressure, not the store-until-date mechanic). Both fixed to match ADR 25 rather than left to fail
+the plan's own check. Before that, earlier the same day —
+**Phase 2 plan-checked and revised**: three scheduling blockers found and fixed, re-check clean,
+7 → 8 waves (see the resolved blocker block above). Before that,
+2026-08-21 — **Phase 2 planned**: 11 plans written and cross-checked
+against the tool's plan index (CRLF frontmatter trap checked — all files LF). Wave 1 blocks on a
+human checkpoint (02-01, the ADR 25 draft); the **wave 8** gate is 02-11. Three planner findings
+worth reading before executing: the rack's corner uprights sit inside corner-cell footprints, so
+Medium/Large minting needs `StorageGrid.mint_offset` (02-05/02-06); the day clock must stay inert
+in `test_room.tscn` until `begin_run()` or both existing integration scenarios break (02-03); and
+value bands overflow ADR 20's £2000 detection ceiling on 30-day contracts (assertion bounded at
+10 days, recorded as a Phase 4 finding — densities left as ADR 20 calibrated them). Roadmap
+update committed as `5d930a2` on `feat/phase-2-goods`, nothing pushed. Before that: 01-08 executed, closing the phase: see the resolved block below for
 the gate's own findings and rulings. Before that: 01-09 executed: `Crate` gained ADR 17's settle/wake state machine — a
 crate at rest for half a second freezes to real `FREEZE_MODE_STATIC` world geometry and blocks
 players client-side, wakes on a shove or a grab, proven on two real processes across four
@@ -73,7 +426,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 for ADR 19 before execution
 
 Progress: [█████████░] Phase 0 complete bar one blocked item; Phase 1 complete, all 9 plans, all
-7 waves — gate passed 2026-08-21. Phase 2 not started.
+7 waves — gate passed 2026-08-21. Phase 2: waves 1-6 complete (`02-01` … `02-07` — 7 of 11 plans);
+waves 7-8 (`02-08`, `02-09`, `02-10`, then the `02-11` gate) still to execute.
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -532,6 +886,7 @@ constrain upcoming work:
 | 18 — 1.0 m cell, atomic, LIFO | The rack's whole occupancy model (01-03 onward). `Rack` delegates all arithmetic to `StorageGrid` — nothing downstream should recompute it |
 | 23 — Early Access, same bar | Phase 6 (store page + wishlists before the date) and Phase 7 (the gate now means "EA-shippable", unchanged in content). Public roadmap sells axes, never parked features |
 | 24 — rack geometry ratified | The Phase 1 gate. Frame numbers are fixed and must not be resized once rack art exists. Pallet/jitter/plaque presentation is Phase 6 scope, not built yet. Wall-rack back row is a level-design property, not a bug: 6 cells head-on, plus end access |
+| 25 — goods taxonomy, dates, day clock | Phase 2 directly. Category-level atomicity (`CargoCatalogue`, 02-02) is the definition of ADR 18's "kind"; store-until dates are contract properties with no spoilage timer; both Large orientations are player-chosen; the roller door is the day clock, save point deferred to Phase 5 |
 
 ### Open
 
@@ -578,10 +933,11 @@ constrain upcoming work:
   signage on the loading face, anchored on the pallet's front edge, derived locally from a cell's
   own contents. Worth costing alongside whatever Phase 2 already needs for a store-until date
   display.
-- **Large orientation is an open question for Phase 2 planning** (GDD §6.1, `REQUIREMENTS.md`
-  GOODS-01): which two cells a Large occupies — side-by-side across columns, or front-to-back
-  through depth, which would be the one layout that uses a wall rack's dead back row. Must be
-  answered before Large cargo is built.
+- ~~Large orientation is an open question for Phase 2 planning~~ — **answered, ADR 25 (d), 2026-08-21:
+  both orientations are player-chosen, not fixed.** The convention the code now depends on (2 m axis
+  is local X) is built and pinned: `crate_large.tscn`'s own `editor_description` and
+  `engine_assumptions.gd` (02-04, 2026-08-22). The two-cell footprint and the rotate control itself
+  are still 02-05/02-07's own work, not built yet.
 - **Seven smaller follow-ups from the Phase 1 gate, deliberately not fixed now — candidates for
   Phase 2 or Phase 6 scope, not yet plans:**
   1. The red BLOCKED cell highlight is invisible on a full cell — occluded by the eight racked
@@ -615,6 +971,19 @@ constrain upcoming work:
   rack → OUT loop completed under 60 s**, with caveats (small room, perfect knowledge, no
   obstacles in the way). The assumption holds, conservatively — real play with a full warehouse
   and searching will be slower, not faster, which is the safe direction for a sim input.
+- **The day loop's frame is built** (02-03) **and now actually driven for the first time** (02-07):
+  `goods_session.gd` calls `begin_run()` with a short day length and proves both peers agree through
+  every phase, the manifest, the delivery, and who may end the night early — the first committed
+  test to exercise any of it. **Still open: a peer joining MID-phase** (both peers in
+  `goods_session.gd` join before `begin_run()` is ever called, so the late-joiner claim for the
+  clock/door specifically — as opposed to the rack snapshot and manifest catch-up paths, which 02-05
+  and 02-07 respectively DO prove for a genuine late joiner — still rests on the clock's
+  continuously-broadcast replication shape and the door's stateless lerp target, reasoned through
+  rather than proven by a dedicated late-join-mid-phase scenario. **Also still open:**
+  `DockDoor._wake_blocking_cargo` has no live-fire scenario proof (only the mechanical
+  `engine_assumptions.gd` check) — see 02-07's own STATE block above. Feel questions (does 8 minutes
+  read right once real content exists; does the greybox door/gap read as intended) are carried to
+  the Phase 2 gate, not answered here.
 
 ### Constraints learned the hard way
 
@@ -672,6 +1041,95 @@ constrain upcoming work:
   probe tried first, but *only* while empty-handed — while holding something, the container must
   still win, or a stray loose crate in front of a rack face would hijack a placement aim
   (`8be63f8`).
+- **A bare `--script` `SceneTree` run does not register the `Net` autoload — this reaches further
+  than "don't reference a `class_name` statically."** `engine_assumptions.gd` already knew not to
+  hold a static reference to `Crate`/`Rack` for that reason, but it also never calls `add_child()`
+  on anything it builds, so `_ready()` never runs. Actually **adding** `test_room.tscn` to a live
+  tree in a bare `--script` run (tried once, 02-03, as a manual verification shortcut) crashes
+  repeatedly with `Invalid call. Nonexistent function 'phase' in base 'Nil'` the moment any node's
+  `_ready()` touches `Net` (`TestRoom`, `CarryAuthority`, …) — because the autoload genuinely is not
+  there, not because of a compile-time dependency. A real headless host+client through `main.tscn`
+  is the only way to exercise `_ready()` for real outside the committed test harness.
+- **The godot-mcp bridge's `execute_editor_script` `print()`→`custom_print()` rewrite truncates on
+  the first closing paren, not the statement's own.** `print(ProjectSettings.get_setting("x"))`
+  fails with `Script parsing error: 43`, because the regex stops at `get_setting("x")`'s own `)`.
+  Not the documented "one statement only" limit — don't wrap a nested call in `print()` over this
+  bridge; verify by grepping the affected file on disk instead (02-03).
+- **The `storage_session.gd` client-exit resource leak is FIXED (`2300da7`), and the instruction
+  that briefly stood here — "re-run rather than treat it as a regression" — is WITHDRAWN.**
+
+  Diagnosed 2026-08-22 by running the client with `--verbose` against the **editor** binary: the
+  last rack placement's positional thud was still in flight at `quit()`, so its
+  `AudioStreamPlaybackWAV` outlived the tree and `rack_place.wav` was still referenced at exit.
+  `_finish()` now silences audio first. An earlier attempt had concluded the detail was
+  unavailable because the *export* build carries no leaked-object names; the suite uses the editor
+  binary, which does.
+
+  **Evidence it is fixed: 11 consecutive clean runs** — 6 targeted storage-client runs, then 5 full
+  suites. At the original "roughly every other run" rate, 11 clean in a row is about a 1-in-2000
+  coincidence.
+
+  02-03's summary reported it recurring 2 of 5 runs and recorded it as a standing flake. **That is
+  not reproducible and the conclusion was wrong.** Two documented causes in this same session
+  explain a red storage run without any leak: **orphaned Godot processes squatting on port 27097**
+  (02-02 hit exactly this and had to kill them by hand), and **editing `test_room.tscn` through the
+  editor bridge while a suite is running**. Both look like an unrelated failure if you assume a
+  known flake instead of reading the log.
+
+  **The standing rule is the project's own:** a flaky suite is worse than none, because it trains
+  you to ignore red. Never re-run to get past a failure. Read the log, confirm the actual error
+  lines, and check for stray processes. If a genuine leak signature returns, it is a new defect and
+  needs its own diagnosis, not a re-run.
+
+- **⚠ How to tell a stray test process from NJ's editor — get this wrong and you kill the editor.**
+  List them with `Get-CimInstance Win32_Process -Filter "name like 'Godot%'"` and read the **full**
+  command line.
+
+  **Match on `--headless`, never on `--editor`.** Every test process is launched `--headless`; the
+  editor never is. An earlier version of this note said to spare "the one whose command line
+  contains `--editor`" — **that is wrong and dangerous**, because Godot accepts the short form `-e`,
+  and the editor commonly appears as:
+
+  `Godot_v4.6.2-stable_win64.exe --path "…/warehouse-manager" -e res://scenes/levels/test_room.tscn`
+
+  A `--editor` substring test does not match that, so an agent tidying up orphans would have killed
+  the open editor — taking the MCP bridge and the class-cache rescan with it. **Kill only processes
+  carrying `--headless`.** Everything else is left alone.
+
+- **⚠ `rpc_id(-1, …)` is not valid in Godot 4, and it fails in the most misleading way available.**
+  `0` is broadcast, any **positive** value targets one peer. Godot 3's "negative peer means everyone
+  *except* that peer" form was removed and **there is no exclude form at all** — to skip a peer you
+  loop `multiplayer.get_peers()` and skip the id yourself.
+
+  **Why this earned a trap entry rather than a code comment:** it does not raise where you wrote it.
+  The engine drops the call with `ERROR: Attempt to call RPC with unknown peer ID: -1` into
+  **stderr**, the host's own state stays perfectly correct, and the symptom appears as a **20-second
+  timeout in whichever client assertion was waiting on state that was never sent** — potentially
+  dozens of steps away from the bug. On 02-06 that read as a sync/race problem and cost about ninety
+  minutes; the host was passing all 96 of its own steps the entire time.
+
+  Now guarded three ways: an api-layer assumption pins `TARGET_PEER_BROADCAST == 0` with the
+  reasoning; `run-tests.ps1` repeats the engine's own error text in the **verdict block** rather than
+  only mid-run; and this entry exists.
+
+- **⚠ Read BOTH log streams. Assertions go to `*.out.log`; engine errors go to `*.err.log`.**
+  A failing assertion and the engine error that *caused* it live in different files. Tailing only
+  `.out` shows you a timeout with no cause anywhere near it. The suite's verdict block now echoes the
+  engine lines, but when reading raw logs, open both — this is the single cheapest habit for cutting
+  debugging time on this project.
+- **A hard-coded fallback constant that happens to equal every real value today will silently stop
+  matching the moment one field stops being a constant.** `Rack.apply_cell_filled` stored
+  `Crate.KIND_SMALL` (`&"small"`) as a cell's kind regardless of what was actually placed — invisible
+  through all of Phase 1 because every crate's own `kind` was *also* always that same literal
+  constant, so the mismatch check it fed (`Rack.can_accept`) always agreed with itself. The moment
+  02-04 made `kind` a real category, the hard-code became wrong for every crate, and the bug was
+  only ever going to be caught by a test that stacks two different real crates in one cell —
+  exactly what `storage_session.gd` already did. Fixed by threading the real kind through
+  `apply_cell_filled` and the `_cell_filled` RPC rather than deferring it, because it blocked this
+  plan's own required green suite (02-04). **`rack.gd` still has zero `@rpc` of its own** — 02-09's
+  "no RPCs in rack.gd" property (see the wave-revision note above) still holds; `apply_cell_filled`'s
+  signature is now `(cell, crate_id, kind, from_position)`, a 4th parameter 02-05 needs to know about
+  before touching this file again.
 
 ## Phase 0 outcome
 

@@ -21,7 +21,7 @@
 
 - [x] **CARRY-01**: A player can pick up, carry and drop cargo, and it reads as weight rather than lag
 - [x] **CARRY-02**: Two players can carry one item together, and hand it between them
-- [ ] **CARRY-03**: Any item can be dragged by one player — slow, noisy, with a scuff chance, and floor level only
+- [ ] **CARRY-03**: Any item can be dragged by one player — slow, noisy, with a scuff chance, and floor level only *(partially true, do not tick as a whole — "any item... floor level only" is now proven true for all three size classes, Small through Large, including the case ADR 19 explicitly deferred until Large existed: 02-08, roadmap success criterion 2, a lone player drags a Large and cannot rack one above floor level. "Noisy" is unbuilt — drag audio is Phase 6. "With a scuff chance" is unbuilt — scuffing is Phase 3, though `Crate.drag_distance` is already accumulating the input it will need. Tick only once all four clauses are true; ticking early would claim more than the code does.)*
 - [x] **CARRY-04**: Walking into cargo shoves it, identically whether host or client
 
 ### Storage (STORE)
@@ -32,19 +32,19 @@
 - [x] **STORE-04**: Floor stacking is allowed, blocks pathing, and counts as clutter *(ADR 17 / 01-09 — settled cargo turns static and blocks players for real, not only cargo in transit; verified underfoot at the Phase 1 gate, checks 16-19)*
 - [x] **STORE-05**: Racks have stability; hit one hard enough and the top row sheds *(01-07, bounded three ways against ADR 14; confirmed at the gate to read as punishment, not noise — a dragged crate can never reach the threshold, a thrown or two-player-carried one can)*
 - [x] **STORE-06**: A cell is atomic — one kind of cargo at a time — and retrieval within it is last-in-first-out *(01-03/01-04; atomicity challenged and upheld in play at the Phase 1 gate — the mixed zones are Goods IN, the floor, and shed aftermath, not a rack)*
-- [ ] **STORE-07**: The round-trip invariant — racking frees a crate's body and retrieval mints a fresh one, so every field of a crate's record (kind today; condition, apparent condition, scuffs, fragility, store-until date, owner and value as later phases add them) must survive a place/retrieve cycle intact: `retrieve(place(crate)) == crate` for every field. LIFO returning a *different* crate of the same kind is correct; losing or corrupting a field is not. *(Named at the Phase 1 gate, 2026-08-21 — not yet built beyond `kind`; Phase 2/3 scope, load-bearing for the Phase 3 pillar, since an unfaithful round trip would let racking launder damage.)*
+- [x] **STORE-07**: The round-trip invariant — racking frees a crate's body and retrieval mints a fresh one, so every field of a crate's record (kind today; condition, apparent condition, scuffs, fragility, store-until date, owner and value as later phases add them) must survive a place/retrieve cycle intact: `retrieve(place(crate)) == crate` for every field. LIFO returning a *different* crate of the same kind is correct; losing or corrupting a field is not. *(Named at the Phase 1 gate, 2026-08-21. Built and proven field-for-field, through the real RPCs, on both peers: 02-06 closed Small and Medium; 02-08 closes the hardest case, Large — one id spanning two cells, surviving a retrieval from either half, with the pair's own stored orientation re-derived rather than assumed. **Whoever extends `CargoRecord` next (Phase 3: condition, apparent condition, scuffs; Phase 4: value) must extend the round-trip test in the same plan** — this invariant is only as good as the field list it actually covers, and a requirement ticked once is not a requirement re-checked forever.)*
 
 ### Goods (GOODS)
 
-- [ ] **GOODS-01**: Size classes — Small (0.5 m, 8 per cell), Medium (1.0 m, one whole cell, view-blocking), Large (2.0 × 1.0 × 1.0, two cells) *(open question, raised at the Phase 1 gate: which two cells a Large occupies — side-by-side across columns, or front-to-back through depth, which would uniquely use a wall rack's dead row — is undecided; answer in Phase 2 planning)*
-- [ ] **GOODS-02**: Fragility 0–3, from crated machinery to glassware
-- [ ] **GOODS-03**: A store-until date that is both the deadline and the spoilage limit
+- [x] **GOODS-01**: Size classes — Small (0.5 m, 8 per cell), Medium (1.0 m, one whole cell, view-blocking), Large (2.0 × 1.0 × 1.0, two cells) *(all three built and proven: Small/Medium — 02-04/02-05/02-06; Large — 02-08, closing the question [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md) answered: a Large spans two adjacent cells in **either** orientation, side-by-side across columns or front-to-back through depth, chosen by the player at placement with a rotate control and shown, refused or accepted, before the keypress; recorded as one id across two cells, surviving retrieval from either half.)*
+- [ ] **GOODS-02**: Fragility 0–3, from crated machinery to glassware *(fragility is a **category-level** property — [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md) — which is what keeps this a set of ten numbers rather than forty)*
+- [ ] **GOODS-03**: A store-until date — the day a client collects. It is a **contract property, not a kind property**: there is no independent spoilage timer and no degradation over time, so nothing damages cargo except what physically happens to it. Missing a collection costs (see [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md)); a client collecting late pays demurrage and starves tomorrow's capacity.
 - [ ] **GOODS-04**: Condition tiers — Pristine, Scuffed, Damaged, Destroyed
 - [ ] **GOODS-05**: Apparent condition, which diverges from actual condition when patched
 
 ### Damage (DMG)
 
-- [ ] **DMG-01**: Damage from drop height, collision velocity, rack collapse, teammates, spoilage and darkness
+- [ ] **DMG-01**: Damage from drop height, collision velocity, rack collapse, teammates and darkness *(spoilage removed — [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md): store-until dates are a contract property, not a degradation timer, so nothing damages cargo except what physically happens to it)*
 - [ ] **DMG-02**: Every condition tier has an unmistakable visual *and* audio tell
 
 ### The dilemma (DIL)
@@ -58,7 +58,7 @@
 
 - [ ] **CLIENT-01**: A named roster of 4–6 clients, each with a personality — including dodgy ones whose cargo everybody can see through, played entirely through trust and suspicion with no contraband system
 - [ ] **CLIENT-02**: Trust, which gates contract quality and volume
-- [ ] **CLIENT-03**: Suspicion, which is raised permanently by being caught
+- [ ] **CLIENT-03**: Suspicion, which is raised by being caught and never fades with time — only confessing walks it back (ADR 20) — and which is scoped to the lease rather than crossing into the next run (ADR 21)
 
 ### Economy (ECON)
 

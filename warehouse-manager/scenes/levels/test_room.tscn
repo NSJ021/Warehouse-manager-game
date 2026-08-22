@@ -4,6 +4,8 @@
 [ext_resource type="Script" path="res://scripts/goods/carry_authority.gd" id="2_carry"]
 [ext_resource type="PackedScene" path="res://scenes/world/rack.tscn" id="3_rack"]
 [ext_resource type="PackedScene" path="res://scenes/world/goods_zone.tscn" id="4_zone"]
+[ext_resource type="PackedScene" path="res://scenes/world/dock_door.tscn" id="5_door"]
+[ext_resource type="PackedScene" path="res://scenes/world/day_clock.tscn" id="6_clock"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -46,10 +48,17 @@ use_collision = true
 size = Vector3(20, 0.5, 20)
 material = SubResource("StandardMaterial3D_floor")
 
-[node name="WallNorth" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -10.25)
+[node name="WallNorth_West" type="CSGBox3D" parent="Geometry"]
+editor_description = "Split from a single WallNorth (02-03) to cut a 3.0 m dock-door gap centred at x=-7, above GoodsIn — see DockDoor below. Together with WallNorth_East this spans exactly the same x=[-10.5,10.5] the original single box did, minus the gap."
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 2, -10.25)
 use_collision = true
-size = Vector3(21, 4, 0.5)
+size = Vector3(2.0, 4, 0.5)
+material = SubResource("StandardMaterial3D_wall")
+
+[node name="WallNorth_East" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 2, -10.25)
+use_collision = true
+size = Vector3(16.0, 4, 0.5)
 material = SubResource("StandardMaterial3D_wall")
 
 [node name="WallSouth" type="CSGBox3D" parent="Geometry"]
@@ -64,11 +73,22 @@ use_collision = true
 size = Vector3(0.5, 4, 20)
 material = SubResource("StandardMaterial3D_wall")
 
-[node name="WallWest" type="CSGBox3D" parent="Geometry"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.25, 2, 0)
+[node name="WallWest_South" type="CSGBox3D" parent="Geometry"]
+editor_description = "Split from a single WallWest (02-03) to leave a permanent, doorless 2.0 m personnel gap at z=0 — ADR 25 (f)'s \"players always have a side way through\", answered with the simplest possible implementation: a hole. See PersonnelGap below. Clear of every integration-suite corridor: crate rows sit at x=[-2.5,2.5], racks at x=6.5, both zones at x=-7 (not near the west wall at x=-10.25 at all)."
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.25, 2, -5.5)
 use_collision = true
-size = Vector3(0.5, 4, 20)
+size = Vector3(0.5, 4, 9.0)
 material = SubResource("StandardMaterial3D_wall")
+
+[node name="WallWest_North" type="CSGBox3D" parent="Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.25, 2, 5.5)
+use_collision = true
+size = Vector3(0.5, 4, 9.0)
+material = SubResource("StandardMaterial3D_wall")
+
+[node name="PersonnelGap" type="Marker3D" parent="Geometry"]
+editor_description = "No door here, deliberately (ADR 25 (f)): a permanent, doorless opening is the simplest possible implementation of \"a player is never locked in or out\" — the roller door (DockDoor, north wall) governs commerce, not this gap. Do not fill this in; it looks like an unfinished wall, and it is load-bearing."
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10.25, 1, 0)
 
 [node name="PillarA" type="CSGBox3D" parent="Geometry"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.5, 2, -4.5)
@@ -81,6 +101,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 2, 4.5)
 use_collision = true
 size = Vector3(1, 4, 1)
 material = SubResource("StandardMaterial3D_wall")
+
+[node name="DockDoor" parent="Geometry" instance=ExtResource("5_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 0, -10.25)
 
 [node name="SpawnPoints" type="Node3D" parent="."]
 
@@ -128,3 +151,5 @@ kind = 1
 script = ExtResource("2_carry")
 players_path = NodePath("../Players")
 crates_path = NodePath("../Crates")
+
+[node name="DayClock" parent="." instance=ExtResource("6_clock")]

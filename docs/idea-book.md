@@ -202,6 +202,7 @@ You sell tomorrow's stock to pay today's rent, and tomorrow arrives anyway — n
 | 2 | **Short-changing intake** | Under-record what arrived, pocket the difference | Worth taking. Least designed |
 | 3 | **Lien sale** | Sell stock the client abandoned past its store-until date | Worth taking. The only strand that is not fraud |
 | 5 | **Buying stock in** | Cash back into goods, at a worse rate | Worth taking. Makes 1 legible |
+| 6 | **Claim-as-done** *(added 2026-08-21)* | Sign a missed or partial collection as fulfilled | Worth taking **with 2** — the same fraud, outbound |
 | 4 | **Bartering at the door** | Haggling on price | **Excluded.** Parked under ADR 6 and stays parked |
 
 Strand 4 is the trap, and it is named here so it cannot ride in as part of a bundle. It is already parked, and a "sales counter" that quietly includes haggling adopts parked scope without a superseding ADR.
@@ -245,6 +246,24 @@ Sign for thirty-eight when forty arrived. The least designed of the five, but it
 - **Skimmed stock was never on the books**, so there is no collection day and nothing to explain — unless the discrepancy itself is spotted.
 
 So fencing is high-volume with a guaranteed reckoning, and skimming is low-volume with uncertain detection. You can only take a little before the count is obviously wrong. It is a **paperwork lie rather than a physical one**, which makes it the natural counterpart to the tape gun, and it produces **untraceable stock** — exactly what comping needs. Strand 2 quietly feeds strand 1 and the comp mechanic both.
+
+### The outbound mirror — claim-as-done (added 2026-08-21, parked here by NJ)
+
+Found while designing the day clock, not the counter. When the roller door starts down on an
+unclosed manifest, the client walks and the honest forks are already priced: eat the failed or
+part-filled order (ADR 22 routes the consequence — legit clients punish in reputation, dodgy ones
+in cash), agree a redelivery (cost expressed as a **locked row on tomorrow's offer sheet** —
+opportunity cost, not a fee), or comp like-for-like. The third, fraudulent fork — **sign the
+collection off as fulfilled anyway** — is strand 2 in the outbound direction: the same paperwork
+lie as under-recording an intake, with the same by-product, stock the books say is gone but the
+building still holds. Untraceable stock, which is exactly what comping wants.
+
+It is recorded *here*, not as its own idea, so that both directions of the paperwork lie enter
+(if they ever enter) through **one** superseding ADR with one detection design. v1 ships the
+honest forks only — they fall out of ADR 22 pieces Phase 4 builds anyway. The risk profile note
+on strand 2 applies doubled: a skimmed intake has no collection day to survive, but a falsified
+*outbound* has a client who believes they hold their goods — the reckoning is not just possible
+but scheduled for the moment they open the van doors.
 
 ### Two things it would fill that are currently empty
 
@@ -349,3 +368,220 @@ Which yields the one hard design rule: **a falling rack may shed its neighbour; 
 Positional shedding + the wobble telegraph + the already-built static aftermath is most of the clip at a fraction of the cost: the rack lurches, the cells above the impact let go, the mess settles into everyone's way. No new physics objects beyond what 01-07 already sheds, no new ADR beyond the gate's own shed ruling, and the "vehicle" is two players sprinting a crate into the frame.
 
 The topple proper — the slow, creaking, full fall — is the headline slice. **Sequencing per ADR 23:** positional shed can enter through the Phase 1 gate ADR if ruled in; the wobble lands with Phase 6's juice pass; the topple is its own ADR and has the shape of a post-EA headline update, priced against real play data on how often players actually hit racks that hard.
+
+---
+
+## Clients, contracts and standing
+
+**Raised:** NJ, 2026-08-22, across a single design pass. Started as "what about a more persistent client rep, could be player specific?" and ended with a mechanic that reaches from the offer sheet to the meaning of being host.
+
+### The idea
+
+A named client roster you build a lasting relationship with. Three sketched so far, and each is already a category cluster from ADR 25's taxonomy rather than a new system:
+
+| Client | Categories | Signature | ADR 22 punishes in |
+|---|---|---|---|
+| **Clive Anderson** | Masonry, machine parts | Big, lawful, bulk. Heavy and Large-dominant, so two-player carry pressure | Reputation |
+| **Anne Butler** | Textiles | Fashion. Light, high value density — ADR 25 (c)'s deception in its purest form | Reputation |
+| **Monty Sontana** | Dodgy, powders | "100% Legal Baby Talcum Powder". Pays over rate | **Cash** |
+
+Monty is not new — GDD §6.6 already sketched "a Tony Montana knock-off shipping crates of legitimate baby talcum powder." This names him. The roster converges on what was already written rather than expanding scope.
+
+Run-level **contracts** are picked at lease start, up to three, each a goal delivered in daily instalments. They give a run an arc, which it currently lacks: today every day is structurally identical, and the only thing that changes is the rent clock.
+
+### Three layers, and conflating them is what breaks the pillar
+
+This is the load-bearing distinction in the whole entry.
+
+| Layer | Scope | Moved by | Gates |
+|---|---|---|---|
+| **Reputation** | Dies with the run | The dilemma forks | What work you are offered *this lease* |
+| **Trust / suspicion** | Dies with the run | Being caught; confessing | Whether *that client* believes you |
+| **Standing** *(new)* | **Persists across runs** | Handovers, volume, on-time rate | What each client will *risk* on you |
+
+Standing is the only new thing, and **it must never see the dilemma**.
+
+### Why it does not break ADR 21
+
+[ADR 21](../decisions/2026-08-19-two-currencies-and-the-crew-split.md) is explicit that reputation must not convert into permanent progression, because ADR 20 prices reputation at £90/point/day *remaining* and that decay is what makes "tape it up and gamble on the last night" a real play. Its warning is the dangerous part: the flip would disappear *"without failing any test, because nothing had connected the two."*
+
+But ADR 21 does not forbid persistence — it names the permitted channel: **"meta-progression comes from profit and contract completion."** So the firewall is **volume, not virtue**:
+
+- Clive remembers you shipped him 200 pallets across three leases. Contract completion — allowed.
+- Clive remembers you *confessed* to a cracked one. Reputation — forbidden, and it kills the flip.
+
+**The test that keeps it honest: standing must be fork-blind.**
+
+| Fork | Outcome | Handover? | Standing |
+|---|---|---|---|
+| Patch, undetected | Full pay | yes | unchanged |
+| Patch, **detected** | No pay, rep hit, suspicion up | **yes** | **unchanged** |
+| Confess | 40/28/15% | yes | unchanged |
+| Comp | Negative cash | yes | unchanged |
+| Never delivered | Client walks | no | drops |
+
+A detected patch is still a handover — the client got their goods, in bad nick, and knows you tried it on. The GDD already says detection costs pay and reputation; it never said the contract fails. So all four forks move standing identically, and only non-delivery hurts. You keep the emotional truth — Clive remembers you let him down — while he cannot remember *how*.
+
+**An earlier draft of this entry got it wrong**, and the error is worth keeping: it had detection fail the contract, which would have made confessing protect something permanent and patching gamble it. That is the flip-killer arriving through the back door, exactly as ADR 21 warns, silently.
+
+**Make it an assertion, not a promise.** ADR 20's sweep already asserts no fork dominates. Extend it to assert **standing delta is identical across all four outcomes**. That sweep rejected a balance change on its first run; the same discipline should guard this.
+
+### Contracts close, they never fail
+
+A contract resolves at a **completion ratio**, not pass/fail. Binary failure creates a death spiral — an unfinishable contract is a total loss, so abandoning early is rational. A ratio makes "push on or cut losses?" a live decision every day. It needs no new mechanism: ADR 22 already establishes that *"the crate is the unit of handover, so part-fulfilment falls out for free."* This is that rule at contract scale.
+
+**One mechanic, three triggers:** it hits 100%; the crew leader calls it done; or the lease ends and forces the close. All three measure the same thing.
+
+Two precision notes that stop this becoming unimplementable:
+
+- Standing moves on **delivered against promised**, never "effort put in". 34 of 50 bricks is 68% — computable, and not gameable by looking busy.
+- **Declining a contract costs nothing.** If refusing carried a penalty you would be forced to accept everything and the choice would stop being one. The risk is *over-promising*: take three contracts you cannot clear and every one of those clients sees a partial.
+
+Contracts are **per lease and do not carry over**. The lease is the commitment boundary for everything else — reputation dies there, suspicion dies there, the run is scored there — and a contract that outlived it would be the only thing that did not. Carrying obligations forward means starting the next run already in debt, which is the death-spiral shape ADR 22 warns about at meta scale. **The obligation is per-lease; the relationship persists.**
+
+### Meeting a client, and how the crew aggregates
+
+Do not gate clients behind grind. **All 4–6 exist from run one** and will all give a crew with zero standing small work. What grows is not *access* but **what they will trust you with**, so a first run has a full slate and nothing is locked behind hours played.
+
+Monty is the exception, and ADR 22 supplies the reason: high rep and low rep are *different businesses*. **Monty does not arrive because you are good — he arrives because you are desperate.** He shows up when reputation drops, which makes meeting him a consequence rather than an unlock.
+
+For a crew, offers compute from the **maximum** standing across the players present, not the average. Average punishes mixed groups in both directions and makes a newcomer a drag; ADR 21 states the value directly — *"a drop-in player who has unlocked nothing is not a liability."* Max satisfies that exactly. The fiction sells it too: you do not need the whole crew to know Clive, you need **one person who does**.
+
+### The contact, and why it is not just flavour
+
+"Monty asks for Steve from the loading dock" is a **readout of the mechanic**, not decoration: the contact is the player whose standing produced the offer. Clive asks for Pete because Pete is why Clive is offering at all.
+
+That is what makes per-player standing safe. It is personal, persistent, visible and socially meaningful, while **gating nothing** — if Pete is offline the deal still exists. It fills ADR 21's individual tier, which permits cosmetics only and is currently completely empty, without touching the crew tier that deliberately keeps every run the same for everyone.
+
+It does imply **persistent player identity**, since the contact must survive the run. Recommendation: persistent identity, disposable run — you are the same person taking a new lease. **No creation screen**: auto-assign from the name pool on first launch, persistent, renameable. This is a £9.99 drop-in co-op and a character builder before first play is friction at the worst moment. The crew entry above already identifies the matching cheap version — *"the personas without the specialties"* — as the half that does the marketing work at zero balance cost.
+
+### What being host turns out to mean
+
+Three host-unilateral acts now exist, and they rhyme: the host **ends the day early** (ADR 25 (f)), **closes a contract early** (this entry) and **splits the pot** (ADR 21). The host is not more powerful — the host is **the one who declares endings**. That answers "why be host" without any progression attached to it, and it is a funny thing for a warehouse manager to be.
+
+### Risk and reward, composed rather than built
+
+Every lever a contract needs already exists:
+
+| Lever | Already exists as |
+|---|---|
+| "60 textiles, **undamaged**" | Condition clause, pay bonus forfeited on damage |
+| Volume commitment | Locked manifest rows (built in 02-07) |
+| Deadline | Store-until dates (ADR 25 (e)) |
+| Dodgy premium | Monty pays over rate, punishes in cash (ADR 22) |
+
+**Condition clauses must cost cash and reputation, never standing** — otherwise "undamaged" smuggles virtue back into the permanent layer.
+
+### Where this sits against scope
+
+Not in v1's In list and not on the parked list — it is new, and it splits three ways:
+
+- **Client roster with per-client trust/suspicion** — already `CLIENT-01/02/03`, Phase 4, funded.
+- **Run contracts biasing the day mix** — fits ADR 8's "committed at the start" and ADR 21's lobby-creation precedent. Needs its own ADR. Phase 4/5.
+- **Persistent identity, contact and cross-run standing** — needs an ADR that explicitly extends ADR 21's meta-progression clause. Not because volume-based standing breaks it, but because *"does this reach zero value on the last night?"* must be answered **in writing**, given the failure is silent. EA-launch shaped, per ADR 23 and the crew entry's own sequencing.
+
+One constraint that must survive into any of them: a contract **biases** what arrives, never past what the crew can clear. ADR 25 (f)'s delivery caps already scale with crew size, so a Clive run played solo biases within a smaller cap and SOLO-01 is protected structurally rather than by remembering to protect it.
+
+### Calibration flag
+
+The worked example that produced this entry priced a contract at £1000 cash and 200 reputation. Those are not on the same scale: ADR 20 prices reputation at £90/point/day remaining, so on day one of a ten-day lease 200 points is worth roughly £180,000 against £1,000 cash. Either reputation moves in single digits per contract or the £90 rate needs revisiting. Settle it before any Phase 4 economy work.
+
+---
+
+## Rack shedding, revisited
+
+**Raised:** NJ, 2026-08-22. What comes loose when a rack is hit, how much, and how hard it flies.
+Built in 01-07 and ratified at the Phase 1 gate; this entry is the revisit, not the original.
+
+### What is built today
+
+```
+trigger:  crate.linear_velocity.length() >= 4.0     -- speed only
+scope:    top row only, every occupied cell in it
+cap:      MAX_SHED_PER_EVENT = 8                    -- the ADR 14 guard
+force:    fixed impulse, 18.0 outward + 4.5 up
+guards:   1.5 s cooldown, 700 ms mint grace
+```
+
+### Two findings, and the second is a defect
+
+**Mass already does half of the wanted behaviour, for free.** `apply_central_impulse` gives
+`Δv = J/m`, so one fixed impulse produces very different outcomes by weight — 02-06 documented this
+in passing: the same 18.0 gives a 12 kg Small about 1.5 m/s outward and a ~100 kg heavy crate barely
+a fifth of that. **Light cargo already flies further than heavy cargo.** What is mass-blind is the
+*decision* to shed: every occupied top-row cell goes, regardless of what is in it.
+
+**The trigger measures the wrong physical quantity, and this is a latent regression rather than an
+original design flaw.** Before 02-04 every crate weighed 12 kg, so `speed >= 4.0` *was* a momentum
+test up to a constant — 48 kg·m/s, every time. The instant wave 3 gave crates real catalogue masses
+(5 kg textiles up to 108 kg machine parts), the threshold silently stopped meaning what the gate
+calibrated it to mean. A 5 kg Small now trips it at 20.5 kg·m/s; a 108 kg Large trips it at the same
+*speed* while carrying twenty times the momentum, and both shed identically.
+
+This is the same species as the `Rack.apply_cell_filled` hard-coded `KIND_SMALL` that 02-04 itself
+found: **a constant that was accidentally correct while a variable was uniform, and became wrong the
+moment it varied.** Neither was caught by a test, and in this case there is no test to catch it —
+**the gate-ratified 4.0 has no api-layer assertion**, despite the standing rule to pin every number
+an ADR fixes.
+
+### "Edge" needs redefining, because every cell is a corner
+
+A rack level is 2 columns × 2 deep, so **there is no middle cell** — cell-level "edge" is meaningless
+here. Sub-cell edge is real, though: `StorageGrid.small_offset()` places 8 Smalls in a 2×2×2 lattice
+inside each cell, so front/back and top/bottom exist *within* a cell.
+
+**But shedding by sub-position would break LIFO.** ADR 18 makes retrieval within a cell last-in
+first-out and the cell stores `ids` as a stack; pulling from an arbitrary sub-position is not a stack
+operation.
+
+**Resolution: in a stacked cell, the edge IS the top of the stack.** The last-placed item physically
+sits on top and is the most precarious thing in the cell. That delivers the design intent and keeps
+LIFO intact with no data-model change.
+
+### Shelf height is physics, not gamification
+
+A rack is anchored at the floor and pivots at its base, so **the top has the longest lever arm and
+sways furthest**. Displacement scales with height. "Top shelf most likely, bottom shelf least" is the
+real behaviour rather than a drama fudge — which is the best kind of rule to build, because it will
+read as fair.
+
+### One model instead of four rules
+
+```
+J_total = k · (m_hit · v_hit)               -- momentum, not speed
+J_share = J_total · f(height) · g(distance from impact)
+Δv_item = J_share / m_item                  -- mass does the rest, already free
+comes off if Δv_item > threshold            -- enough to clear ADR 24's pallet lip
+```
+
+- `f(height)` rises with level — the lever arm above.
+- `g(distance)` falls off from the impact point — locality, which is what "closest to the edge"
+  actually means once cells are all corners.
+- `Δv = J/m` gives light-flies/heavy-stays for nothing; it is already how the code behaves.
+- **The threshold filters by mass on its own**, so heavy crates simply do not come off. That is
+  "lighter dislodges easier" with no separate probability roll anywhere.
+
+### The drama floor
+
+Pure physics risks the failure 02-06 named precisely: *"the shed did nothing" and "the shed is
+broken" look identical from outside the game.* So a qualifying impact **always sheds at least one
+item, choosing the lightest available**. Guaranteed visible consequence without making masonry
+behave like polystyrene. That is the whole of the gamification, and it is deliberately one rule.
+
+### Opening the lower shelves, against the budget
+
+Top-row-only was a deliberate ADR 14 bound. The good news is that `MAX_SHED_PER_EVENT = 8` caps the
+spike already, so **the ceiling does not move — only which shelves the eight may come from.** That is
+defensible, but the ADR must say it out loud rather than assume it. The rack-topple entry above
+carries the wider budget maths (a full rack of Smalls is 96 bodies against a ~150 envelope) and the
+rule that a falling rack may shed its neighbour but must never topple it.
+
+### Sequencing, agreed with NJ
+
+1. **Fix the momentum trigger** — a defect, not a tuning question, and it should carry the
+   api-layer assertion that never existed.
+2. **Observe the rest at the Phase 2 gate.** 02-06's own comment asks for a human to watch the
+   current numbers before any are retuned, and the gate already puts NJ in the building with a
+   loaded rack. Where the drama-versus-silly line sits is not answerable from a desk.
+3. **Then write the ADR with measured numbers** rather than guessed ones. It will amend 01-07's
+   gate-ratified shed behaviour, so it needs to be a decision record, not a tweak.
