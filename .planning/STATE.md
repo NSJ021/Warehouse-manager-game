@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** The dilemma is the game — patch and hope, confess, or comp.
-**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. **02-02 is complete**: `CargoRecord` and `CargoCatalogue` (11 categories) landed, test-first, 489 checks including the design-property sweep. Wave 2 continues with `02-03` (still to execute); `02-02`'s own half of wave 2 is done.
+**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. **02-02 is complete**: `CargoRecord` and `CargoCatalogue` (11 categories) landed, test-first, 489 checks including the design-property sweep. **02-03 is complete**: `DayClock` (host-authoritative, replicated `IDLE→MORNING→SHIFT→AFTER_HOURS→MIDNIGHT`) and `DockDoor` (an `AnimatableBody3D` roller door deriving itself from the clock) landed — inert until `main.gd` calls `begin_run()`, proven on two real headless peers, both existing integration scenarios byte-identical to before. **Wave 2 is now fully done.**
 
 > **Narrative history lives in `docs/conversation-log.md`, not here.** This file tracks
 > execution position only. Duplicating the story in two places guarantees one of them
@@ -13,7 +13,7 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **cleared for execution 2026-08-22; 02-01 (wave 1) complete.**
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **cleared for execution 2026-08-22; waves 1-2 complete (02-01, 02-02, 02-03).**
 Plan: Phase 2 planned 2026-08-21, revised 2026-08-22 — 11 plans (02-01 … 02-11) in **8 waves**, `.planning/phases/02-goods/`.
 **02-01 complete, 2026-08-22.** ADR 25 (`decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md`)
 is ratified and committed, with the three contradicted documents (`decisions/decision-log.md`,
@@ -32,7 +32,7 @@ is ratified and committed, with the three contradicted documents (`decisions/dec
    criteria are recorded as the tuning target: a morning delivery must feel worthy, deliberate,
    achievable and like earning your pay.
 
-**Wave 1 done. Wave 2 — `02-02` complete 2026-08-22; `02-03` still to execute.**
+**Waves 1-2 done (`02-01`, `02-02`, `02-03`). Wave 3 (`02-04`) is next.**
 Phase 1: 01-01 through 01-09 all complete — all 9 plans, all 7 waves done.
 Status: **Phase 1 closed 2026-08-21.** The gate (01-08) passed — verdict "storage feels
 deliberate," NJ, explicit, after three play sessions. Task 2's rulings are written into
@@ -75,7 +75,48 @@ full detail in `01-08-SUMMARY.md`.
 > collisions, both checkpoints alone in their waves, no cycles, all 11 files byte-scanned **pure
 > LF, zero CR** (a re-check warning claiming CRLF was a false positive from its own grep quoting).
 
-Last activity: 2026-08-22 — **02-02 executed: `CargoRecord` and `CargoCatalogue` landed, test-first.**
+Last activity: 2026-08-22 — **02-03 executed: `DayClock` and `DockDoor` landed, wave 2 complete.**
+`scripts/world/day_clock.gd` (`class_name DayClock`) is a level-scoped, host-authoritative,
+group-found `Node` (never an autoload — the exact temptation `docs/project-structure.md` names ahead
+of time), replicating `sync_day`/`sync_phase`/`sync_elapsed` at 5 Hz via a `MultiplayerSynchronizer`
+(day/phase on-change, elapsed always). Five phases (`IDLE→MORNING→SHIFT→AFTER_HOURS→MIDNIGHT`), five
+past-tense signals, `begin_run()`/`advance_to_next_day()`/host-gated `request_call_it_a_night()`
+(ADR 21's precedent — ignored from a non-host or outside `AFTER_HOURS`). **Inert by construction**:
+`_advance_host()`'s first line returns while `sync_phase == IDLE`, and nothing but `main.gd`'s
+`_on_session_started()` (host-only) ever calls `begin_run()` — `TestRoom` itself was not touched.
+`scripts/world/dock_door.gd` (`class_name DockDoor`) derives its own open/closed position from the
+clock's replicated phase every physics frame (zero networking of its own, `GoodsZone`'s own shape),
+driven by an `AnimatableBody3D` slab (`sync_to_physics`) lerped toward a target rather than a `Tween`
+— self-correcting for a late joiner or a missed update, no special case needed. Before a close starts,
+the host wakes any settled (`FREEZE_MODE_STATIC`) crate caught in the doorway via a new public
+`Crate.wake()` (delegates to the existing private `_wake()`) — an `AnimatableBody3D` cannot displace a
+frozen static body, only intersect it, measured and pinned in `engine_assumptions.gd` rather than
+assumed. `test_room.tscn`'s north wall is cut around a 3.0 m door gap (above `GoodsIn`) and its west
+wall around a permanent, doorless 2.0 m personnel gap (ADR 25 (f): a player is never locked in or out
+— the simplest possible implementation is a hole, not a mechanic); neither cut touches any
+integration-suite corridor, checked against the actual stand-points and waypoints in both test files
+before either position was chosen. `main.gd` calls `begin_run()` once, host-only, after the world
+loads; a new `--day-length=N` launch arg overrides it for hand-testing; the HUD gained a
+day/phase/countdown line that reads "DOORS CLOSING IN" inside the klaxon window (ADR 25 (f):
+information asymmetry lives on the screen, never only in audio); "N" (`call_it_a_night`, added
+through the running editor's own `ProjectSettings` + `save()`, not a direct file edit, since the open
+editor rewrites `project.godot` from its in-memory copy) requests the early close. `engine_assumptions.gd`
+gained RUN-02's day-length **bound** (360–600s, not a value — ADR 25 (f) leaves the number unagreed),
+`open_fraction`'s and `morning_seconds`' own bounds, and a measured AnimatableBody3D-vs-dynamic/frozen-
+static behaviour pin. **Both existing integration scenarios are byte-identical to before this plan**
+(`git diff --stat` empty on both) — proven, not merely intended, across five full-suite runs at
+identical step counts. A real two-headless-peer run through `main.tscn` (`--day-length=48`, outside
+the committed suite) showed the whole loop close on both peers' own logs: `day 1 -> MORNING -> SHIFT
+-> AFTER-HOURS -> MIDNIGHT -> day 2 -> MORNING`. **Two new `class_name`s needed the editor rescan**
+(`DayClock`, `DockDoor`) — same raw-WebSocket approach as 02-02, verified against
+`global_script_class_cache.cfg` before trusting a result. **The pre-existing `storage_session.gd`
+client-exit resource leak recurred twice across five runs** — confirmed unrelated (untouched files,
+and this plan's only new audio player is never played while the clock stays `IDLE`) before accepting
+it as the same flake 02-02 already found; three consecutive clean runs were still obtained. Three
+commits: `8d54e6f` (the clock), `c9fd83b` (the door), `631970c` (wiring + the HUD + the bound). Full
+detail: `02-03-SUMMARY.md`.
+
+Before that, 2026-08-22 — **02-02 executed: `CargoRecord` and `CargoCatalogue` landed, test-first.**
 `scripts/goods/cargo_record.gd` is STORE-07's round-trip snapshot (id, category, variant, size,
 fragility, mass, declared_value, store_until_day, owner, condition actual/apparent, drag_distance),
 pure `RefCounted`, `to_dict()`/`from_dict()` wire-safe and tolerant of a missing field.
@@ -190,8 +231,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 for ADR 19 before execution
 
 Progress: [█████████░] Phase 0 complete bar one blocked item; Phase 1 complete, all 9 plans, all
-7 waves — gate passed 2026-08-21. Phase 2: wave 1 (`02-01`) and wave 2's `02-02` complete (2 of 11
-plans); `02-03` (wave 2) and waves 3-8 still to execute.
+7 waves — gate passed 2026-08-21. Phase 2: waves 1-2 complete (`02-01`, `02-02`, `02-03` — 3 of 11
+plans); waves 3-8 still to execute.
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -734,6 +775,14 @@ constrain upcoming work:
   rack → OUT loop completed under 60 s**, with caveats (small room, perfect knowledge, no
   obstacles in the way). The assumption holds, conservatively — real play with a full warehouse
   and searching will be slower, not faster, which is the safe direction for a sim input.
+- **The day loop's frame is built** (02-03): `DayClock` and `DockDoor` land the phases, replication,
+  the klaxon/HUD warning and the host's early-close, all inert until `main.gd` calls `begin_run()`.
+  **No committed test yet exercises a peer joining mid-phase against a running clock/door** — the
+  late-joiner claim rests on the clock's continuously-broadcast replication shape and the door's
+  stateless lerp target, reasoned through rather than proven by a dedicated scenario. Whichever of
+  02-06/02-07 first calls `begin_run()` with a short day length should add this as one more
+  assertion. Feel questions (does 8 minutes read right once real content exists; does the greybox
+  door/gap read as intended) are carried to the Phase 2 gate, not answered here.
 
 ### Constraints learned the hard way
 
@@ -791,6 +840,26 @@ constrain upcoming work:
   probe tried first, but *only* while empty-handed — while holding something, the container must
   still win, or a stray loose crate in front of a rack face would hijack a placement aim
   (`8be63f8`).
+- **A bare `--script` `SceneTree` run does not register the `Net` autoload — this reaches further
+  than "don't reference a `class_name` statically."** `engine_assumptions.gd` already knew not to
+  hold a static reference to `Crate`/`Rack` for that reason, but it also never calls `add_child()`
+  on anything it builds, so `_ready()` never runs. Actually **adding** `test_room.tscn` to a live
+  tree in a bare `--script` run (tried once, 02-03, as a manual verification shortcut) crashes
+  repeatedly with `Invalid call. Nonexistent function 'phase' in base 'Nil'` the moment any node's
+  `_ready()` touches `Net` (`TestRoom`, `CarryAuthority`, …) — because the autoload genuinely is not
+  there, not because of a compile-time dependency. A real headless host+client through `main.tscn`
+  is the only way to exercise `_ready()` for real outside the committed test harness.
+- **The godot-mcp bridge's `execute_editor_script` `print()`→`custom_print()` rewrite truncates on
+  the first closing paren, not the statement's own.** `print(ProjectSettings.get_setting("x"))`
+  fails with `Script parsing error: 43`, because the regex stops at `get_setting("x")`'s own `)`.
+  Not the documented "one statement only" limit — don't wrap a nested call in `print()` over this
+  bridge; verify by grepping the affected file on disk instead (02-03).
+- **The `storage_session.gd` client-exit resource leak (first flagged 01-06, "fixed" by
+  `_silence_audio()` before 02-01) is still intermittent, not resolved.** Recurred 2 of 5 full-suite
+  runs in 02-03, identical signature, confirmed unrelated to that plan's own files (same diagnostic
+  standard 02-02 already applied). Treat it as a known, standing flake when it appears alone on
+  `storage-client` with no other failure — re-run for the required three consecutive clean passes
+  rather than treating it as a regression, but do re-confirm it's not your own files each time.
 
 ## Phase 0 outcome
 
