@@ -1001,6 +1001,28 @@ constrain upcoming work:
   A `--editor` substring test does not match that, so an agent tidying up orphans would have killed
   the open editor — taking the MCP bridge and the class-cache rescan with it. **Kill only processes
   carrying `--headless`.** Everything else is left alone.
+
+- **⚠ `rpc_id(-1, …)` is not valid in Godot 4, and it fails in the most misleading way available.**
+  `0` is broadcast, any **positive** value targets one peer. Godot 3's "negative peer means everyone
+  *except* that peer" form was removed and **there is no exclude form at all** — to skip a peer you
+  loop `multiplayer.get_peers()` and skip the id yourself.
+
+  **Why this earned a trap entry rather than a code comment:** it does not raise where you wrote it.
+  The engine drops the call with `ERROR: Attempt to call RPC with unknown peer ID: -1` into
+  **stderr**, the host's own state stays perfectly correct, and the symptom appears as a **20-second
+  timeout in whichever client assertion was waiting on state that was never sent** — potentially
+  dozens of steps away from the bug. On 02-06 that read as a sync/race problem and cost about ninety
+  minutes; the host was passing all 96 of its own steps the entire time.
+
+  Now guarded three ways: an api-layer assumption pins `TARGET_PEER_BROADCAST == 0` with the
+  reasoning; `run-tests.ps1` repeats the engine's own error text in the **verdict block** rather than
+  only mid-run; and this entry exists.
+
+- **⚠ Read BOTH log streams. Assertions go to `*.out.log`; engine errors go to `*.err.log`.**
+  A failing assertion and the engine error that *caused* it live in different files. Tailing only
+  `.out` shows you a timeout with no cause anywhere near it. The suite's verdict block now echoes the
+  engine lines, but when reading raw logs, open both — this is the single cheapest habit for cutting
+  debugging time on this project.
 - **A hard-coded fallback constant that happens to equal every real value today will silently stop
   matching the moment one field stops being a constant.** `Rack.apply_cell_filled` stored
   `Crate.KIND_SMALL` (`&"small"`) as a cell's kind regardless of what was actually placed — invisible

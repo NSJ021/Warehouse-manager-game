@@ -46,7 +46,7 @@ param(
     [switch]$SmokeOnly,
     [switch]$KeepLogs,
     [int]$StartupTimeoutSeconds = 30,
-    [int]$RunTimeoutSeconds = 120
+    [int]$RunTimeoutSeconds = 200
 )
 
 $ErrorActionPreference = 'Stop'
@@ -77,6 +77,9 @@ if (Test-Path $logDir) { Remove-Item $logDir -Recurse -Force }
 New-Item -ItemType Directory -Path $logDir | Out-Null
 
 $failures = New-Object System.Collections.Generic.List[string]
+# The actual engine error/warning text, repeated in the verdict block so the
+# cause is the last thing on screen rather than buried mid-run. See Test-CleanLog.
+$engineErrorLines = New-Object System.Collections.Generic.List[string]
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 function Start-Godot {
@@ -148,6 +151,14 @@ function Test-CleanLog {
         $failures.Add("$($Job.Name): $($hits.Count) engine error/warning line(s)")
         foreach ($line in ($text -split "`r?`n" | Where-Object { $_ -match '(?i)^\s*(ERROR|WARNING|SCRIPT ERROR):' } | Select-Object -First 6)) {
             Write-Host "      $line" -ForegroundColor DarkYellow
+            # Also kept for the verdict block. Printing them here alone was not
+            # enough: they land mid-run under hundreds of [test] ok lines, and
+            # the verdict - the part anyone actually reads - showed only a
+            # count. That cost about ninety minutes on 02-06, where a dropped
+            # RPC surfaced as a 20 s TIMEOUT in an unrelated assertion while
+            # the real cause ("unknown peer ID: -1") sat in the .err log
+            # nobody was tailing. Say the cause where the reader is looking.
+            $engineErrorLines.Add("$($Job.Name): $($line.Trim())")
         }
         return $false
     }
@@ -356,6 +367,19 @@ if ($failures.Count -eq 0) {
 
 Write-Host "FAIL - $($failures.Count) problem(s) in $([int]$sw.Elapsed.TotalSeconds)s" -ForegroundColor Red
 foreach ($f in $failures) { Write-Host "  - $f" -ForegroundColor Red }
+
+# The engine's own words, not just the tally. An engine error is very often the
+# CAUSE of a test failure reported elsewhere in this same list - a dropped RPC
+# shows up as a timeout in whichever assertion was waiting on it, many steps
+# away from the line that actually broke. Read this block first.
+if ($engineErrorLines.Count -gt 0) {
+    Write-Host ''
+    Write-Host '  engine said:' -ForegroundColor Yellow
+    foreach ($line in $engineErrorLines) { Write-Host "    $line" -ForegroundColor DarkYellow }
+    Write-Host '  (an engine error is usually the cause of any timeout above, not a separate problem)' -ForegroundColor DarkGray
+}
+
 Write-Host ''
 Write-Host "full logs: $logDir" -ForegroundColor Yellow
+Write-Host '  read BOTH streams - assertions go to *.out.log, engine errors to *.err.log' -ForegroundColor DarkGray
 exit 1

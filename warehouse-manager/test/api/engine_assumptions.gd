@@ -414,6 +414,25 @@ func _check_engine_apis() -> void:
 	_expect_methods("ENetConnection", ["pop_statistic"])
 	_expect_methods("ENetMultiplayerPeer", ["get_host", "create_server", "create_client"])
 
+	# rpc_id's peer argument, pinned because getting it wrong is invisible.
+	#
+	# 0 is broadcast, and any POSITIVE value targets one peer. Godot 3's
+	# "negative means everyone except this peer" form does NOT exist in Godot
+	# 4 -- there is no exclude form at all, and you must loop
+	# multiplayer.get_peers() and skip the id yourself.
+	#
+	# This is asserted because of how it fails rather than how likely it is.
+	# rpc_id(-1, ...) does not raise where you wrote it: the engine drops the
+	# call with "Attempt to call RPC with unknown peer ID: -1" into stderr,
+	# the host's own state stays perfectly correct, and the symptom surfaces
+	# as a TIMEOUT in whichever client assertion was waiting on the state
+	# that never arrived -- potentially dozens of steps away. It cost about
+	# ninety minutes on 02-06 for exactly that reason.
+	_expect(
+		MultiplayerPeer.TARGET_PEER_BROADCAST == 0,
+		"rpc_id(0) is broadcast; there is no negative 'all except' peer id in Godot 4",
+	)
+
 	_expect_methods("CharacterBody3D", ["move_and_slide", "is_on_floor"])
 	_expect_properties("CharacterBody3D", ["velocity", "collision_layer", "collision_mask"])
 
