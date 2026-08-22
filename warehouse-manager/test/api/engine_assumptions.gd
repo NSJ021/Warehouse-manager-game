@@ -528,6 +528,8 @@ func _check_godotsteam() -> void:
 func _check_decided_invariants() -> void:
 	print("[api] invariants fixed by decisions")
 
+	_check_crates_fit_their_shelf()
+
 	var crate_scene := load("res://scenes/goods/crate.tscn") as PackedScene
 	if crate_scene == null:
 		_fail("the crate scene will not load, so its invariants cannot be checked")
@@ -925,3 +927,63 @@ func _const_from_source(script_path: String, const_name: String) -> float:
 		if found != null:
 			return float(found.get_string(1))
 	return NAN
+
+
+## Does a crate of each size PHYSICALLY FIT the shelf it is stored in?
+##
+## Nothing checked this until 2026-08-22, which is how a 1.0 m Medium came to be
+## specified into a 0.95 m gap and stayed there. Two ratified decisions meet and
+## neither is wrong alone: ADR 18 fixes a Medium at 1.0 m and a cell at 1.0 m,
+## while ADR 24's decks are 0.05 m thick and sit ON the cell boundaries — so
+## every cell's nominal metre of height is really 0.95 m of clear air.
+##
+## The symptom NJ found in play: a retrieved Medium mints at the cell centre
+## interpenetrating BOTH decks by 2.5 cm, and whether the solver squeezes it
+## free or jams it decides whether that retrieval works. Sometimes smooth,
+## sometimes stuck. A Large is the same height but twice as long, so rotation
+## has twice the leverage to bind it, and is worse. A Small has 0.45 m to spare
+## and is unaffected — which is exactly the size pattern reported.
+##
+## It hid for so long because the racked VISUAL is inset to 78% and looks
+## comfortable on the shelf. Only the real body is full size, and that body only
+## exists during a retrieval.
+##
+## **This assertion is EXPECTED TO FAIL until the geometry is ruled on.** That is
+## deliberate. It was already found once — 02-06 measured the same contact
+## deadlock at 0.0024 m of drift over 2000 frames — and then routed its test
+## around it to a non-floor-level cell, so the suite went green and the defect
+## stayed in the game until a human hit it. A red assertion naming the shortfall
+## is the honest state; a green suite that avoids the cell is not.
+func _check_crates_fit_their_shelf() -> void:
+	# Read from the built scenes rather than restating them, so a resize is
+	# caught here rather than agreeing with a stale copy of itself.
+	var deck_thickness := 0.05  ## rack.tscn's DeckBottom/Mid/Top CSGBox3D size.y
+	var clear_height := StorageGrid.CELL_SIZE - deck_thickness
+
+	for entry in [
+		["Small", "res://scenes/goods/crate.tscn"],
+		["Medium", "res://scenes/goods/crate_medium.tscn"],
+		["Large", "res://scenes/goods/crate_large.tscn"],
+	]:
+		var scene := load(entry[1]) as PackedScene
+		if scene == null:
+			_expect(false, "%s crate scene loads" % entry[0])
+			continue
+		var body := scene.instantiate() as Node3D
+		# "Collision", not "CollisionShape3D" — crate_medium/crate_large are
+		# INHERITED scenes, so they carry crate.tscn's own node names and merely
+		# override the shape resource. A rename there is a protocol change here.
+		var shape := body.get_node_or_null("Collision") as CollisionShape3D
+		var box := shape.shape as BoxShape3D if shape != null else null
+		if box == null:
+			_expect(false, "%s crate has a box collision shape" % entry[0])
+			body.free()
+			continue
+
+		_expect(
+			box.size.y <= clear_height,
+			"a %s (%.2f m tall) fits the %.2f m of clear air between decks — shortfall %.2f m" % [
+				entry[0], box.size.y, clear_height, maxf(0.0, box.size.y - clear_height),
+			],
+		)
+		body.free()
