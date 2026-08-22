@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** The dilemma is the game — patch and hope, confess, or comp.
-**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. **02-02 is complete**: `CargoRecord` and `CargoCatalogue` (11 categories) landed, test-first, 489 checks including the design-property sweep. **02-03 is complete**: `DayClock` (host-authoritative, replicated `IDLE→MORNING→SHIFT→AFTER_HOURS→MIDNIGHT`) and `DockDoor` (an `AnimatableBody3D` roller door deriving itself from the clock) landed — inert until `main.gd` calls `begin_run()`, proven on two real headless peers, both existing integration scenarios byte-identical to before. **02-04 is complete**: Medium and Large crate scenes (inherited from `crate.tscn`) landed, `Crate.setup()` now rebuilds a full `CargoRecord` at spawn, and a mixed heavy row in `test_room.tscn` makes ADR 25 (c)'s weight deception real. Found and fixed a genuine bug along the way — `Rack.apply_cell_filled` hard-coded the stored cell kind to `&"small"`, silently correct only while every crate's kind really was that literal constant; this plan's own repurposing of `kind` into a real category broke that silently, caught before any test ran. **Wave 3 is now fully done.**
+**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. **02-02 is complete**: `CargoRecord` and `CargoCatalogue` (11 categories) landed, test-first, 489 checks including the design-property sweep. **02-03 is complete**: `DayClock` (host-authoritative, replicated `IDLE→MORNING→SHIFT→AFTER_HOURS→MIDNIGHT`) and `DockDoor` (an `AnimatableBody3D` roller door deriving itself from the clock) landed — inert until `main.gd` calls `begin_run()`, proven on two real headless peers, both existing integration scenarios byte-identical to before. **02-04 is complete**: Medium and Large crate scenes (inherited from `crate.tscn`) landed, `Crate.setup()` now rebuilds a full `CargoRecord` at spawn, and a mixed heavy row in `test_room.tscn` makes ADR 25 (c)'s weight deception real. Found and fixed a genuine bug along the way — `Rack.apply_cell_filled` hard-coded the stored cell kind to `&"small"`, silently correct only while every crate's kind really was that literal constant; this plan's own repurposing of `kind` into a real category broke that silently, caught before any test ran. **Wave 3 is now fully done.** **02-05 is complete**: `StorageGrid` gained ADR 25 (d)'s Large-pair geometry and ADR 24's corner-upright `mint_offset`, and `Rack`'s whole occupancy model was rebuilt around whole `CargoRecord` dictionaries and self-describing Large pairs — see the block below for the full detail, including the exact, single-line integration failure this plan hands to 02-06 by design. **Wave 4 is now done.**
 
 > **Narrative history lives in `docs/conversation-log.md`, not here.** This file tracks
 > execution position only. Duplicating the story in two places guarantees one of them
@@ -13,7 +13,7 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **cleared for execution 2026-08-22; waves 1-3 complete (02-01, 02-02, 02-03, 02-04).**
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **cleared for execution 2026-08-22; waves 1-4 complete (02-01, 02-02, 02-03, 02-04, 02-05).**
 Plan: Phase 2 planned 2026-08-21, revised 2026-08-22 — 11 plans (02-01 … 02-11) in **8 waves**, `.planning/phases/02-goods/`.
 **02-01 complete, 2026-08-22.** ADR 25 (`decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md`)
 is ratified and committed, with the three contradicted documents (`decisions/decision-log.md`,
@@ -32,7 +32,7 @@ is ratified and committed, with the three contradicted documents (`decisions/dec
    criteria are recorded as the tuning target: a morning delivery must feel worthy, deliberate,
    achievable and like earning your pay.
 
-**Waves 1-3 done (`02-01`, `02-02`, `02-03`, `02-04`). Wave 4 (`02-05`) is next.**
+**Waves 1-4 done (`02-01`, `02-02`, `02-03`, `02-04`, `02-05`). Wave 5 (`02-06`) is next.**
 Phase 1: 01-01 through 01-09 all complete — all 9 plans, all 7 waves done.
 Status: **Phase 1 closed 2026-08-21.** The gate (01-08) passed — verdict "storage feels
 deliberate," NJ, explicit, after three play sessions. Task 2's rulings are written into
@@ -75,7 +75,65 @@ full detail in `01-08-SUMMARY.md`.
 > collisions, both checkpoints alone in their waves, no cycles, all 11 files byte-scanned **pure
 > LF, zero CR** (a re-check warning claiming CRLF was a false positive from its own grep quoting).
 
-Last activity: 2026-08-22 — **02-04 executed: Medium and Large cargo landed, weight decides the
+Last activity: 2026-08-22 — **02-05 executed: the rack holds three sizes and remembers whole
+records, wave 4 complete.** `scripts/world/storage_grid.gd` gained ADR 25 (d)'s Large-across-
+two-cells arithmetic — `capacity_for_size`/`cells_for_size` (deliberately different questions:
+a Large's capacity in a cell is 1, its footprint is 2, and conflating them is how a Large ends
+up thought of as "capacity 0.5"), `large_partner_cell` (the `1 - n` flip that only works because
+ADR 18 fixes `RACK_COLUMNS`/`RACK_DEPTH` at exactly 2, asserted directly rather than merely relied
+on), `pair_centre`, `large_yaw` — and ADR 24's corner-upright fix, `mint_offset`: a body minted at
+a bare cell centre intersects the rack's own uprights unless it's small enough to clear them
+(true of nothing bigger than a Small), so a Medium or Large now mints shifted toward the rack's
+own horizontal centre by `MINT_CLEARANCE` (0.12 m) on whichever axis it doesn't already span the
+full 2 m width. **The occupancy DECISIONS moved here too** — `cell_can_accept` and
+`cell_apply_record_update` — specifically so a bare `--script` unit test could call the real
+production rule rather than reimplement it a second time and risk the two silently disagreeing
+(`Rack` is a `Node3D` and cannot be instantiated in that kind of run). `scripts/world/rack.gd`'s
+whole `_cells` shape was rebuilt: `{kind, ids}` (bare crate ids) became
+`{category, items, size, partner, anchor, orientation}` (a LIFO stack of **whole** `CargoRecord`
+dictionaries), and all seven of 01-03's Small-shaped methods were re-decided against it rather
+than patched — `can_accept` now delegates to `StorageGrid.cell_can_accept` and gained a `size`
+argument (a Large routes to the new `can_accept_large` instead); `add_to_cell`/`remove_from_cell`
+move whole records; `add_large`/`remove_large` are the only two functions ever allowed to touch a
+Large's `partner`/`anchor`/`orientation` fields, and a Large's two cells each hold their **own**
+duplicated copy of the same record (self-describing halves, not one record plus a link — a late
+joiner or a future plaque reads either half with no link to resolve first); `apply_cell_filled`/
+`apply_cell_cleared` handle a Large's two halves as one unit and stop hard-coding
+`Crate.KIND_SMALL`; `occupancy_snapshot` ships full records for a late joiner; and
+`occupied_cells_in_top_row` returns a Large's anchor only, so a shed can never spawn the same
+Large twice (supply conservation). **`apply_record_update(cell, crate_id, changes)` is new**: the
+write-through editor for a record already racked (02-10 needs this to bump a missed collection's
+`store_until_day`), local-only — `rack.gd` still has zero RPC annotations of any kind, verified by
+grep, and two doc comments were rewritten mid-plan once that same grep turned up 4 hits from
+**prose describing the property**, not real ones. Racked visuals now scale the node per size
+(base 0.5 m mesh unchanged, so the api layer's own mesh-size assertion stays true) with ADR 24's
+inset applied on top, and 01-06's placement tween was fixed to animate from/to that inset scale
+rather than the literal `1.0`/`1.06` it used before — unfixed, a Medium or Large would have
+snapped to roughly a quarter size mid-flight.
+**One real, deliberate deviation, empirically verified rather than assumed**: `apply_cell_filled`'s
+two new parameters (a record, an orientation) are left **without a GDScript static type**,
+confirmed by three isolated headless experiments that a statically-typed mismatch against a
+known-typed caller (`carry_authority.gd`'s `rack: Rack`) is a **parse-time** failure in this
+engine, not a runtime one — typing them properly would have made the still-stale
+`_cell_filled` RPC handler fail to *load*, taking every scene using `CarryAuthority` down with it
+in `smoke`, rather than the clean, isolated `integration`-only runtime failure this plan is
+supposed to end with. **`can_accept`'s three call sites, in `carrier.gd` and `carry_authority.gd`,
+were fixed in this plan** (not left stale) — the plan's own Task 2 text explicitly instructed
+this, a mechanical `.size` argument addition using a field `Crate` already has (02-04); a Large
+still cannot be racked through either path, since nothing chooses an orientation yet.
+**`./tools/run-tests.ps1` confirms exactly the intended shape, twice, byte-identical**: `api`
+(115 assumptions) / `unit` (491 cell-arithmetic checks, up from 183, plus the existing 489+56) /
+`smoke` (11 scenes) all green; `integration`'s `carry` scenario is fully green and untouched
+(27/23 steps); its `storage` scenario fails **exactly once**, on both peers, at
+`Rack.apply_cell_filled` (`rack.gd:628`), reached via `CarryAuthority._cell_filled` — the exact
+call site this plan's own doc comments named as 02-06's to fix, with the wire itself needing a
+record and an orientation instead of a bare crate id and kind. No other engine error, warning,
+leak or crash anywhere in either run. Two commits: `7bef143` (StorageGrid geometry + occupancy
+rules + 308 new unit checks), `76cd7b2` (Rack's rewrite + the two mandated caller fixes). Full
+detail, including the exact cell shape and the precise call-site fix 02-06 inherits:
+`02-05-SUMMARY.md`.
+
+Before that, 2026-08-22 — **02-04 executed: Medium and Large cargo landed, weight decides the
 hold, wave 3 complete.** `crate.gd` gained a real `record: CargoRecord`, a `size`
 (`CargoCatalogue.Size`), and repurposed `kind` (ADR 25 (a): "kind" is now the category — atomicity
 in `Rack.can_accept` keys off it exactly as it always did, unchanged). `setup()` widened to
@@ -279,8 +337,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 for ADR 19 before execution
 
 Progress: [█████████░] Phase 0 complete bar one blocked item; Phase 1 complete, all 9 plans, all
-7 waves — gate passed 2026-08-21. Phase 2: waves 1-3 complete (`02-01`, `02-02`, `02-03`, `02-04` —
-4 of 11 plans); waves 4-8 still to execute.
+7 waves — gate passed 2026-08-21. Phase 2: waves 1-4 complete (`02-01`, `02-02`, `02-03`, `02-04`,
+`02-05` — 5 of 11 plans); waves 5-8 still to execute.
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
