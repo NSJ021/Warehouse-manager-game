@@ -54,6 +54,20 @@ const GRAB_REACH := 2.0
 ## together, 2.5 → 2.0 m ray / 3.5 → 3.0 m here, at the same wave 7 gate
 ## ruling — the 0.87 m half-diagonal and the small safety margin are
 ## unchanged, only the ray length that feeds them.)
+##
+## ⚠ A Large's own target is a PAIR of cells (02-08), and this is measured
+## against the ANCHOR cell's centre alone — the cell the aim actually
+## resolved — not the pair's own midpoint. The obvious-looking extension
+## would be to measure against [method StorageGrid.pair_centre] instead,
+## which sits up to a further 0.5 m away and would need this constant widened
+## to roughly 3.5 to keep the same "a genuine aim can never fail" guarantee.
+## Rejected: the anchor is what the aim itself established, and the partner
+## is derived arithmetic on the SAME rack, at most one cell away from a
+## reach check that already passed — a security constant that exists to
+## reject a forged or stale request should not be loosened to accommodate a
+## case it was never actually at risk from. Keeping the check on the anchor
+## means the derivation above stays true, unchanged, exactly as measured at
+## the wave 7 gate.
 const PLACE_REACH := 3.0
 ## How many frames [method _hold_granted] will wait for a just-retrieved
 ## crate's spawn packet to land before giving up. [method request_retrieve]
@@ -161,12 +175,28 @@ func request_release() -> void:
 
 ## Store a held crate into a rack cell. Validated in order: the sender is
 ## actually holding something; a dragged crate may only reach the floor row
-## (ADR 19, see the note below); the rack and cell resolve; the cell has room
-## for this kind (ADR 18); the holder is actually close enough. Any failure
+## (ADR 19, see the note below); the rack and cell resolve; the cell (or, for
+## a Large, BOTH cells of the pair — see the note below) has room for this
+## category (ADR 18/25); the holder is actually close enough. Any failure
 ## returns silently — the idiom this whole file uses, a client that disagrees
 ## with the host simply does not get what it asked for.
+##
+## [param orientation] is the client's CHOICE, not a claim about geometry —
+## the host derives the partner cell itself from it
+## ([method StorageGrid.large_partner_cell]) rather than ever accepting a
+## second cell index from the wire. Say why in plain terms, since it would be
+## easy to "simplify" this back the other way later: this file's entire
+## posture is that clients never grant themselves a hold, and never rack or
+## unrack anything unilaterally either — they ask, the host decides. A
+## client-supplied PARTNER CELL INDEX would be a client granting itself half
+## a placement outright. An orientation is a two-value choice the host
+## validates completely by deriving the partner and checking
+## [method Rack.can_accept_large] itself; a cell index is a claim about
+## geometry the host would have to re-check anyway — re-deriving is strictly
+## cheaper than validating a second claim, on top of being the only version
+## of this that keeps the "the host decides" rule intact.
 @rpc("any_peer", "call_local", "reliable")
-func request_place(rack_name: String, cell_index: int) -> void:
+func request_place(rack_name: String, cell_index: int, orientation: int) -> void:
 	if not Net.is_host():
 		return
 
@@ -191,19 +221,26 @@ func request_place(rack_name: String, cell_index: int) -> void:
 		return
 	# StorageGrid.cell_coords() returns (column, depth, level) — .z is level,
 	# not .y (see the coordinate-order note on that method). Floor is level 0.
+	# A Large's pair always shares one level (both Orientation values flip
+	# column or depth, never level), so checking the anchor cell alone is
+	# sufficient here too.
 	if dragging and StorageGrid.cell_coords(cell_index).z != 0:
 		return
 	# .size travels alongside .kind (02-05) — see the matching note in
-	# carrier.gd. Rack.can_accept's signature grew a third argument; this is
-	# the plan's own mandated call-site fix, not new placement logic. A
-	# Large can still never succeed through this path — nothing here resolves
-	# an orientation or calls can_accept_large yet (02-06/02-07).
-	if not rack.can_accept(cell_index, crate.kind, crate.size):
+	# carrier.gd. A Large routes to can_accept_large instead of can_accept
+	# (02-08): a different question (are BOTH of a pair's cells empty), not
+	# an overloaded meaning of "accept" for one.
+	if crate.size == CargoCatalogue.Size.LARGE:
+		if not rack.can_accept_large(cell_index, crate.kind, orientation):
+			return
+	elif not rack.can_accept(cell_index, crate.kind, crate.size):
 		return
 
 	var holder := _player_for(peer_id)
 	if holder == null:
 		return
+	# Measured against the ANCHOR cell's centre, unchanged — see PLACE_REACH's
+	# own doc comment for why a two-cell target does not widen this constant.
 	if holder.camera_pivot.global_position.distance_to(rack.cell_to_global_position(cell_index)) > PLACE_REACH:
 		return
 
@@ -217,12 +254,6 @@ func request_place(rack_name: String, cell_index: int) -> void:
 	# the id/kind pair this used to carry.
 	var record_data := crate.record.to_dict()
 	var from_position := crate.global_position
-	# Inert in this plan — always SIDE_BY_SIDE. Nothing here resolves a
-	# player-chosen orientation yet (02-07/02-08), and a Large cannot reach
-	# this call at all today (can_accept above already refused it). Carried on
-	# the wire now anyway so 02-08 widens no RPC signature and no
-	# peer-compatibility question arises mid-phase.
-	var orientation := StorageGrid.Orientation.SIDE_BY_SIDE
 
 	# Release every holder, not just the asker — a crate can be held by two
 	# players (ADR 13 / GDD §6.1), and placing it takes it from both. _held
@@ -255,6 +286,13 @@ func request_place(rack_name: String, cell_index: int) -> void:
 ## is what turns a "normal carry" request into a drag when the retrieved
 ## record is too heavy to lift — the host decides, the asker never negotiates
 ## it (a heavy retrieval never gets a choice in the matter).
+##
+## [param cell_index] may name EITHER half of a Large (02-08) — nothing here
+## needs to know which: [method Rack.remove_large], reached through
+## [method Rack.apply_cell_cleared] below, already resolves whichever half it
+## is handed back to the true anchor and clears both. Hands back exactly ONE
+## crate either way; see the broadcast comment below for why this is a single
+## [signal _cell_cleared] call, never two.
 @rpc("any_peer", "call_local", "reliable")
 func request_retrieve(rack_name: String, cell_index: int) -> void:
 	if not Net.is_host():
@@ -288,18 +326,32 @@ func request_retrieve(rack_name: String, cell_index: int) -> void:
 	# gone and there is nothing left here that remembers what it held.
 	var record_data := rack.occupant_record(cell_index)
 	var size := int(record_data.get("size", CargoCatalogue.Size.SMALL))
-	# Inert here for the same reason as request_place's own note — nothing
-	# minted through this path is ever a Large yet (02-08), and every
-	# non-Large cell's own stored orientation is always SIDE_BY_SIDE (its
-	# StorageGrid enum value, 0), so this is never wrong for a real cell
-	# today, only incomplete for a size this plan cannot produce.
-	var orientation := StorageGrid.Orientation.SIDE_BY_SIDE
+	# Rack.cell_orientation reads the ACTUAL stored orientation (02-08) — 0
+	# (SIDE_BY_SIDE) for anything but a Large, which is also correct for a
+	# Large stored that way, so one call covers every size with no branch
+	# needed here. A hard-coded SIDE_BY_SIDE, as this line used to read, was
+	# never wrong for a Small or Medium (whose stored orientation is always
+	# 0), only incomplete for a Large — see this method's own reasoning below
+	# for why re-minting at the wrong orientation would matter.
+	var orientation := rack.cell_orientation(cell_index)
 	# Rack.mint_position, never cell_to_global_position, for anything but a
 	# Small (ADR 24): a Medium or Large minted at a cell's bare centre
 	# intersects the rack's own corner uprights and Jolt flings it across the
 	# room. mint_position already folds StorageGrid.mint_offset's clearance in.
+	# For a Large, cell_index may be EITHER half of the pair (see this
+	# method's own doc comment) — mint_position/large_partner_cell are
+	# symmetric under either half, so no extra resolution is needed here.
 	var mint_position := rack.mint_position(cell_index, size, orientation)
+	# Named for the [carry] log line below, before the clear — once
+	# _cell_cleared fires this cell's own stored "partner" field is gone.
+	var partner_cell := int(record_data.get("partner", -1))
 
+	# ONE broadcast for the cell the player actually aimed at, whichever half
+	# that was — Rack.apply_cell_cleared (via _cell_cleared below) already
+	# clears BOTH halves of a Large from that single cell index. Two
+	# broadcasts for one crate is how a double-free bug is born, and supply
+	# conservation (Crate._recover) depends on nothing ever minting the same
+	# stock twice.
 	_cell_cleared.rpc(rack_name, cell_index)
 	var crate := source.spawn_crate_at(mint_position, record_data) as Crate
 	if crate == null:
@@ -332,7 +384,13 @@ func request_retrieve(rack_name: String, cell_index: int) -> void:
 		crate.hold_broken.connect(_on_hold_broken)
 	if not crate.hold_mode_changed.is_connected(_on_hold_mode_changed):
 		crate.hold_mode_changed.connect(_on_hold_mode_changed)
-	print("[carry] peer %d retrieved crate_%d from %s cell %d" % [peer_id, crate.id, rack_name, cell_index])
+	# Names the pair for a Large (a player reconstructing what happened should
+	# be able to see both cells it came from), and reads exactly as before for
+	# everything else, since partner_cell is -1 there.
+	if partner_cell != -1:
+		print("[carry] peer %d retrieved crate_%d from %s cells %d+%d" % [peer_id, crate.id, rack_name, cell_index, partner_cell])
+	else:
+		print("[carry] peer %d retrieved crate_%d from %s cell %d" % [peer_id, crate.id, rack_name, cell_index])
 	_answer_grant(peer_id, crate.name, crate.hold_mode())
 
 
@@ -365,9 +423,11 @@ func shed_top_row(rack: Rack) -> void:
 		# floor is the same stock that was racked, not a fresh default.
 		var record_data := rack.occupant_record(cell_index)
 		var size := int(record_data.get("size", CargoCatalogue.Size.SMALL))
-		# Inert until a Large can reach a rack at all (02-08) — see
-		# request_retrieve's own note on this same constant.
-		var orientation := StorageGrid.Orientation.SIDE_BY_SIDE
+		# Rack.cell_orientation reads the ACTUAL stored orientation (02-08) —
+		# occupied_cells_in_top_row() only ever returns a Large's ANCHOR cell
+		# (Rack's own doc comment on that method), so this is always the
+		# correct half to read it from.
+		var orientation := rack.cell_orientation(cell_index)
 		# mint_position, never cell_to_global_position — a shed Large minted
 		# at a bare cell centre would launch from inside two corner uprights,
 		# which is spectacular and wrong (ADR 24).
@@ -515,8 +575,10 @@ func _hold_mode_set(mode: Crate.HoldMode) -> void:
 ##
 ## [param record_data] is [method CargoRecord.to_dict]'s own wire-safe shape
 ## (02-06, STORE-07) — the crate's WHOLE record, not merely an id and a kind.
-## [param orientation] is a [enum StorageGrid.Orientation] int, inert until a
-## Large can reach this call (02-08); see [method request_place]'s own note.
+## [param orientation] is a [enum StorageGrid.Orientation] int — live as of
+## 02-08, [method request_place]'s own choice, re-derived host-side from the
+## client's request rather than trusted; meaningless for anything but a
+## Large, which [method Rack.apply_cell_filled] already knows how to ignore.
 @rpc("authority", "call_local", "reliable")
 func _cell_filled(rack_name: String, cell_index: int, record_data: Dictionary, from_position: Vector3, orientation: int) -> void:
 	var rack := _rack_for(rack_name)
