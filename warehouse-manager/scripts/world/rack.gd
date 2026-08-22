@@ -393,6 +393,13 @@ func occupied_cells_in_top_row() -> Array[int]:
 ##
 ## Duplicated on the way out, so a caller mutating what it was handed cannot
 ## mutate this rack's real state.
+##
+## Measured (02-06, [code]var_to_bytes[/code] on a synthetic worst case): a
+## fully loaded rack — 12 cells x 8 Smalls, the maximum this shape allows —
+## serialises to ~38.8 KB; 12 cells of one Medium each (the least crowded
+## "full" rack) is ~6.5 KB. A one-time, per-join cost, not the per-frame
+## channel ADR 14's own bandwidth budget governs — see this method's own
+## class-doc paragraph above for why that distinction matters.
 func occupancy_snapshot() -> Array:
 	var snapshot: Array = []
 	for cell in _cells:
