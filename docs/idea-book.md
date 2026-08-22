@@ -485,3 +485,103 @@ One constraint that must survive into any of them: a contract **biases** what ar
 ### Calibration flag
 
 The worked example that produced this entry priced a contract at £1000 cash and 200 reputation. Those are not on the same scale: ADR 20 prices reputation at £90/point/day remaining, so on day one of a ten-day lease 200 points is worth roughly £180,000 against £1,000 cash. Either reputation moves in single digits per contract or the £90 rate needs revisiting. Settle it before any Phase 4 economy work.
+
+---
+
+## Rack shedding, revisited
+
+**Raised:** NJ, 2026-08-22. What comes loose when a rack is hit, how much, and how hard it flies.
+Built in 01-07 and ratified at the Phase 1 gate; this entry is the revisit, not the original.
+
+### What is built today
+
+```
+trigger:  crate.linear_velocity.length() >= 4.0     -- speed only
+scope:    top row only, every occupied cell in it
+cap:      MAX_SHED_PER_EVENT = 8                    -- the ADR 14 guard
+force:    fixed impulse, 18.0 outward + 4.5 up
+guards:   1.5 s cooldown, 700 ms mint grace
+```
+
+### Two findings, and the second is a defect
+
+**Mass already does half of the wanted behaviour, for free.** `apply_central_impulse` gives
+`Δv = J/m`, so one fixed impulse produces very different outcomes by weight — 02-06 documented this
+in passing: the same 18.0 gives a 12 kg Small about 1.5 m/s outward and a ~100 kg heavy crate barely
+a fifth of that. **Light cargo already flies further than heavy cargo.** What is mass-blind is the
+*decision* to shed: every occupied top-row cell goes, regardless of what is in it.
+
+**The trigger measures the wrong physical quantity, and this is a latent regression rather than an
+original design flaw.** Before 02-04 every crate weighed 12 kg, so `speed >= 4.0` *was* a momentum
+test up to a constant — 48 kg·m/s, every time. The instant wave 3 gave crates real catalogue masses
+(5 kg textiles up to 108 kg machine parts), the threshold silently stopped meaning what the gate
+calibrated it to mean. A 5 kg Small now trips it at 20.5 kg·m/s; a 108 kg Large trips it at the same
+*speed* while carrying twenty times the momentum, and both shed identically.
+
+This is the same species as the `Rack.apply_cell_filled` hard-coded `KIND_SMALL` that 02-04 itself
+found: **a constant that was accidentally correct while a variable was uniform, and became wrong the
+moment it varied.** Neither was caught by a test, and in this case there is no test to catch it —
+**the gate-ratified 4.0 has no api-layer assertion**, despite the standing rule to pin every number
+an ADR fixes.
+
+### "Edge" needs redefining, because every cell is a corner
+
+A rack level is 2 columns × 2 deep, so **there is no middle cell** — cell-level "edge" is meaningless
+here. Sub-cell edge is real, though: `StorageGrid.small_offset()` places 8 Smalls in a 2×2×2 lattice
+inside each cell, so front/back and top/bottom exist *within* a cell.
+
+**But shedding by sub-position would break LIFO.** ADR 18 makes retrieval within a cell last-in
+first-out and the cell stores `ids` as a stack; pulling from an arbitrary sub-position is not a stack
+operation.
+
+**Resolution: in a stacked cell, the edge IS the top of the stack.** The last-placed item physically
+sits on top and is the most precarious thing in the cell. That delivers the design intent and keeps
+LIFO intact with no data-model change.
+
+### Shelf height is physics, not gamification
+
+A rack is anchored at the floor and pivots at its base, so **the top has the longest lever arm and
+sways furthest**. Displacement scales with height. "Top shelf most likely, bottom shelf least" is the
+real behaviour rather than a drama fudge — which is the best kind of rule to build, because it will
+read as fair.
+
+### One model instead of four rules
+
+```
+J_total = k · (m_hit · v_hit)               -- momentum, not speed
+J_share = J_total · f(height) · g(distance from impact)
+Δv_item = J_share / m_item                  -- mass does the rest, already free
+comes off if Δv_item > threshold            -- enough to clear ADR 24's pallet lip
+```
+
+- `f(height)` rises with level — the lever arm above.
+- `g(distance)` falls off from the impact point — locality, which is what "closest to the edge"
+  actually means once cells are all corners.
+- `Δv = J/m` gives light-flies/heavy-stays for nothing; it is already how the code behaves.
+- **The threshold filters by mass on its own**, so heavy crates simply do not come off. That is
+  "lighter dislodges easier" with no separate probability roll anywhere.
+
+### The drama floor
+
+Pure physics risks the failure 02-06 named precisely: *"the shed did nothing" and "the shed is
+broken" look identical from outside the game.* So a qualifying impact **always sheds at least one
+item, choosing the lightest available**. Guaranteed visible consequence without making masonry
+behave like polystyrene. That is the whole of the gamification, and it is deliberately one rule.
+
+### Opening the lower shelves, against the budget
+
+Top-row-only was a deliberate ADR 14 bound. The good news is that `MAX_SHED_PER_EVENT = 8` caps the
+spike already, so **the ceiling does not move — only which shelves the eight may come from.** That is
+defensible, but the ADR must say it out loud rather than assume it. The rack-topple entry above
+carries the wider budget maths (a full rack of Smalls is 96 bodies against a ~150 envelope) and the
+rule that a falling rack may shed its neighbour but must never topple it.
+
+### Sequencing, agreed with NJ
+
+1. **Fix the momentum trigger** — a defect, not a tuning question, and it should carry the
+   api-layer assertion that never existed.
+2. **Observe the rest at the Phase 2 gate.** 02-06's own comment asks for a human to watch the
+   current numbers before any are retuned, and the gate already puts NJ in the building with a
+   loaded rack. Where the drama-versus-silly line sits is not answerable from a desk.
+3. **Then write the ADR with measured numbers** rather than guessed ones. It will amend 01-07's
+   gate-ratified shed behaviour, so it needs to be a decision record, not a tweak.
