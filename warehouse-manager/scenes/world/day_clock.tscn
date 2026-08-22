@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/day_clock.gd" id="1_clock"]
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_clock"]
+properties/0/path = NodePath(".:sync_day")
+properties/0/spawn = true
+properties/0/replication_mode = 2
+properties/1/path = NodePath(".:sync_phase")
+properties/1/spawn = true
+properties/1/replication_mode = 2
+properties/2/path = NodePath(".:sync_elapsed")
+properties/2/spawn = true
+properties/2/replication_mode = 1
+
+[node name="DayClock" type="Node"]
+editor_description = "The day loop's clock (ADR 25 (f)). Inert until begin_run() is called on the host — see day_clock.gd's own class doc before wiring this into a new level. Found by group (\"day_clock\"), never by path: 02-06's truck dump and 02-09's collection check both resolve it lazily, the same pattern CarryAuthority and Rack already use."
+script = ExtResource("1_clock")
+
+[node name="Synchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_interval = 0.2
+replication_config = SubResource("SceneReplicationConfig_clock")
