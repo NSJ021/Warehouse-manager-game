@@ -162,13 +162,22 @@ const CRATE_DRAG_ATTEMPT_NAME := "crate_3"
 ## be mistaken for, a real crate.
 const FILLER_ID_START := 9000
 const FILLER_COUNT := 8
-## _cell_filled (02-04) carries the crate's own kind so Rack.apply_cell_filled
-## can store it rather than a hard-coded fallback (see that method's own doc
+## _cell_filled (02-06) carries a whole record so Rack.apply_cell_filled can
+## store it rather than a hard-coded fallback (see that method's own doc
 ## comment) -- these fillers were never real crates, so this is a plain,
-## distinct placeholder rather than any real CargoCatalogue category. All
-## eight share it, which is what "fill one cell to capacity" means under
-## atomicity (ADR 18).
+## distinct placeholder category rather than any real CargoCatalogue row.
+## CargoCatalogue.mint() tolerates an unknown category (fragility/mass/value
+## all default to 0), so a synthetic filler record still round-trips through
+## the exact same to_dict()/from_dict() shape a real crate's does. All eight
+## share it, which is what "fill one cell to capacity" means under atomicity
+## (ADR 18).
 const FILLER_KIND := &"filler"
+## Placeholders for CargoCatalogue.mint()'s manifest-only parameters -- these
+## fillers are never handed over or inspected for a contract, so any legal
+## values do.
+const FILLER_STORE_UNTIL_DAY := 1
+const FILLER_OWNER := &"test_client"
+const FILLER_CONTRACT_DAYS := 1
 
 ## --- 01-07: the shed, and the stack. ---
 ##
@@ -485,7 +494,19 @@ func _run_host(rack: Rack, rack2: Rack) -> void:
 		return _finish(false)
 	var before_budget := _crates().get_child_count()
 	for i in FILLER_COUNT:
-		authority._cell_filled.rpc(rack.name, CELL_B, FILLER_ID_START + i, FILLER_KIND, rack.cell_to_global_position(CELL_B))
+		# A real record, not a bare id/kind pair -- _cell_filled (02-06) carries
+		# a whole CargoRecord dictionary now, and Rack.apply_cell_filled expects
+		# one regardless of whether the caller is a genuine placement or this
+		# scenario's own synthetic setup step.
+		var filler_record := CargoCatalogue.mint(
+			FILLER_KIND, FILLER_KIND, CargoCatalogue.Size.SMALL,
+			FILLER_STORE_UNTIL_DAY, FILLER_OWNER, FILLER_CONTRACT_DAYS,
+			FILLER_ID_START + i,
+		).to_dict()
+		authority._cell_filled.rpc(
+			rack.name, CELL_B, filler_record, rack.cell_to_global_position(CELL_B),
+			StorageGrid.Orientation.SIDE_BY_SIDE,
+		)
 	_expect_now(
 		rack.occupied_count(CELL_B) == FILLER_COUNT,
 		"cell %d holds all %d synthetic fillers on the host" % [CELL_B, FILLER_COUNT],

@@ -140,14 +140,18 @@ func try_toggle_hold(want_drag := false) -> void:
 	# No hold | empty cell / nothing -> do nothing.
 
 
-## Holding something and aiming at a rack cell. Two rows of the branch table
-## live here, both "refuse, do not drop":
+## Holding something and aiming at a rack cell. Two rows of a branch table
+## live here — both "refuse, do not drop" — extracted into
+## [method _placement_allowed] so [method try_toggle_hold]'s actual press and
+## [method _highlight_state]'s prediction of it are the exact same function
+## call rather than two hand-written copies of the same rule (02-06; see that
+## method's own doc comment for why this stopped being optional):
 ##
-## - **Full or wrong-kind cell.** A player pressing E while pointing at a full
-##   cell is trying to store something, and dropping their crate on the floor
-##   would be the least helpful possible response. To drop deliberately, look
-##   away from the rack. Plan 01-06 makes this legible with a red highlight;
-##   the intent is recorded here so the two plans agree.
+## - **Full or wrong-category cell.** A player pressing E while pointing at a
+##   full cell is trying to store something, and dropping their crate on the
+##   floor would be the least helpful possible response. To drop deliberately,
+##   look away from the rack. Plan 01-06 makes this legible with a red
+##   highlight; the intent is recorded here so the two plans agree.
 ## - **⚠ Dragging above floor level (ADR 19).** Added 2026-08-19, after this
 ##   plan was first written, and not decoration: 01-06 copies this table
 ##   verbatim to decide the cell highlight, so leaving this row out would let
@@ -156,18 +160,7 @@ func try_toggle_hold(want_drag := false) -> void:
 ##   feedback, not authority. The host re-validates everything in
 ##   request_place and simply refuses if this client ever disagrees with it.
 func _try_place(referee: CarryAuthority, aim: AimResult) -> void:
-	# crate.hold_mode() is readable locally on the held crate, so this costs
-	# nothing extra to ask. Floor level is level 0 — StorageGrid.cell_coords()
-	# returns (column, depth, level), so it is .z, not .y, that means level.
-	var floor_level := StorageGrid.cell_coords(aim.cell_index).z == 0
-	if is_dragging() and not floor_level:
-		return
-	# .size travels alongside .kind (02-05): Rack.can_accept grew a third
-	# argument so a Medium is never silently treated as a Small — the plan's
-	# own instruction to grep and fix every can_accept call site, not a new
-	# behaviour. Large placement is still unreachable from here regardless —
-	# nothing in this file chooses an orientation or calls can_accept_large.
-	if not aim.rack.can_accept(aim.cell_index, _held.kind, _held.size):
+	if not _placement_allowed(aim):
 		return
 
 	if Net.is_host():
@@ -176,10 +169,32 @@ func _try_place(referee: CarryAuthority, aim: AimResult) -> void:
 		referee.request_place.rpc_id(1, aim.rack.name, aim.cell_index)
 
 
+## Whether placing [member _held] into [param aim]'s cell would succeed —
+## the single predicate [method _try_place] acts on and [method
+## _highlight_state] paints, so the two can never quietly drift apart (the
+## exact failure the 01-06 audit found once, before this extraction existed).
+## Only meaningful while [member _held] is set; callers with an empty hand
+## have nothing to place and should not call this.
+##
+## - Floor level is level 0 — [method StorageGrid.cell_coords] returns
+##   (column, depth, level), so it is [code].z[/code], not [code].y[/code],
+##   that means level.
+## - [code].size[/code] travels alongside [code].kind[/code] (02-05):
+##   [method Rack.can_accept] grew a third argument so a Medium is never
+##   silently treated as a Small. A Large still cannot reach this function at
+##   all — nothing here chooses an orientation or calls
+##   [method Rack.can_accept_large] (02-07/02-08).
+func _placement_allowed(aim: AimResult) -> bool:
+	var floor_level := StorageGrid.cell_coords(aim.cell_index).z == 0
+	if is_dragging() and not floor_level:
+		return false
+	return aim.rack.can_accept(aim.cell_index, _held.kind, _held.size)
+
+
 ## What [method _process] should paint for the cell [param aim] is currently
-## resolved to — the exact table [method _try_place] enforces, expressed as
-## "what to show" instead of "what to do", so the two branch tables cannot
-## quietly drift apart. Only called with [param aim].rack already non-null.
+## resolved to — [method _placement_allowed] itself, expressed as "what to
+## show" instead of "what to do". Only called with [param aim].rack already
+## non-null.
 func _highlight_state(aim: AimResult) -> Rack.Highlight:
 	# Guards the same out-of-range case show_highlight() itself guards -
 	# belt and braces, since Array's negative-index wraparound would
@@ -188,15 +203,7 @@ func _highlight_state(aim: AimResult) -> Rack.Highlight:
 		return Rack.Highlight.NONE
 
 	if _held != null:
-		# Same two checks _try_place makes, in the same order: a dragged crate
-		# refuses anything above the floor row (ADR 19) before atomicity is
-		# even asked about, because that refusal holds regardless of room.
-		var floor_level := StorageGrid.cell_coords(aim.cell_index).z == 0
-		if is_dragging() and not floor_level:
-			return Rack.Highlight.BLOCKED
-		if aim.rack.can_accept(aim.cell_index, _held.kind, _held.size):
-			return Rack.Highlight.ACTIONABLE
-		return Rack.Highlight.BLOCKED
+		return Rack.Highlight.ACTIONABLE if _placement_allowed(aim) else Rack.Highlight.BLOCKED
 
 	if aim.rack.is_cell_empty(aim.cell_index):
 		# Empty and no hold: nothing would happen either way. Painting every
