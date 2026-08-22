@@ -13,7 +13,25 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **cleared for execution 2026-08-22; waves 1-4 complete (02-01, 02-02, 02-03, 02-04, 02-05).**
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **waves 1-5 complete (02-01 … 02-06). PAUSED after wave 5 at NJ's instruction, 2026-08-22, to consolidate.**
+
+> **⏸ Deliberate stop.** Waves 6-8 (02-07, 02-08, 02-09, 02-10, then the 02-11 gate) are planned and
+> not started. The pause is not a blocker — it is a decision to take stock before spending more, after
+> 02-06 ran ~3 hours against a 45-90 minute norm for this phase. Roughly half of that was avoidable and
+> the guards are now in place (see the 02-06 block below); the pause is to confirm they hold rather
+> than to fix anything outstanding. **Before resuming, read `docs/test-coverage.md`** — the ranked
+> coverage backlog, with ADR 14's unguarded `replication_mode` at the top, and the Route 1 plan edits
+> (adding `guards` entries to 02-07 and 02-08) still to do.
+
+**02-06 complete, 2026-08-22 — finished by the orchestrator, not the executing agent.** STORE-07 is
+proven field-for-field on two peers over real ENet: 96 host steps and 81 client steps, up from 51 and
+42. The agent was stopped mid-verification at ~3 hours; the revert, a blocked-term fix, three green
+runs, the commit and the summary were done directly. Commits `260b53f` and `2fda621`.
+**The most valuable thing in it is a negative control** — the record's `mass` field was deliberately
+dropped on the wire and the suite went red naming that exact field, then the break was reverted and
+the greens re-obtained on the reverted tree. An assertion only ever seen passing is not evidence of a
+guard. Full detail, including why it took three hours and every guard added because of it, in
+`02-06-SUMMARY.md`.
 Plan: Phase 2 planned 2026-08-21, revised 2026-08-22 — 11 plans (02-01 … 02-11) in **8 waves**, `.planning/phases/02-goods/`.
 **02-01 complete, 2026-08-22.** ADR 25 (`decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md`)
 is ratified and committed, with the three contradicted documents (`decisions/decision-log.md`,
