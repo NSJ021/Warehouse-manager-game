@@ -66,35 +66,34 @@ const TEST_PORT := 27097
 ## Raised 15000 -> 20000 by 02-06 (steps 13-15's own dense retrieve/place
 ## sequence), then 20000 -> 45000 by 02-08.
 ##
-## ⚠ THE 45000 RAISE WAS MADE FOR A REASON THAT HAS SINCE BEEN DISPROVEN, and
-## the number is left alone only because nothing yet shows it is harmful.
+## ⚠ THE 45000 RAISE WAS MADE FOR A REASON THAT WAS LATER DISPROVEN. The
+## number is left alone because nothing shows it is harmful, but do not read it
+## as evidence of anything.
 ##
-## 02-08 concluded the client's step-17 failure was a budget problem — that
-## its incoming RPC queue simply ran seconds behind the host's send order, so
-## "the fix is a bigger number, not a different mechanism." **That is wrong.**
-## Measured 2026-08-22 by the orchestrator, letting BOTH peers run to
-## completion rather than killing the host with the client:
+## 02-08 concluded the client's step-17 failure was a budget problem — that its
+## incoming RPC queue simply ran seconds behind the host's send order, so "the
+## fix is a bigger number, not a different mechanism." That was wrong, and so
+## was the correction that replaced it (a suspected correctness bug in the
+## client's own apply path for a Large). Diagnosed properly 2026-08-22 by
+## instrumenting the send site as well as the receive site:
 ##
-##   * host  RESULT=PASS steps_passed=134 — it genuinely performs the
-##     placement ("racked crate_15 into rack_island cell 2"), 78% of the way
-##     through its own run
-##   * client RESULT=FAIL steps_passed=81 — never observes it
-##   * raising this constant 45000 -> 180000, a FOUR-FOLD budget, changes
-##     nothing: the client still fails at exactly step 81
-##   * capping both peers at Engine.max_fps = 60, testing whether uncapped
-##     headless was outrunning replication, also changes nothing
-##   * no engine error on either peer; the async-without-await line at
-##     _run_client fires only AFTER the wait has already given up
+##   * the host's own broadcast went out to get_peers() == [] — an EMPTY peer
+##     list. The client had already given up and quit ~59 s earlier. The RPC
+##     was never transmitted to anybody, which is why it was "absent, not late"
+##   * the host reached step 17's placement about 104 s after the client began
+##     waiting for it, because two _walk_to calls (steps 15 and 17) each burned
+##     a silent 46 s in _wait_for_crate_catch_up
+##   * that ceiling was THIS CONSTANT. Raising it raised the host's stall and
+##     the client's patience by the same amount, which is exactly why a
+##     four-fold raise changed nothing — see CATCH_UP_CEILING_MS, which is the
+##     fix and carries the full write-up
+##   * two-instance live play placed a solo-dragged Large into the same
+##     floor-level island cell correctly, visible on both peers, throughout.
+##     The game was never wrong; the harness was
 ##
-## A four-fold budget that changes nothing is not a budget problem. The
-## client's predicate — occupied_count(anchor) == 1 on rack_island — never
-## becomes true at all, which makes this a CORRECTNESS question about the
-## client's own apply path for a Large, not a timing one. The host applies its
-## own broadcast synchronously via call_local; the client goes over the wire,
-## and only the client's copy is wrong.
-##
-## Do not raise this number again expecting it to help. See
-## docs/test-coverage.md for the open defect and what was already ruled out.
+## So: raising this number cannot fix a cross-peer timeout on its own, and if
+## it ever appears to, something is stalling the other peer for a comparable
+## time and that stall is the real bug. See docs/test-coverage.md.
 const STEP_TIMEOUT_MS := 45000
 const EXPECTED_PLAYERS := 2
 ## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for
@@ -1284,12 +1283,10 @@ func _run_host(rack: Rack, rack2: Rack) -> void:
 	if not await _until("host holds %s again (the sentinel)" % CRATE_MEDIUM_BLOCK_NAME, func() -> bool:
 			return crate_sentinel.holder_count() == 1):
 		return _finish(false)
-	print("[DEBUG] TIMING checkpoint C (about to grab+place sentinel) at ms=%d" % Time.get_ticks_msec())
 	await _place(rack, CELL_TOP_A, HOST_LATERAL)
 	if not await _until("sentinel %s racked into cell %d" % [CRATE_MEDIUM_BLOCK_NAME, CELL_TOP_A], func() -> bool:
 			return rack.occupant(CELL_TOP_A) != -1):
 		return _finish(false)
-	print("[DEBUG] TIMING checkpoint D (sentinel racked) at ms=%d" % Time.get_ticks_msec())
 	if not await _wait_for_settle(rack, CELL_TOP_A, 0):
 		return _finish(false)
 
@@ -2092,7 +2089,11 @@ func _walk_to(destination: Vector3) -> void:
 	# (already broken some other way) from hanging this function forever --
 	# see _wait_for_crate_catch_up's own doc comment for the failure this
 	# whole mechanism exists to prevent.
-	var hard_ceiling := deadline + STEP_TIMEOUT_MS
+	#
+	# CATCH_UP_CEILING_MS, deliberately NOT STEP_TIMEOUT_MS -- see that
+	# constant's own doc comment. This was the second half of the 02-08
+	# Large-placement defect and by far the more dangerous half.
+	var hard_ceiling := deadline + CATCH_UP_CEILING_MS
 	while Time.get_ticks_msec() < deadline:
 		if not await _wait_for_crate_catch_up(me, carrier, hard_ceiling):
 			break
@@ -2113,6 +2114,16 @@ func _walk_to(destination: Vector3) -> void:
 ## catching up — accepting the risk rather than hanging [method _walk_to]
 ## forever on a crate that will never close the gap (already broken loose
 ## some other way).
+##
+## [b]It says so out loud when that happens, and that is not decoration.[/b]
+## Until 2026-08-22 this waited silently, on a ceiling of
+## [constant STEP_TIMEOUT_MS] — so a stuck crate cost the host a full step
+## budget of wall clock with nothing whatsoever in the log to say why, and the
+## only visible symptom was a completely different assertion, on the OTHER
+## peer, timing out on a broadcast the host had not sent yet. Three such stalls
+## in one run put the host ~104 s behind the client and made a working feature
+## look like a dropped RPC. A pause this expensive must name itself. See
+## [constant CATCH_UP_CEILING_MS] for the full write-up.
 ##
 ## Exists because a held crate follows the hold point by spring, not by
 ## teleport: [method _walk_to]'s own jumps are normally small enough
@@ -2137,14 +2148,29 @@ func _walk_to(destination: Vector3) -> void:
 ## ~1.7 m "away" (the standing height alone) and this wait would spin for
 ## its own full ceiling on every single drag walk in the file.
 func _wait_for_crate_catch_up(me: Player, carrier: Carrier, ceiling_ms: int) -> bool:
+	var reported := false
 	while Time.get_ticks_msec() < ceiling_ms:
 		var held := carrier.held_crate()
 		if held == null:
 			return true
 		var reference := me.global_position if carrier.is_dragging() else me.camera.global_position
-		if held.global_position.distance_to(reference) < CARRY_CATCH_UP_DISTANCE:
+		var gap := held.global_position.distance_to(reference)
+		if gap < CARRY_CATCH_UP_DISTANCE:
 			return true
+		# Said out loud, once per walk, rather than silently absorbed. A crate
+		# that has stopped moving entirely is never going to close this gap, and
+		# the only previous symptom of that was the walk taking its whole
+		# ceiling -- see this function's own doc comment on why a silent stall
+		# here is worse than a loud one. print(), never push_warning():
+		# test/README.md's zero-tolerance rule means anything a test can
+		# legitimately trigger must not warn.
+		if not reported:
+			reported = true
+			print("[test]      note: %s is %.2f m from its holder (over the %.2f m catch-up mark) — pausing the walk" % [
+				held.name, gap, CARRY_CATCH_UP_DISTANCE,
+			])
 		await get_tree().process_frame
+	print("[test]      note: gave up waiting for a held crate to catch up after %d ms — walking on without it" % CATCH_UP_CEILING_MS)
 	return false
 
 
@@ -2297,6 +2323,38 @@ const PARK_POINT := Vector3(4.0, STAND_HEIGHT, -6.5)
 ## hold," not "about to snap," for either mode. See that method's own doc
 ## comment for the failure this constant exists to prevent.
 const CARRY_CATCH_UP_DISTANCE := 1.8
+
+## How long [method _walk_to] will pause for a lagging crate before walking on
+## without it. Its own constant, and that is the whole point.
+##
+## ⚠ THIS USED TO BE STEP_TIMEOUT_MS, AND THAT IS A BUG SHAPE WORTH NAMING,
+## because nothing about it looks wrong when you read it. STEP_TIMEOUT_MS is
+## how long the OTHER peer is prepared to wait to observe something this peer
+## does. Spending it here, on this peer's own internal stall, guarantees by
+## construction that a single stall consumes the other peer's ENTIRE budget
+## before the action it is waiting for has even happened — and raising
+## STEP_TIMEOUT_MS cannot help, because it raises the stall and the patience by
+## the same amount. That is exactly how it presented (2026-08-22): step 17's
+## Large placement looked like a dropped [method CarryAuthority._cell_filled]
+## RPC, "absent, not late," with the client still reporting roster=2. It was
+## neither. Two walks in steps 15 and 17 each burned a silent 46 s here, the
+## host arrived at the placement about 104 s after the client began waiting for
+## it, the client had already given up and quit, and the host's own broadcast
+## then went out to [code]get_peers() == [][/code] — nobody. Live two-instance
+## play was correct throughout; only the harness was lying. See
+## docs/test-coverage.md.
+##
+## 3000 ms is measured, not guessed: instrumenting every catch-up in a full run
+## showed EVERY healthy one completing inside 1 s, and the three unhealthy ones
+## sitting at a dead-constant distance with exactly zero velocity for the full
+## ceiling — a crate that has stopped moving is not lagging, it is stuck, and
+## no amount of extra waiting was ever going to change the answer. 3x the
+## observed worst healthy case, and small enough that all three stalls together
+## can no longer come close to another peer's step budget.
+##
+## Keep this WELL under STEP_TIMEOUT_MS. If the two ever converge again, this
+## whole failure returns wearing a different assertion's name.
+const CATCH_UP_CEILING_MS := 3000
 
 
 ## Walk clear, look somewhere that is neither cargo nor a rack cell, and press
@@ -2506,7 +2564,7 @@ func _client_peer_id() -> int:
 
 func _pass(label: String) -> void:
 	_steps_passed += 1
-	print("[test] ok   %s" % label)
+	print("[test] %d ok   %s" % [Time.get_ticks_msec(), label])
 
 
 func _fail(label: String, why: String) -> void:
