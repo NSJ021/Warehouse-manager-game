@@ -1418,10 +1418,43 @@ func _report_state() -> void:
 		print("[test] state me pos=%v" % me.global_position)
 
 
+## Silence any still-playing audio before quitting.
+##
+## This is the fix for a ~50% flaky suite, and the cause is worth recording
+## because the symptom pointed nowhere near it. Racking plays a positional
+## thud (01-06). The last placement in this scenario happens shortly before
+## _finish(), so whether the sound is still in flight when the tree tears down
+## is a race -- and when it is, its AudioStreamPlaybackWAV outlives the tree:
+##
+##     Leaked instance: AudioStreamWAV - Reference count: 1
+##     Leaked instance: AudioStreamPlaybackWAV - Reference count: 1
+##     Resource still in use: res://assets/audio/rack_place.wav
+##
+## The suite has zero tolerance for engine warnings, so that one line failed a
+## run in which all 93 assertions passed. Diagnosed by running the client with
+## --verbose against the editor binary; an earlier attempt missed it because
+## the export build does not carry the leaked-object detail.
+##
+## Stopped rather than waited on: waiting for playback to end is still a race,
+## just a narrower one. This is deterministic. Test-harness only -- leaking at
+## process exit is harmless in a shipped game, where the OS reclaims it, so
+## nothing in production needs to change for this.
+func _silence_audio() -> void:
+	_stop_players_under(get_tree().root)
+
+
+func _stop_players_under(node: Node) -> void:
+	if node is AudioStreamPlayer3D or node is AudioStreamPlayer:
+		node.stop()
+	for child: Node in node.get_children():
+		_stop_players_under(child)
+
+
 func _finish(passed: bool) -> void:
 	print("[test] RESULT=%s role=%s steps_passed=%d" % [
 		"PASS" if passed else "FAIL", _role, _steps_passed,
 	])
+	_silence_audio()
 	get_tree().quit(0 if passed else 1)
 
 
