@@ -46,6 +46,17 @@ var _settled_sensor_body: RigidBody3D
 var _settled_sensor_area: Area3D
 var _settled_sensor_walker: CharacterBody3D
 
+## 02-03: the dock door rests on an AnimatableBody3D displacing a dynamic
+## RigidBody3D for real, and NOT displacing a frozen FREEZE_MODE_STATIC one —
+## the second half is exactly why the door has to wake a settled crate before
+## it can push it (Crate.wake / DockDoor._wake_blocking_cargo).
+var _door_slab_dynamic: AnimatableBody3D
+var _door_dynamic_body: RigidBody3D
+var _door_dynamic_start: Vector3
+var _door_slab_static: AnimatableBody3D
+var _door_static_body: RigidBody3D
+var _door_static_start: Vector3
+
 
 func _initialize() -> void:
 	_check_engine_apis()
@@ -54,6 +65,7 @@ func _initialize() -> void:
 	_check_decided_invariants()
 	_build_aim_scene()
 	_build_settle_scene()
+	_build_door_scene()
 
 
 func _physics_process(_delta: float) -> bool:
@@ -62,13 +74,16 @@ func _physics_process(_delta: float) -> bool:
 	# have any chance of moving something — applied once the server has a
 	# physics space to receive it (frame 3, the same gate everything else
 	# below needs anyway), then given three more frames before anything
-	# checks whether it worked.
+	# checks whether it worked. The door slabs are driven the same way, on
+	# the same frame, for the same reason.
 	if _frames == 3:
 		_apply_settle_forces()
+		_apply_door_forces()
 	if _frames < 6:
 		return false
 	_check_aim_behaviour()
 	_check_settle_behaviour()
+	_check_door_behaviour()
 	_report()
 	return true
 
@@ -276,6 +291,91 @@ func _check_settle_behaviour() -> void:
 	)
 
 
+## 02-03: the dock door's whole design rests on an AnimatableBody3D pushing a
+## dynamic RigidBody3D for real, and doing nothing at all to a frozen
+## FREEZE_MODE_STATIC one. Two independent slab/target pairs rather than one
+## reused slab, so each half of the assertion gets a clean, unambiguous start
+## position instead of racing the other's result.
+func _build_door_scene() -> void:
+	var world := Node3D.new()
+	get_root().add_child(world)
+
+	_door_slab_dynamic = AnimatableBody3D.new()
+	_door_slab_dynamic.sync_to_physics = true
+	_door_slab_dynamic.collision_layer = 1
+	_door_slab_dynamic.collision_mask = 0
+	_door_slab_dynamic.position = Vector3(30.0, 0.0, 0.0)
+	var slab_dynamic_shape := CollisionShape3D.new()
+	var slab_dynamic_box := BoxShape3D.new()
+	slab_dynamic_box.size = Vector3(1.0, 1.0, 1.0)
+	slab_dynamic_shape.shape = slab_dynamic_box
+	_door_slab_dynamic.add_child(slab_dynamic_shape)
+	world.add_child(_door_slab_dynamic)
+
+	_door_dynamic_body = RigidBody3D.new()
+	_door_dynamic_body.collision_layer = 4
+	_door_dynamic_body.collision_mask = 5
+	_door_dynamic_body.position = Vector3(32.0, 0.0, 0.0)
+	var dyn_shape := CollisionShape3D.new()
+	var dyn_box := BoxShape3D.new()
+	dyn_box.size = Vector3(0.5, 0.5, 0.5)
+	dyn_shape.shape = dyn_box
+	_door_dynamic_body.add_child(dyn_shape)
+	world.add_child(_door_dynamic_body)
+	_door_dynamic_start = _door_dynamic_body.position
+
+	_door_slab_static = AnimatableBody3D.new()
+	_door_slab_static.sync_to_physics = true
+	_door_slab_static.collision_layer = 1
+	_door_slab_static.collision_mask = 0
+	_door_slab_static.position = Vector3(40.0, 0.0, 0.0)
+	var slab_static_shape := CollisionShape3D.new()
+	var slab_static_box := BoxShape3D.new()
+	slab_static_box.size = Vector3(1.0, 1.0, 1.0)
+	slab_static_shape.shape = slab_static_box
+	_door_slab_static.add_child(slab_static_shape)
+	world.add_child(_door_slab_static)
+
+	_door_static_body = RigidBody3D.new()
+	_door_static_body.collision_layer = 4
+	_door_static_body.collision_mask = 5
+	_door_static_body.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	_door_static_body.freeze = true
+	_door_static_body.position = Vector3(42.0, 0.0, 0.0)
+	var static_shape := CollisionShape3D.new()
+	var static_box := BoxShape3D.new()
+	static_box.size = Vector3(0.5, 0.5, 0.5)
+	static_shape.shape = static_box
+	_door_static_body.add_child(static_shape)
+	world.add_child(_door_static_body)
+	_door_static_start = _door_static_body.position
+
+
+## Jumps both slabs directly onto their own target body's position — a huge,
+## deliberate overlap, so [member RigidBody3D.sync_to_physics]'s implicit
+## velocity (derived from the transform delta between physics ticks) is
+## unambiguous rather than borderline. Same timing as [method
+## _apply_settle_forces]: applied once the server has a physics space to
+## receive it, then given three more frames before anything checks.
+func _apply_door_forces() -> void:
+	_door_slab_dynamic.position = _door_dynamic_body.position
+	_door_slab_static.position = _door_static_body.position
+
+
+func _check_door_behaviour() -> void:
+	print("[api] AnimatableBody3D vs the dock door (02-03)")
+
+	_expect(
+		_door_dynamic_body.global_position.distance_to(_door_dynamic_start) > 0.05,
+		"an AnimatableBody3D moved into a dynamic RigidBody3D displaces it",
+	)
+	_expect(
+		_door_static_body.global_position.distance_to(_door_static_start) < 0.001,
+		"an AnimatableBody3D moved into a frozen FREEZE_MODE_STATIC RigidBody3D does not displace it " +
+		"(why the door has to wake a settled crate before it can push it)",
+	)
+
+
 # --------------------------------------------------------------- section 1
 
 func _check_engine_apis() -> void:
@@ -316,6 +416,9 @@ func _check_engine_apis() -> void:
 
 	_expect_methods("CharacterBody3D", ["move_and_slide", "is_on_floor"])
 	_expect_properties("CharacterBody3D", ["velocity", "collision_layer", "collision_mask"])
+
+	# The dock door (02-03) drives its slab by moving this every frame.
+	_expect_properties("AnimatableBody3D", ["sync_to_physics"])
 
 
 # --------------------------------------------------------------- section 2
@@ -575,6 +678,29 @@ func _check_decided_invariants() -> void:
 		int(constants.get("MAX_HOLDERS", -1)) == 2,
 		"two holders remains the carry ceiling (got %s)" % constants.get("MAX_HOLDERS", "missing"),
 	)
+
+	# 02-03 / RUN-02: the day clock's own bounds, not its value — ADR 25 (f)
+	# deliberately leaves day_length_seconds unagreed, so pinning today's
+	# default would fail the moment NJ tunes it in play, which is the
+	# opposite of what this section is for.
+	var clock_scene := load("res://scenes/world/day_clock.tscn") as PackedScene
+	if clock_scene == null:
+		_fail("the day clock scene will not load, so its invariants cannot be checked")
+	else:
+		var clock := clock_scene.instantiate()
+		_expect(
+			clock.day_length_seconds >= 360.0 and clock.day_length_seconds <= 600.0,
+			"RUN-02 - a day runs in 6-10 minutes (got %s)" % clock.day_length_seconds,
+		)
+		_expect(
+			clock.open_fraction >= 0.5 and clock.open_fraction <= 0.8,
+			"ADR 25 (f) - roughly two-thirds of the day is open trading (got %s)" % clock.open_fraction,
+		)
+		_expect(
+			clock.morning_seconds >= 20.0,
+			"the morning ceremony (02-06) needs at least 20s to spread a delivery across (got %s)" % clock.morning_seconds,
+		)
+		clock.free()
 
 
 # --------------------------------------------------------------- helpers

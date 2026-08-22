@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" path="res://scenes/world/rack.tscn" id="3_rack"]
 [ext_resource type="PackedScene" path="res://scenes/world/goods_zone.tscn" id="4_zone"]
 [ext_resource type="PackedScene" path="res://scenes/world/dock_door.tscn" id="5_door"]
+[ext_resource type="PackedScene" path="res://scenes/world/day_clock.tscn" id="6_clock"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -150,3 +151,5 @@ kind = 1
 script = ExtResource("2_carry")
 players_path = NodePath("../Players")
 crates_path = NodePath("../Crates")
+
+[node name="DayClock" parent="." instance=ExtResource("6_clock")]
