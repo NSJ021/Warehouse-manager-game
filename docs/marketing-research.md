@@ -78,6 +78,19 @@ And the uncomfortable one: **Moving Out 2 was in the cheap cluster at £6.24 and
 Cheapness did not protect the closest mechanical relative we have. That is the strongest argument
 against price as a positioning tool here.
 
+### NJ's position on price (2026-08-22)
+
+**£9.99 is a benchmark, not a floor and ceiling.** It stands as the working number, and it is
+explicitly open to re-evaluation **if scope and quality justify it** — the trigger is what the game
+turns out to be, not a marketing theory.
+
+That is worth writing down because it resolves the tension above rather than leaving it hanging.
+Zukowski's actual argument is not "charge more regardless" — it is that indies systematically
+under-price *relative to what they built*. Those are the same position stated from opposite ends. A
+re-read of ADR 10 is therefore due **when the game's finished scope is known**, most naturally at the
+point the store page forces a number to be committed, and not before. Nothing in this research is a
+reason to move it today.
+
 ### ADR 23 — Early Access
 
 **The shape of ADR 23 is confirmed, and its central risk is one the research names as the single
@@ -109,26 +122,87 @@ normal launch, and among games with real traction (100+ reviews), **$77,000 vers
 ### ADR 6 — one map, and the store page
 
 Lean scope parks extra maps for v1. The research turns that into a **gating condition rather than a
-polish note**: his test for whether a game is ready for a store page lists **three distinct
-environments**, because visual sameness across screenshots is the recognised signature of an
-asset-flip, and shoppers are trained to spot it.
+polish note**: his readiness test for a store page lists **three distinct environments**, because
+visual sameness across screenshots is the recognised signature of an asset-flip and shoppers are
+trained to spot it. One warehouse means every screenshot is the same room, and his usual mitigations
+— vary the UI, vary the action — are weak when the environment genuinely is identical.
 
-One warehouse means every screenshot is the same room. This is a genuine collision between a scope
-decision and a store-page requirement, and it is a sequencing problem rather than a quality one.
-Mitigations he offers — vary the UI state, vary what is happening in shot — are weaker when the
-environment genuinely is identical.
+### NJ's position on maps (2026-08-22), and why it dissolves the problem
+
+**One fully functional map stands.** What is added is **visual variants of it** — and the key
+insight is that a visual variant is *not a map* in ADR 6's sense.
+
+ADR 6 parks extra maps because a new map means a new layout, new balancing, new level-design rules
+and new integration corridors. **A variant that changes only the shell changes none of those.** The
+proposal: a long narrow shape, brick construction, different windows, a different backdrop beyond
+them — and above all **weather and light doing the heavy lifting**. A drizzling, foggy morning with
+the truck's headlights burning through it. A bright summer morning with birdsong on the breeze, a
+differently coloured truck, a slightly different building.
+
+Three reasons this is much cheaper than it sounds:
+
+1. **The day clock already built today supplies time of day for free.** Morning door-up, mid-shift
+   and after-hours are already three distinct lighting states in a system that exists.
+2. **ADR 25 (f) already stages the morning truck arrival** as a ceremony. A different truck in
+   different weather is dressing on an existing beat, not a new mechanic.
+3. **Weather can be seeded per run**, so variety arrives across leases at almost no content cost and
+   each run feels different without any new level being authored.
+
+**The constraint that keeps it cheap, and it must be explicit:** a variant keeps the **same
+collision, the same storage grid, the same rack and zone positions, and the same spawn points**.
+Only the shell, lighting, weather, audio bed and set dressing change. The moment a variant moves a
+rack or reshapes a corridor it stops being a reskin and becomes a real map — with real balancing
+cost, and with the integration suite's corridors to renegotiate, since those tests own their lanes
+and have already forced fixtures to move twice.
+
+**Honest costs**, so this is not waved through: volumetric fog and rain are render and particle
+budget against ADR 14; alternate building shells are genuine modelling work; weather audio beds and
+birdsong are Phase 6 audio. None of that is free — it is just far cheaper than a second designed
+map, and it buys the store-page requirement outright.
+
+**This still needs a superseding ADR**, because ADR 6 names extra maps by that word and the
+distinction between "a map" and "a reskin" is exactly the kind of thing that erodes silently. The
+ADR should define the reskin constraint above as the boundary, so the door opens by the width
+intended and no further.
 
 ---
 
-## 3. The thing we are furthest behind on
+## 3. The thing we are furthest behind on — and it is art, not marketing
 
-**The Steam page is on the critical path and does not exist.** Valve's own data, cited repeatedly:
-a Coming Soon page live **six or more months before launch correlates with 300% more sales** than
-one posted 30 days out.
+**The Steam page is on the critical path and does not exist. But the page is not the first domino:
+the art style is, and the game currently has no art at all.**
 
-His trigger for creating it is not "the game is nearly finished" — it is that the art style is
-settled and there is enough footage for a 30-second gameplay trailer. Add **three weeks** for Valve's
-review, and months if a professional trailer editor is wanted.
+Valve's own data, cited repeatedly: a Coming Soon page live **six or more months before launch
+correlates with 300% more sales** than one posted 30 days out. But his trigger for creating that page
+is not "the game is nearly finished" — it is that **the art style is settled and there is enough
+footage for a 30-second gameplay trailer**. Add three weeks for Valve's review, and months if a
+professional trailer editor is wanted.
+
+So the real ordering is:
+
+> **art style → screenshots and trailer → store page → wishlists → Next Fest → Early Access**
+
+and every one of those is blocked by the first.
+
+**This corrects an error worth recording.** Reading the commit history — the whole project from
+initial commit to Phase 2 mid-execution inside six days — invites the conclusion that the remaining
+build is a matter of weeks. **That conclusion is wrong, and NJ corrected it.** The phases delivered
+at that pace are systems work, which parallelises across agents. Art does not. Nor does audio,
+commissioning, playtesting, or Valve's own review queues. Phase 6 is not a polish pass at the end of
+a fast project; **it is the long pole of the whole schedule**, and Phase 7 is calendar-bound on real
+human playtesters after it.
+
+Two consequences follow, and they are the most actionable findings in this document:
+
+1. **Art is not just a shipping gate, it is the marketing gate.** Nothing in the runway above can
+   start until the style exists. That argues for settling the *style* — not the full asset pass —
+   considerably earlier than Phase 6, because a settled style plus a greybox is enough to shoot a
+   trailer, and a trailer is enough to open the page and start the wishlist clock running in
+   parallel with the remaining build.
+2. **It makes the genre clock in §1 more dangerous, not less.** If the window for small entrants in
+   this genre closes around late 2026 and the long pole is an art pass that has not begun, the
+   optimistic reading — "the pace will carry us inside the window" — does not hold. Track it as a
+   real schedule risk.
 
 Almost everything else compounds from that page existing: wishlist accumulation, Popular Upcoming
 eligibility, Next Fest entry, creator outreach. And talking publicly about a game with no page, no
@@ -237,17 +311,21 @@ one is a real piece of work and should happen before it has to go on a store pag
 
 Sequencing only. None of this is decided.
 
-1. **Create a mailing list and a Discord before any public posting.** Free, and the alternative is
-   losing traffic permanently.
-2. **Commission the capsule professionally**, and treat it as the highest-return spend available.
-3. **Decide when the store page goes up**, knowing the six-month figure and the three-environment
-   gate. This likely argues for the page landing around the art pass rather than at the EA gate — a
-   scheduling decision that touches ADR 23 and needs to be made deliberately.
-4. **Give ADR 23 an audience bar** alongside its quality bar, if the wishlist evidence is accepted.
-5. **Sequence demo → playtest → the last Next Fest before launch.** Never debut a demo at Next Fest.
-6. **Re-read ADR 10** against $9.99 comparables and the underpricing argument.
-7. **Rule on the friend tax**, either way.
-8. **Track the genre clock as a project risk**, not a footnote.
+1. **Settle the art style earlier than Phase 6.** It gates the entire marketing runway, and it is
+   the long pole of the schedule regardless. Not the full asset pass — enough of a settled style to
+   shoot a trailer over a greybox.
+2. **Create a mailing list and a Discord before any public posting.** Free, and the alternative is
+   losing traffic permanently. This is the one item with no dependency on anything above.
+3. **Commission the capsule professionally** — the store thumbnail, not the player capsule. Highest
+   documented return of any spend in this material.
+4. **Decide when the store page goes up**, knowing the six-month figure, the three-week approval
+   queue and the three-environment gate. The visual-variant plan in §2 satisfies that last one.
+5. **Give ADR 23 an audience bar** alongside its quality bar, if the wishlist evidence is accepted.
+6. **Sequence demo → playtest → the last Next Fest before launch.** Never debut a demo at Next Fest.
+7. **Re-read ADR 10 when finished scope is known** — not before. See NJ's position in §2.
+8. **Write the visual-variant ADR** that supersedes ADR 6's map clause with the reskin constraint.
+9. **Rule on the friend tax**, either way.
+10. **Track the genre clock as a schedule risk**, sharpened by the art timeline in §3.
 
 ---
 
