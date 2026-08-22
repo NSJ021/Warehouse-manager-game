@@ -36,15 +36,15 @@
 
 ### Goods (GOODS)
 
-- [ ] **GOODS-01**: Size classes — Small (0.5 m, 8 per cell), Medium (1.0 m, one whole cell, view-blocking), Large (2.0 × 1.0 × 1.0, two cells) *(open question, raised at the Phase 1 gate: which two cells a Large occupies — side-by-side across columns, or front-to-back through depth, which would uniquely use a wall rack's dead row — is undecided; answer in Phase 2 planning)*
-- [ ] **GOODS-02**: Fragility 0–3, from crated machinery to glassware
-- [ ] **GOODS-03**: A store-until date that is both the deadline and the spoilage limit
+- [ ] **GOODS-01**: Size classes — Small (0.5 m, 8 per cell), Medium (1.0 m, one whole cell, view-blocking), Large (2.0 × 1.0 × 1.0, two cells) *(answered by [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md): a Large spans two adjacent cells in **either** orientation — side-by-side across columns, or front-to-back through depth — chosen by the player at placement, recorded as one id across two cells)*
+- [ ] **GOODS-02**: Fragility 0–3, from crated machinery to glassware *(fragility is a **category-level** property — [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md) — which is what keeps this a set of ten numbers rather than forty)*
+- [ ] **GOODS-03**: A store-until date — the day a client collects. It is a **contract property, not a kind property**: there is no independent spoilage timer and no degradation over time, so nothing damages cargo except what physically happens to it. Missing a collection costs (see [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md)); a client collecting late pays demurrage and starves tomorrow's capacity.
 - [ ] **GOODS-04**: Condition tiers — Pristine, Scuffed, Damaged, Destroyed
 - [ ] **GOODS-05**: Apparent condition, which diverges from actual condition when patched
 
 ### Damage (DMG)
 
-- [ ] **DMG-01**: Damage from drop height, collision velocity, rack collapse, teammates, spoilage and darkness
+- [ ] **DMG-01**: Damage from drop height, collision velocity, rack collapse, teammates and darkness *(spoilage removed — [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md): store-until dates are a contract property, not a degradation timer, so nothing damages cargo except what physically happens to it)*
 - [ ] **DMG-02**: Every condition tier has an unmistakable visual *and* audio tell
 
 ### The dilemma (DIL)

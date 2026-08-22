@@ -79,7 +79,7 @@ A **run** is one warehouse lease. You pick a **map** and a **term**, and you're 
 |---|---|---|
 | **10 days** | A sprint | Rent is brutal relative to income. No runway to invest. Pure execution. One co-op session. |
 | **30 days** | The core game | Enough room to buy racks and gear. Reputation begins to compound. |
-| **90 days** | The campaign | Becomes build-and-optimise. Spoilage, wear and burnt clients compound viciously. Endurance run. |
+| **90 days** | The campaign | Becomes build-and-optimise. Wear and burnt clients compound viciously — **not spoilage**, which ADR 25 rules out as a mechanic for every term, not only v1's. Endurance run. |
 
 Each lease carries a **contract win condition** beyond survival — e.g. *clear £X net profit*, *finish at 5★ with three named clients*, *move 200 crates with zero damaged deliveries*. The last one deliberately weaponises the fraud system: suddenly patching isn't a shortcut, it's a lie you have to sustain.
 
@@ -129,13 +129,21 @@ Every item carries:
 
 | Property | Values |
 |---|---|
-| **Size class** | Small (0.5 m cube, one-handed, **8 fit a cell**) · Medium (1.0 m cube = **a whole cell**, two-handed, **occludes your view**) · Large (2.0 × 1.0 × 1.0 = **2 cells**, two-player carry or drag) — ADR 18. **Open question, raised at the Phase 1 gate:** which two cells a Large actually occupies — side-by-side across columns, or front-to-back through depth, which would be the one thing that puts a wall rack's dead row to use — is not yet decided. Answer it in Phase 2 planning. |
+| **Size class** | Small (0.5 m cube, one-handed, **8 fit a cell**) · Medium (1.0 m cube = **a whole cell**, two-handed, **occludes your view**) · Large (2.0 × 1.0 × 1.0 = **2 cells**, two-player carry or drag) — ADR 18. **Large orientation, answered by ADR 25:** a Large spans two adjacent cells in **either** orientation, player-chosen at placement — side-by-side across columns, or front-to-back through depth, which reaches a wall rack's dead back row with no change to the aim scheme. |
 | **Value density** | What it earns per cell per day. Bricks are bulky and cheap; jewellery is compact and enormous. This is the portfolio decision across a lease. |
-| **Fragility** | 0–3 (crated machinery → glassware) |
-| **Store-until date** | The day it must leave. Also the spoilage deadline. |
+| **Fragility** | 0–3 (crated machinery → glassware), fixed **per category** (ADR 25) |
+| **Store-until date** | The day it must leave. **A contract property, not a kind property** (ADR 25) — there is no independent spoilage timer, so nothing damages cargo except what physically happens to it. |
 | **Condition** | Pristine · Scuffed · Damaged · Destroyed |
 | **Apparent condition** | What the customer sees. **Diverges from real condition when patched.** |
 | **Client** | Who owns it. Determines who turns up angry. |
+
+**Categories and variants (ADR 25).** Roughly ten mechanical **categories** — powders, textiles,
+glassware, masonry, tinned goods, electronics, machine parts, white goods, novelty and dodgy goods
+— carry every mechanic above: weight band, fragility, value density, plaque text and cell
+atomicity. Each category holds many **variants**, which are manifest names and crate decals and
+nothing else, so content scales without multiplying the balance surface. Weight is deliberately
+**deceptive by category rather than by item** — glass is always heavy, bricks are always heavy,
+textiles are always light — readable once learned and surprising in a mixed delivery row.
 
 **Production note:** everything is a cardboard box. One crate mesh + swappable label/decal + size variants = dozens of distinct-feeling goods for almost no art budget. Spend the saved time on sound.
 
@@ -222,7 +230,7 @@ Over 30 days you'll handle dozens of items. When a client turns up for crate #7 
 
 ### 6.4 Damage
 
-Damage sources: drop height × fragility · collision velocity · rack collapse · being run into by a teammate · spoilage past the store-until date · working in the dark.
+Damage sources: drop height × fragility · collision velocity · rack collapse · being run into by a teammate · working in the dark. *(Spoilage past the store-until date is removed by ADR 25 — dates are a contract property, not a degradation timer, so a store-until date passing does not itself damage anything.)*
 
 Each condition tier has an unmistakable **visual and audio tell** — a dented corner, a tear, a dark stain, and the single most important sound in the game: *the shift and tinkle of broken glass inside a sealed box*.
 

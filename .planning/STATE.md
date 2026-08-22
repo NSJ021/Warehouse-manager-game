@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** The dilemma is the game — patch and hope, confess, or comp.
-**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** The save-logic call is now a named ruling NJ gives at the 02-01 checkpoint.
+**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. Wave 1 done; wave 2 (`02-02`, `02-03`) next.
 
 > **Narrative history lives in `docs/conversation-log.md`, not here.** This file tracks
 > execution position only. Duplicating the story in two places guarantees one of them
@@ -13,8 +13,26 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **planned, NOT cleared for execution.**
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **cleared for execution 2026-08-22; 02-01 (wave 1) complete.**
 Plan: Phase 2 planned 2026-08-21, revised 2026-08-22 — 11 plans (02-01 … 02-11) in **8 waves**, `.planning/phases/02-goods/`.
+**02-01 complete, 2026-08-22.** ADR 25 (`decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md`)
+is ratified and committed, with the three contradicted documents (`decisions/decision-log.md`,
+`.planning/REQUIREMENTS.md`, `docs/GDD.md`) brought into line with it. NJ's rulings, verbatim per
+`02-01-SUMMARY.md`:
+1. **Save point — `defer-it`.** Clause (f) now says the ceremony *will be* the save point once
+   saving is built, and names **Phase 5 (the run)** as the phase that owns it — the Lease Run
+   wrapper lives there, and a 30-day term at 6–10 minutes a day makes saving mandatory. Phase 2
+   builds no persistence.
+2. **The delivery ceiling — rule shape, not a fixed number.** NJ agreed a ceiling is needed but
+   rejected fixing 24 (or any number) in the ADR. Clause (f) now commits to two exported-tunable
+   caps — a body-count cap guarding ADR 14's ~150-body envelope, and a separate cell-equivalent
+   volume cap (a Large is 16× a Small in cell-equivalents per `storage_grid.gd`, mirroring ADR
+   18's volume-not-items reasoning for storage fees) — plus per-size composition limits (Larges,
+   Mediums), all scaling with crew size and settled in play at the Phase 2 gate. Four feel
+   criteria are recorded as the tuning target: a morning delivery must feel worthy, deliberate,
+   achievable and like earning your pay.
+
+**Wave 1 done. Next: wave 2 — `02-02` and `02-03`, in parallel.**
 Phase 1: 01-01 through 01-09 all complete — all 9 plans, all 7 waves done.
 Status: **Phase 1 closed 2026-08-21.** The gate (01-08) passed — verdict "storage feels
 deliberate," NJ, explicit, after three play sessions. Task 2's rulings are written into
@@ -34,13 +52,13 @@ full detail in `01-08-SUMMARY.md`.
 >    over three runs — structurally unreachable in one working tree. (c) 02-09 and 02-10 both
 >    edited `rack.gd` in wave 6, undeclared in 02-10's `files_modified`. All three fixed by
 >    dependency edges and one API relocation; re-check returned **zero blockers**.
-> 2. **Save logic — ROUTED, not decided.** The re-check confirmed the clause is **purely
->    declarative**: no Phase 2 plan reads or writes anything surviving a process restart, and
->    02-11's gate never asks for a quit-and-reload. The join-window half is genuinely built
->    (02-03/02-07/02-10) but that is live-session catch-up, not persistence. So nothing blocks
->    execution. 02-01's checkpoint now forces a **named ruling — `plan-it` / `defer-it` /
->    `cut-it`** — holds the ADR uncommitted until NJ answers, and treats a bare "approved" as not
->    a resume signal. **NJ still owes that ruling at the 02-01 checkpoint.**
+> 2. **Save logic — RULED.** NJ ruled **`defer-it`** at the 02-01 checkpoint, 2026-08-22: the
+>    midnight ceremony's save-point clause in ADR 25 is reworded to say it *will be* the save
+>    point once saving is built, naming **Phase 5 (the run)** as the phase that owns it — the
+>    Lease Run wrapper lives there, and a 30-day term at 6–10 minutes a day makes saving
+>    mandatory. Phase 2 builds no persistence of any kind; the day boundary and the v1 join
+>    window are the only two of the three ceremony roles this phase actually builds, and ADR 25
+>    now says so plainly rather than asserting a save point nothing implements.
 
 > **Revision detail (2026-08-22), since `.planning/phases/` is repo-excluded and this is the durable record:**
 > Wave graph went 7 → **8 waves**: w1 `02-01` (alone) | w2 `02-02`, `02-03` | w3 `02-04` |
@@ -57,8 +75,29 @@ full detail in `01-08-SUMMARY.md`.
 > collisions, both checkpoints alone in their waves, no cycles, all 11 files byte-scanned **pure
 > LF, zero CR** (a re-check warning claiming CRLF was a false positive from its own grep quoting).
 
-Last activity: 2026-08-22 — **Phase 2 plan-checked and revised**: three scheduling blockers found
-and fixed, re-check clean, 7 → 8 waves (see the resolved blocker block above). Before that,
+Last activity: 2026-08-22 — **02-01 resumed and completed: NJ's rulings applied, ADR 25 committed.**
+Save point ruled `defer-it` (clause (f) reworded to say the ceremony will be the save point once
+saving is built, naming Phase 5 as the owning phase — no save point is claimed for Phase 2). The
+delivery ceiling reframed from a fixed 24-crate commitment to a rule shape: a body-count cap
+guarding ADR 14, a separate cell-equivalent volume cap (a Large is 16× a Small in cell-equivalents
+per `storage_grid.gd`, mirroring ADR 18's volume-not-items reasoning), and per-size composition
+limits, all exported tunables scaling with crew size, tuned in play against four named feel
+criteria (worthy, deliberate, achievable, earning your pay) rather than fixed in the ADR. One
+commit: `docs(02-01): ratify the goods taxonomy, Large orientation, dates and the day clock`. Full
+detail: `02-01-SUMMARY.md`. Before that, same day — **02-01 execution started, Tasks 1–2 done,
+paused at the Task 3 checkpoint.** ADR 25 drafted in full (six clauses, all four Consequences
+sub-headings, four alternatives) and `decisions/decision-log.md` / `.planning/REQUIREMENTS.md` /
+`docs/GDD.md` brought into line with it. **Nothing committed at that point** — the plan's own
+instruction held the ADR uncommitted until NJ named the save-point ruling, since it could still
+change clause (f)'s wording. One deviation beyond the plan's literal task list: the plan named only
+GOODS-01/02/03 for `REQUIREMENTS.md`, but its own verification greps both `REQUIREMENTS.md` and
+`GDD.md` for the word "spoilage" and expects nothing left claiming it damages cargo — that also
+caught `DMG-01` (still listing spoilage as a damage source) and one flavour line in GDD §4's 90-day
+row (a different, pre-existing spoilage mention, about a future 90-day term's own environmental
+pressure, not the store-until-date mechanic). Both fixed to match ADR 25 rather than left to fail
+the plan's own check. Before that, earlier the same day —
+**Phase 2 plan-checked and revised**: three scheduling blockers found and fixed, re-check clean,
+7 → 8 waves (see the resolved blocker block above). Before that,
 2026-08-21 — **Phase 2 planned**: 11 plans written and cross-checked
 against the tool's plan index (CRLF frontmatter trap checked — all files LF). Wave 1 blocks on a
 human checkpoint (02-01, the ADR 25 draft); the **wave 8** gate is 02-11. Three planner findings
