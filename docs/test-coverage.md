@@ -277,6 +277,54 @@ Two specific things worth trying first, neither yet done:
    dictionary and orientation. A field that survives locally but not through serialisation would
    produce exactly this.
 
+### Second investigation, 2026-08-22 evening — what is now PROVEN
+
+Instrumented `CarryAuthority._cell_filled` on both peers and ran the pair to completion.
+
+**The message is never delivered. It is not late — it is absent.**
+
+```
+HOST   : _cell_filled rack=rack_island cell=2 size=2  ->  occupied_count(2)=1   PASS, 134 steps
+CLIENT : 38 _cell_filled calls received in total; that one is NOT among them
+```
+
+The client's last received call is from an earlier step, and it still believes it is connected —
+its own failure dump reports `roster=2`.
+
+**Everything now ruled out, each by measurement:**
+
+| Hypothesis | Test | Result |
+|---|---|---|
+| Timeout budget | `STEP_TIMEOUT_MS` 45 s -> 180 s -> **300 s** | No change, all three |
+| Uncapped headless outrunning replication | `Engine.max_fps = 60`, both peers | No change |
+| Host quits before the client drains | Replaced the fixed 500 ms exit wait with a real rendezvous (host waits for the peer list to empty) | No change — host alive and waiting, message still absent |
+| Coroutine drift | 300 s budget with the host held alive | No change |
+| A refusal inside the apply path | `Rack.add_large` validates nothing — it overwrites both cells unconditionally, so it cannot refuse | Eliminated by inspection |
+| Predicate mismatch host vs client | `occupied_count` returns `_items(cell).size()`; `add_large` stores exactly one item | Eliminated by inspection |
+
+**One real latent bug was found and is NOT the cause.** The host's exit was a fixed 500 ms wait
+before `quit()`, with no regard for whether the client had finished — and `goods_session.gd` (02-07)
+inherited the same pattern. In a long scenario the host can tear the connection down mid-drain. It
+did not cause this defect, and the fix was reverted to keep the suite fast while this is open, but
+**it should be fixed properly when this is.**
+
+**Where a debugging session should start**, given all of the above:
+
+1. **Why does the client receive only 38 of the host's calls?** That is the whole question now. Count
+   sends on the host and receipts on the client and find where the two diverge — the divergence
+   point, not the symptom, is the bug.
+2. **Check the peer target.** `_cell_filled` is `@rpc("authority", "call_local", "reliable")`, so it
+   should broadcast. Confirm the host actually transmits rather than only applying locally — a
+   `call_local` that reaches its own handler proves nothing about the wire.
+3. **Rule out a silent ENet-level drop** — reliable channel saturation or a payload-size limit. The
+   record dictionary carries twelve fields and a Large sends two cells' worth.
+
+**On splitting the scenario:** an earlier note here said not to, on the grounds that it would hide a
+netcode defect. That objection was **half wrong and is corrected**: splitting would not fix this,
+because the message is absent rather than late, and a shorter scenario would very likely just stop
+reproducing it. That makes splitting worse than a workaround — it would bury a live delivery bug
+where nothing would ever meet it again.
+
 **Do not work around this by splitting the scenario.** That was the proposed fix and it would hide a
 reproducible client-side desync in the netcode, which is the part of this project that matters most.
 This project's own rule, written in `carry_session.gd`: *"report it rather than working around it."*
