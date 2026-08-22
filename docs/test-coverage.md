@@ -33,7 +33,23 @@ is a considered split, not a gap.
 
 ---
 
-## Tier 1 — silent, high impact, cheap
+## Tier 1 — DONE 2026-08-22 (`7ddee5a`)
+
+All four closed. Recorded below with their reasoning intact, because the *why* is the part worth
+keeping — each was correct code with nothing holding it in place, which is the shape to keep hunting.
+
+- **1.1 `replication_mode`** — now asserted per property (five on-change, zero not), and the
+  interval's label reworded so it stops implying it covers the whole decision.
+- **1.2 The shed comment's arithmetic** — corrected, with the wrong reasoning preserved as a
+  warning rather than deleted. **The behaviour question is still open** and belongs to the gate:
+  measure a sprint-carry's real crate velocity at the sensor before the number moves.
+- **1.3 The shed trigger measures speed where it needs momentum** — **STILL OPEN.** The comment now
+  says so plainly; the fix waits on 1.2's measurement, since changing the quantity and the threshold
+  blind would be guessing twice.
+- **1.4 Goods zones after settling** — now re-asserted once the probe has settled, guarding the `|=`
+  that keeps a settled crate visible to Goods OUT.
+
+## Tier 1 — original findings
 
 ### 1.1 ADR 14's bandwidth fix is unguarded, and the test that looks like it covers it does not
 
