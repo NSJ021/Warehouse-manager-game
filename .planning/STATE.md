@@ -13,7 +13,45 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **waves 1-6 complete (02-01 … 02-07). Resumed 2026-08-22 after the post-wave-5 pause** (guards from `docs/test-coverage.md` confirmed in place — see the 02-06 block below); **02-07 executed the same session, wave 6 done.** Waves 7-8 (02-08, 02-09, 02-10, then the 02-11 gate) remain.
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **7 of 11 plans done. Waves 1-6 complete (02-01 … 02-08).** Wave 7 (02-09, 02-10) and the 02-11 gate remain, both planned with `touches` and `guards` audits already applied.
+
+> **Session end 2026-08-22.** Suite green, 122 api assumptions, tree clean, branch pushed and a
+> draft PR open that stays open until the Phase 2 gate signs off.
+>
+> **Two real defects were found by NJ playing, not by the suite**, and both are fixed and confirmed
+> in play:
+> 1. **A dragged crate stalled.** Root cause was a test-harness one — `_wait_for_crate_catch_up`
+>    shared `STEP_TIMEOUT_MS` with the client's own wait, on opposite sides of a race, so the host
+>    burned 46 s in silence twice and the client quit ~59 s before the host broadcast. It then sent
+>    to `get_peers() == []`. **That shared constant is why raising the timeout 45s → 180s → 300s
+>    changed nothing three times.** Fixed with a separate `CATCH_UP_CEILING_MS`, and the wait now
+>    reports instead of stalling silently (`94adcc6`).
+> 2. **A Medium did not fit the shelf it was stored in.** ADR 18 fixes it at 1.0 m; ADR 24's decks
+>    are 0.05 m and sit on the cell boundaries, leaving **0.95 m of clear air**. Retrieval minted it
+>    interpenetrating both decks and it jammed intermittently.
+>    **[ADR 27](../decisions/2026-08-22-crate-height-clears-the-deck.md)** shrank Medium and Large to
+>    0.9 m — **height only**, every footprint untouched, so the cell model, capacities, the
+>    eight-Small lattice and `StorageGrid`'s 491 assertions are all undisturbed (`f7f71cd`).
+>
+> **The process lesson matters more than either bug.** Twice in one day a symptom was explained away
+> rather than escalated: the "known flake" that was really a sound still playing at `quit()`, and
+> this clearance defect, which 02-06 **found, measured at 0.0024 m of drift over 2000 frames, and
+> then routed its test around** — the suite went green and it shipped. Both times a green suite was
+> what made it possible.
+>
+> **What changed because of it**, all live now: `touches` (a blast-radius audit — what does this
+> mechanic interact with, and does the rig register it, YES/NO) enforced by the plan-checker's new
+> **Dimension 9**; `guards` (what asserts what you built) enforced by **Dimension 8**; **30-minute
+> agent check-ins on a timer**; the harness **printing the engine's own error text in the verdict
+> block**; `tools/is-behavioural-change.ps1` so the triple-run rule has a *mechanical* exemption
+> rather than a judgement call; and **Opus across all eleven agents**. The three planning-tool
+> patches die on an update — the reapply instructions are in the local project brief.
+>
+> **Still open, all recorded for the gate:** the aim-resolution defect (a Medium or Large on a bottom
+> shelf needs you to aim at the deck *above* — the geometry says the aim volume is larger than the
+> crate, so it is resolution, not hitboxes); no grab indicator exists for loose crates; two-player
+> carry feel has **never been judged** because two instances on one keyboard cannot perform one; and
+> NJ's ask for crate labelling so specific crates can be referenced.
 
 > **02-07's own guard note for whoever plans 02-08/02-09/02-10 next:** `DockDoor._wake_blocking_cargo`
 > still has no LIVE-FIRE integration proof — only the `engine_assumptions.gd`-level mechanical check

@@ -4,6 +4,55 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 10 — 2026-08-22
+
+**Phase 2 reached 7 of 11 plans. Two real defects were found by playing the game, not by the test suite — and both had been sitting there for weeks. The process changes that came out of that matter more than the fixes.**
+
+### What was built
+
+Waves 1–6, eleven plans planned and seven executed: [ADR 25](../decisions/2026-08-22-goods-taxonomy-dates-and-the-day-clock.md) ratifying the cargo taxonomy and the day clock; the `CargoRecord` and a ten-category catalogue; the roller-door day clock and dock door; Medium and Large crates with weight deciding the hold; a size-aware rack that remembers whole records; STORE-07 proven field-for-field on two peers; the scripted-day manifest and morning truck dump — including **the first thing in this project ever to start the day clock**; and both Large orientations, player-chosen, with the rotate control.
+
+### The two defects, and why the suite never saw them
+
+**A dragged crate stalled.** Root cause was in the harness: `_wait_for_crate_catch_up` shared `STEP_TIMEOUT_MS` with the client's own wait, on opposite sides of a race. A dragged Large that snags never catches up, so the host burned the full ceiling in silence — twice, 46 seconds each — and the client gave up and quit about 59 seconds before the host broadcast. The host then sent to `get_peers() == []`, which is why the message looked *absent* rather than late.
+
+**That shared constant is why raising the timeout from 45 s to 180 s to 300 s changed nothing, three times.** Each raise extended the host's stall and the client's patience equally. Fixed with a separate `CATCH_UP_CEILING_MS`, and the wait now reports when it gives up instead of stalling silently.
+
+**A Medium did not fit the shelf it was stored in.** ADR 18 fixes a Medium at 1.0 m and a cell at 1.0 m; ADR 24's decks are 0.05 m thick and sit *on* the cell boundaries, so a cell's nominal metre is **0.95 m of clear air**. A retrieved Medium minted interpenetrating both decks by 2.5 cm and jammed — sometimes. It hid because the racked visual is inset to 78% and has no collision, so a shelved crate always looked comfortable; the full-size body existed only during a retrieval.
+
+[ADR 27](../decisions/2026-08-22-crate-height-clears-the-deck.md) shrank Medium and Large to 0.9 m — **height only**. Every footprint is untouched, which is why that option was chosen: a Medium still fills one cell, a Large still spans two, a cell still holds eight Smalls on a lattice needing 0.5 × 2 = 1.0 exactly, and `StorageGrid`'s arithmetic and its 491 assertions never moved.
+
+### The thing worth taking from the day
+
+**Twice, a symptom was explained away instead of escalated.**
+
+The intermittent suite failure that survived from Phase 1 was recorded as a "known flake" and agents were told in `STATE.md` to re-run past it. It was a rack placement's sound still playing at `quit()`, found in three minutes with `--verbose` against the editor binary.
+
+And the clearance defect had already been found: 02-06 hit the same contact deadlock, diagnosed it correctly, measured a body drifting **0.0024 m over 2000 frames** — then moved its test to a different cell. The suite went green and the defect shipped.
+
+Both times a green suite was what made it possible. A green suite means the assertions someone wrote still hold; it never means the code is right.
+
+### What changed because of it
+
+- **`touches`** — a blast-radius audit required *before* execution: what does this mechanic touch, change or interact with, and does the rig register it, **YES or NO**. Every NO closed or declared. Enforced by the plan-checker's new **Dimension 9**.
+- **`guards`** — what assertion covers each thing a plan builds, `UNGUARDED` being an acceptable and *tracked* answer. Enforced by **Dimension 8**.
+- **30-minute agent check-ins on a timer**, not on memory. One plan ran three hours; the bug blocking it was diagnosed in three minutes once someone actually read the other log stream.
+- **The harness prints the engine's own error text in the verdict block**, not just a count — the cause and the failing assertion live in different log files, which cost ninety minutes.
+- **`tools/is-behavioural-change.ps1`** — a *mechanical* exemption from the triple-run rule for provably inert changes, because a discretionary one gets rationalised into.
+- **Opus across all eleven planning agents.** Execution had been running the cheaper model the whole project, unnoticed, because the profile default upgrades the planner but not the executor.
+
+`touches` earned itself immediately: applied to 02-09 and 02-10 it produced fifteen NOs, including a staleness created the same evening — ADR 27 changed crate heights *after* 02-09 was written, so anything that plan sizes against a crate is now wrong.
+
+### Still open
+
+The **aim-resolution defect** — a Medium or Large on a bottom shelf needs you to aim at the deck *above* to register. The geometry says the aim volume is a full 1 m cube and the crate is drawn inside it, so the target is *larger* than what you can see: this is resolution, not hitboxes, and `CELL_RESOLVE_NUDGE` is the suspect. No grab indicator exists for loose crates at all. **Two-player carry feel has never been judged**, because two instances on one keyboard cannot perform one — and ADR 13 makes it the efficient path. And crates need labelling so a specific one can be referenced.
+
+### Next steps
+
+Wave 7 (02-09, 02-10), both already carrying their `touches` and `guards` audits, then the 02-11 gate — which now walks in with a real agenda rather than a blank sheet.
+
+---
+
 ## Session 9 — 2026-08-22
 
 **The Phase 2 plan check ran, and earned its keep: three blockers, all of them the same species. Seven waves became eight. Both pre-execution blockers are now closed.**
