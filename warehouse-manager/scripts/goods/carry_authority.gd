@@ -183,7 +183,12 @@ func request_place(rack_name: String, cell_index: int) -> void:
 	# not .y (see the coordinate-order note on that method). Floor is level 0.
 	if dragging and StorageGrid.cell_coords(cell_index).z != 0:
 		return
-	if not rack.can_accept(cell_index, crate.kind):
+	# .size travels alongside .kind (02-05) — see the matching note in
+	# carrier.gd. Rack.can_accept's signature grew a third argument; this is
+	# the plan's own mandated call-site fix, not new placement logic. A
+	# Large can still never succeed through this path — nothing here resolves
+	# an orientation or calls can_accept_large yet (02-06/02-07).
+	if not rack.can_accept(cell_index, crate.kind, crate.size):
 		return
 
 	var holder := _player_for(peer_id)

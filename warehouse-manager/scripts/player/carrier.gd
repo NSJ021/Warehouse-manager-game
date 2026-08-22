@@ -162,7 +162,12 @@ func _try_place(referee: CarryAuthority, aim: AimResult) -> void:
 	var floor_level := StorageGrid.cell_coords(aim.cell_index).z == 0
 	if is_dragging() and not floor_level:
 		return
-	if not aim.rack.can_accept(aim.cell_index, _held.kind):
+	# .size travels alongside .kind (02-05): Rack.can_accept grew a third
+	# argument so a Medium is never silently treated as a Small — the plan's
+	# own instruction to grep and fix every can_accept call site, not a new
+	# behaviour. Large placement is still unreachable from here regardless —
+	# nothing in this file chooses an orientation or calls can_accept_large.
+	if not aim.rack.can_accept(aim.cell_index, _held.kind, _held.size):
 		return
 
 	if Net.is_host():
@@ -189,7 +194,7 @@ func _highlight_state(aim: AimResult) -> Rack.Highlight:
 		var floor_level := StorageGrid.cell_coords(aim.cell_index).z == 0
 		if is_dragging() and not floor_level:
 			return Rack.Highlight.BLOCKED
-		if aim.rack.can_accept(aim.cell_index, _held.kind):
+		if aim.rack.can_accept(aim.cell_index, _held.kind, _held.size):
 			return Rack.Highlight.ACTIONABLE
 		return Rack.Highlight.BLOCKED
 
