@@ -113,21 +113,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("drag"):
 		try_toggle_hold(true)
 	elif event.is_action_pressed("rotate_placement"):
-		# Only means anything while holding a Large — Small and Medium have no
-		# footprint to rotate. Empty-handed, or holding a Small/Medium, this
-		# does nothing at all, deliberately, rather than consuming the event
-		# for nothing.
-		if _held != null and _held.size == CargoCatalogue.Size.LARGE:
-			# Cycled UNCONDITIONALLY, through invalid footprints as well as
-			# valid ones (ADR 25 (d)): a footprint that will not fit is meant
-			# to be SHOWN as refused, not skipped past — skipping would make
-			# the control feel broken the moment only one orientation fits,
-			# and would hide the reason rather than showing it.
-			_placement_orientation = (
-				StorageGrid.Orientation.FRONT_TO_BACK
-				if _placement_orientation == StorageGrid.Orientation.SIDE_BY_SIDE
-				else StorageGrid.Orientation.SIDE_BY_SIDE
-			)
+		rotate_placement()
 
 
 ## Grab whatever we are aiming at, store what we are holding into a rack cell,
@@ -177,6 +163,31 @@ func try_toggle_hold(want_drag := false) -> void:
 		else:
 			referee.request_retrieve.rpc_id(1, aim.rack.name, aim.cell_index)
 	# No hold | empty cell / nothing -> do nothing.
+
+
+## Cycles a held Large's chosen footprint between the two [enum
+## StorageGrid.Orientation] values (R, project.godot's own
+## [code]rotate_placement[/code] action). Public for the same reason [method
+## try_toggle_hold] is — see that method's own doc comment: the integration
+## harness drives exactly this path, not a private field, so a broken rotate
+## control fails a test rather than only ever being found by hand.
+##
+## Only means anything while holding a Large — Small and Medium have no
+## footprint to rotate. Empty-handed, or holding a Small/Medium, this does
+## nothing at all, deliberately, rather than consuming the key for nothing.
+func rotate_placement() -> void:
+	if _held == null or _held.size != CargoCatalogue.Size.LARGE:
+		return
+	# Cycled UNCONDITIONALLY, through invalid footprints as well as valid ones
+	# (ADR 25 (d)): a footprint that will not fit is meant to be SHOWN as
+	# refused, not skipped past — skipping would make the control feel broken
+	# the moment only one orientation fits, and would hide the reason rather
+	# than showing it.
+	_placement_orientation = (
+		StorageGrid.Orientation.FRONT_TO_BACK
+		if _placement_orientation == StorageGrid.Orientation.SIDE_BY_SIDE
+		else StorageGrid.Orientation.SIDE_BY_SIDE
+	)
 
 
 ## Holding something and aiming at a rack cell. Two rows of a branch table

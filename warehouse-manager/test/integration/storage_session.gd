@@ -63,14 +63,21 @@ const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 
 ## Deliberately neither carry_session's 27099 nor a live game's 27015.
 const TEST_PORT := 27097
-## Raised 15000 -> 20000 by 02-06: steps 13-15 pack several real actions
-## (retrieve, release-and-walk, re-grab, walk, place) between two checks the
-## OTHER peer is purely waiting on, and that peer's own 15 s budget for a
-## single downstream check occasionally landed tighter than the actual real
-## wall-clock cost of everything the acting peer had to do first — found via
-## an otherwise-clean run failing on a client-side wait for a placement the
-## host's own log shows landed correctly, just not within the old budget.
-const STEP_TIMEOUT_MS := 20000
+## Raised 15000 -> 20000 by 02-06 (steps 13-15's own dense retrieve/place
+## sequence), then 20000 -> 45000 by 02-08: steps 17-21 add five more
+## placements/retrievals on top of an already-long scenario, and by that
+## point in a real run the client's own incoming RPC queue can be measured
+## running many real seconds behind the host's own send order — the exact
+## same symptom 02-06 already named ("an otherwise-clean run failing on a
+## client-side wait for a placement the host's own log shows landed
+## correctly, just not within the old budget"), now at a larger scale.
+## Confirmed by a direct diagnostic (a temporary print in
+## CarryAuthority._cell_filled, never committed): every RPC this file sends
+## arrives, in the correct order, with no drops and no duplicates — only
+## LATE, and later still the longer the scenario has already run. This is a
+## budget problem, not a correctness one; see this constant's own history for
+## why the fix is a bigger number, not a different mechanism.
+const STEP_TIMEOUT_MS := 45000
 const EXPECTED_PLAYERS := 2
 ## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for
 ## the gate playtest protocol (2026-08-21) — two rows of six rather than one
@@ -512,6 +519,101 @@ const ROUNDTRIP_PARK_A := Vector3(6.0, STAND_HEIGHT, -6.5)
 const ROUNDTRIP_PARK_B := Vector3(6.7, STAND_HEIGHT, -5.3)
 const ROUNDTRIP_PARK_C := Vector3(8.4, STAND_HEIGHT, -5.0)
 const ROUNDTRIP_PARK_D := Vector3(9.0, STAND_HEIGHT, -6.5)
+
+## --- 02-08: a Large takes two cells, and the player picks which two
+## (steps 17-21). ---
+##
+##   17. Side-by-side. The host drags crate_15 (machine_parts, 108 kg — every
+##       Large exceeds SOLO_CARRY_MASS_LIMIT, ADR 25 (c), so a lone player
+##       always drags one, never carries) into rack_island's own floor-level
+##       SIDE_BY_SIDE pair (cells 2/3), aiming at cell 2 — SIDE_BY_SIDE is the
+##       carrier's own default orientation on a fresh grant, so no rotate
+##       press is needed for this half. Both peers assert: both cells
+##       occupied, the same crate id on each half, exactly one racked visual,
+##       the loose-crate count down by one.
+##   18. Front-to-back, into the wall rack's dead row — the headline. The
+##       host drags crate_16 (white_goods, 96 kg), presses rotate_placement
+##       once, and aims at rack_wall's cell 3 (aimable, depth=1, floor
+##       level). FRONT_TO_BACK lands its partner in cell 1 — depth=0, the row
+##       01-04 found permanently unaimable and ADR 24 ratified as a
+##       level-design property, reachable now only by arithmetic, with no
+##       change to Carrier._aim() at all (ADR 25 (d)'s own central claim).
+##       Both peers assert cell 1 is occupied, AND that the STORED
+##       orientation itself reads FRONT_TO_BACK — the exact fact a
+##       regression back to a hard-coded SIDE_BY_SIDE default would get
+##       wrong while the occupancy check alone would not catch.
+##   19. Retrieval hands back one crate. The host retrieves step 17's Large
+##       by aiming at its PARTNER cell (3), not its anchor (2) — proving
+##       either half resolves, not just the one that was aimed at to place
+##       it. Both peers assert: both cells 2 and 3 empty, the racked visual
+##       gone, the loose-crate count up by exactly one, the new body is a
+##       fresh mint (a different id from the one that was racked — STORE-07's
+##       own allowance), and every OTHER field matches the record captured
+##       before it was ever racked. No mutation-and-replay trick is needed
+##       here the way step 13's crate_round needed one: every crate in the
+##       starting batch — Larges included — replicates an IDENTICAL record to
+##       both peers at world load (Crate.setup()'s own "zero-cost
+##       static-data channel"), so each peer captures its own baseline
+##       independently, before either one ever touches it.
+##   20. The dragged Large is refused above the floor. Still holding what
+##       step 19 just handed back (a retrieval always re-grants a hold, and
+##       ADR 19's mass rule decides DRAG unasked for anything this heavy —
+##       every Large, always), the host aims at a non-floor cell on the same
+##       rack (CELL_A, reused — see its own doc comment for why level, not
+##       occupancy, is what ADR 19 checks) and is refused: still held, the
+##       cell untouched. Then aims back at the SAME floor pair (2/3, empty
+##       again since step 19) and succeeds. Roadmap success criterion 2,
+##       proven for a Large specifically, not only for a Small or Medium.
+##   21. A Large sheds as one crate. rack_wall's own top row is freed first —
+##       crate_11, the step-15 sentinel, retrieved out through the real path
+##       — and a synthetic Large record fills its untouched, permanently
+##       unaimable depth=0 pair (cells 8/9) directly over the same
+##       _cell_filled broadcast step 3's synthetic filler already used (this
+##       is setup, not the thing under test; aimability is irrelevant to a
+##       direct RPC fill). occupied_cells_in_top_row() returns a Large's
+##       ANCHOR only (Rack's own rule, 02-05) — this is the exact case that
+##       would double-mint the same Large if that rule ever regressed. A real
+##       crate launched at the rack (the same impact this file already
+##       proved sheds a row in step 8) triggers it: both peers assert exactly
+##       ONE new body appeared and BOTH cells emptied.
+
+const CRATE_LARGE_SIDE_NAME := "crate_15"   ## machine_parts LARGE, 108 kg.
+const CRATE_LARGE_FRONT_NAME := "crate_16"  ## white_goods LARGE, 96 kg.
+
+## Staged close to their own target rack before the first grab, the same
+## direct-manipulation precedent this file already relies on for a LOOSE
+## crate (see _ensure_awake's own doc comment) — both Larges start in the
+## heavy row (test_room.gd, z=7.0), and dragging one the length of the room
+## would cross the crate rows, the floor-stack cluster and both zones for no
+## reason this plan needs. LARGE_STAGE_ISLAND shares GATE_PARK_POINT's own
+## x/z (vetted clear in that constant's own doc comment); LARGE_STAGE_WALL
+## sits a couple of metres from the ROUNDTRIP_PARK cluster, equally clear.
+const LARGE_STAGE_ISLAND := Vector3(9.5, 0.5, 2.5)
+const LARGE_STAGE_WALL := Vector3(7.5, 0.5, -6.9)
+
+## rack_island's own floor-level SIDE_BY_SIDE pair — both depth=1, the
+## aimable side every cell constant in this file already stands on.
+## Untouched by every step above this point.
+const CELL_LARGE_SIDE_ANCHOR := 2
+const CELL_LARGE_SIDE_PARTNER := 3
+
+## rack_wall's own floor-level FRONT_TO_BACK pair — 3 is depth=1 (aimable),
+## its partner 1 is depth=0, the permanently-buried row 01-04 found and ADR 24
+## ratified. Untouched by every step above this point.
+const CELL_LARGE_FRONT_ANCHOR := 3
+const CELL_LARGE_FRONT_PARTNER := 1
+
+## rack_wall's own untouched, permanently unaimable depth=0 TOP row — 8/9 sit
+## opposite the aimable 10/11 this file has used since step 7. A synthetic
+## fill does not need aimability, only a genuinely free pair to land in.
+const CELL_SHED_LARGE_ANCHOR := 8
+const CELL_SHED_LARGE_PARTNER := 9
+
+## The shed test's own synthetic record — the same category CarryAuthority
+## would actually mint (machine_parts has a real LARGE row, cargo_catalogue.gd),
+## a fresh id well clear of every real starting-batch crate and the step 3
+## filler range (9000-9007).
+const SHED_LARGE_ID := 9100
 
 var _role := "host"
 var _world: Node = null
@@ -1246,17 +1348,232 @@ func _run_host(rack: Rack, rack2: Rack) -> void:
 		# snapshot to, so skip rather than call something guaranteed to fail.
 		authority._rack_snapshot.rpc_id(client_peer_id, rack2.name, rack2.occupancy_snapshot())
 
+	# --- 17: a Large takes two cells, side by side. ---
+	var crate_large_side := _crate_named(CRATE_LARGE_SIDE_NAME)
+	if crate_large_side == null:
+		_fail("find %s" % CRATE_LARGE_SIDE_NAME, "not present under Crates")
+		return _finish(false)
+	# Captured before anything moves it — the baseline step 19 compares
+	# against once it comes back out. No mutation-and-replay trick needed
+	# here (see this file's own note above _run_client's matching capture):
+	# every starting-batch crate, Larges included, replicates an IDENTICAL
+	# record to both peers at world load.
+	var captured_large_side_record: Dictionary = crate_large_side.record.to_dict().duplicate(true)
+
+	_ensure_awake(crate_large_side)
+	crate_large_side.global_position = LARGE_STAGE_ISLAND
+	crate_large_side.sleeping = false
+	crate_large_side.linear_velocity = Vector3.ZERO
+	crate_large_side.angular_velocity = Vector3.ZERO
+
+	await _grab(crate_large_side, true)
+	if not await _until("host is dragging %s (every Large exceeds the solo-lift limit, ADR 25 (c))" % CRATE_LARGE_SIDE_NAME, func() -> bool:
+			return (crate_large_side.holder_count() == 1
+					and crate_large_side.hold_mode() == Crate.HoldMode.DRAG)):
+		return _finish(false)
+
+	var crates_before_large_side := _crates().get_child_count()
+	# SIDE_BY_SIDE is the carrier's own default on a fresh grant — no rotate
+	# press needed for this half.
+	await _place(rack2, CELL_LARGE_SIDE_ANCHOR, HOST_LATERAL)
+	if not await _until("%s racked into rack_island cell %d, side by side" % [CRATE_LARGE_SIDE_NAME, CELL_LARGE_SIDE_ANCHOR], func() -> bool:
+			return rack2.occupant(CELL_LARGE_SIDE_ANCHOR) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_LARGE_SIDE_ANCHOR, 0, CargoCatalogue.Size.LARGE, CELL_LARGE_SIDE_PARTNER):
+		return _finish(false)
+	_expect_now(
+		rack2.occupied_count(CELL_LARGE_SIDE_PARTNER) == 1,
+		"the SIDE_BY_SIDE partner cell %d is occupied too, not just the anchor" % CELL_LARGE_SIDE_PARTNER,
+	)
+	_expect_now(
+		rack2.occupant(CELL_LARGE_SIDE_ANCHOR) == rack2.occupant(CELL_LARGE_SIDE_PARTNER),
+		"both halves report the SAME crate id -- one Large, not two",
+	)
+	if not await _until("the Large's body left the world (it frees on racking too)", func() -> bool:
+			return _crates().get_child_count() == crates_before_large_side - 1):
+		return _finish(false)
+
+	# --- 18: front-to-back, into the wall rack's dead row -- the headline. ---
+	var crate_large_front := _crate_named(CRATE_LARGE_FRONT_NAME)
+	if crate_large_front == null:
+		_fail("find %s" % CRATE_LARGE_FRONT_NAME, "not present under Crates")
+		return _finish(false)
+	_ensure_awake(crate_large_front)
+	crate_large_front.global_position = LARGE_STAGE_WALL
+	crate_large_front.sleeping = false
+	crate_large_front.linear_velocity = Vector3.ZERO
+	crate_large_front.angular_velocity = Vector3.ZERO
+
+	await _grab(crate_large_front, true)
+	if not await _until("host is dragging %s" % CRATE_LARGE_FRONT_NAME, func() -> bool:
+			return (crate_large_front.holder_count() == 1
+					and crate_large_front.hold_mode() == Crate.HoldMode.DRAG)):
+		return _finish(false)
+
+	var carrier_host: Carrier = _me().get_node("Carrier")
+	carrier_host.rotate_placement()
+
+	var crates_before_large_front := _crates().get_child_count()
+	await _place(rack, CELL_LARGE_FRONT_ANCHOR, HOST_LATERAL)
+	if not await _until("%s racked into rack_wall cell %d, front to back" % [CRATE_LARGE_FRONT_NAME, CELL_LARGE_FRONT_ANCHOR], func() -> bool:
+			return rack.occupant(CELL_LARGE_FRONT_ANCHOR) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_LARGE_FRONT_ANCHOR, 0, CargoCatalogue.Size.LARGE, CELL_LARGE_FRONT_PARTNER):
+		return _finish(false)
+	# The headline assertion: cell 1 (depth=0) is now occupied, and no aim
+	# ray anywhere in this file has ever been able to reach it directly.
+	_expect_now(
+		rack.occupied_count(CELL_LARGE_FRONT_PARTNER) == 1,
+		"rack_wall's permanently unaimable cell %d is filled, by arithmetic, with no change to Carrier._aim() at all" % CELL_LARGE_FRONT_PARTNER,
+	)
+	_expect_now(
+		rack.cell_orientation(CELL_LARGE_FRONT_ANCHOR) == StorageGrid.Orientation.FRONT_TO_BACK,
+		"the STORED orientation itself reads FRONT_TO_BACK -- not a hard-coded SIDE_BY_SIDE default",
+	)
+	if not await _until("the Large's body left the world", func() -> bool:
+			return _crates().get_child_count() == crates_before_large_front - 1):
+		return _finish(false)
+
+	# --- 19: retrieval hands back one crate, field for field. ---
+	var crates_before_large_retrieve := _crates().get_child_count()
+	# The PARTNER cell (3), not the anchor (2) -- proving either half resolves.
+	var large_retrieved := await _retrieve(rack2, CELL_LARGE_SIDE_PARTNER, HOST_LATERAL)
+	if large_retrieved == null:
+		_fail("retrieve %s from rack_island cell %d" % [CRATE_LARGE_SIDE_NAME, CELL_LARGE_SIDE_PARTNER], "never granted")
+		return _finish(false)
+	_expect_now(
+		rack2.is_cell_empty(CELL_LARGE_SIDE_ANCHOR) and rack2.is_cell_empty(CELL_LARGE_SIDE_PARTNER),
+		"BOTH cells %d and %d are empty -- a rack never holds half a Large" % [CELL_LARGE_SIDE_ANCHOR, CELL_LARGE_SIDE_PARTNER],
+	)
+	if not await _until("rack_island's racked visual is gone after the retrieval", func() -> bool:
+			return rack2.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_LARGE_SIDE_ANCHOR) == null):
+		return _finish(false)
+	if not await _until("the retrieval spent exactly one new body, not two", func() -> bool:
+			return _crates().get_child_count() == crates_before_large_retrieve + 1):
+		return _finish(false)
+	_expect_now(
+		large_retrieved.id != int(captured_large_side_record["id"]),
+		"host: the retrieved body is a NEW mint (id %d), not the same object that was racked (id %d) -- by design" % [large_retrieved.id, int(captured_large_side_record["id"])],
+	)
+	_expect_record_matches(
+		"host: retrieved Large's record matches the one captured before it was ever racked",
+		captured_large_side_record, large_retrieved.record.to_dict(), true,
+	)
+	# ADR 19's mass rule decided this unasked -- ties step 19 to step 20 below,
+	# which needs the SAME held crate to still be a drag.
+	_expect_now(
+		large_retrieved.hold_mode() == Crate.HoldMode.DRAG,
+		"the retrieved Large is a DRAG, not a CARRY -- ADR 19's mass rule, unasked",
+	)
+
+	# --- 20: the dragged Large is refused above the floor. ---
+	#
+	# CELL_A (7, level=1) reused deliberately -- ADR 19's refusal fires on
+	# LEVEL alone (Carrier._placement_allowed / CarryAuthority.request_place),
+	# before room is ever checked, so it does not matter that this exact cell
+	# was last touched many steps ago and is now empty; the refusal would be
+	# identical if it were full.
+	await _attempt_place(rack2, CELL_A, HOST_LATERAL)
+	if not await _stays(
+			"ADR 19 on a Large: still dragging %s, cell %d untouched (roadmap success criterion 2)" % [CRATE_LARGE_SIDE_NAME, CELL_A],
+			func() -> bool:
+				return (large_retrieved.holder_count() == 1
+						and large_retrieved.hold_mode() == Crate.HoldMode.DRAG
+						and rack2.is_cell_empty(CELL_A))):
+		return _finish(false)
+
+	var crates_before_large_refloor := _crates().get_child_count()
+	# Back at the SAME floor pair, empty again since step 19 -- the contrast
+	# that makes the refusal above mean something rather than "nothing
+	# happened". SIDE_BY_SIDE is still the carrier's own orientation (this
+	# hold never rotated away from its fresh-grant default).
+	await _place(rack2, CELL_LARGE_SIDE_ANCHOR, HOST_LATERAL)
+	if not await _until("%s racked back into cell %d at floor level -- a lone dragger CAN reach it" % [CRATE_LARGE_SIDE_NAME, CELL_LARGE_SIDE_ANCHOR], func() -> bool:
+			return rack2.occupant(CELL_LARGE_SIDE_ANCHOR) != -1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_LARGE_SIDE_ANCHOR, 0, CargoCatalogue.Size.LARGE, CELL_LARGE_SIDE_PARTNER):
+		return _finish(false)
+	if not await _until("the Large's body left the world again", func() -> bool:
+			return _crates().get_child_count() == crates_before_large_refloor - 1):
+		return _finish(false)
+
+	# --- 21: a Large sheds as one crate. ---
+	#
+	# First, free rack_wall's whole top row: crate_11, the step-15 sentinel,
+	# is still racked in CELL_TOP_A (10) and CELL_TOP_B (11) has been empty
+	# since step 8's own shed. Retrieved through the real path so nothing
+	# stale is left in the row this step is about to fill.
+	var crates_before_sentinel_retrieve := _crates().get_child_count()
+	var sentinel_retrieved := await _retrieve(rack, CELL_TOP_A, HOST_LATERAL)
+	if sentinel_retrieved == null:
+		_fail("retrieve the sentinel %s from cell %d" % [CRATE_MEDIUM_BLOCK_NAME, CELL_TOP_A], "never granted")
+		return _finish(false)
+	if not await _until("the sentinel's body left the world", func() -> bool:
+			return _crates().get_child_count() == crates_before_sentinel_retrieve + 1):
+		return _finish(false)
+	await _release_held()
+
+	# A synthetic fill, exactly as step 3's eight fillers were -- setup, not
+	# the thing under test, but it travels over the same _cell_filled
+	# broadcast a real placement uses, so both peers' copies are genuinely
+	# occupied, not merely asserted so on the host's own say-so. Landed on
+	# cells 8/9 -- untouched, permanently unaimable, and irrelevant to aim
+	# here since this never goes through Carrier at all.
+	var shed_large_record := CargoCatalogue.mint(
+		&"machine_parts", CargoCatalogue.variants(&"machine_parts")[0], CargoCatalogue.Size.LARGE,
+		FILLER_STORE_UNTIL_DAY, FILLER_OWNER, FILLER_CONTRACT_DAYS, SHED_LARGE_ID,
+	).to_dict()
+	authority._cell_filled.rpc(
+		rack.name, CELL_SHED_LARGE_ANCHOR, shed_large_record, rack.cell_to_global_position(CELL_SHED_LARGE_ANCHOR),
+		StorageGrid.Orientation.SIDE_BY_SIDE,
+	)
+	if not await _until("the synthetic Large fills cells %d+%d" % [CELL_SHED_LARGE_ANCHOR, CELL_SHED_LARGE_PARTNER], func() -> bool:
+			return rack.occupied_count(CELL_SHED_LARGE_ANCHOR) == 1 and rack.occupied_count(CELL_SHED_LARGE_PARTNER) == 1):
+		return _finish(false)
+
+	# The same impact this file already proved sheds a row in step 8 -- the
+	# ImpactSensor is one volume per RACK, not per cell, so the impactor's
+	# own path does not need to pass near cells 8/9 specifically. crate_2
+	# (the step-8 impactor, loose since step 9's stacking check) is reused.
+	var large_impactor := _crate_named(CRATE_FULL_ATTEMPT_NAME)
+	if large_impactor == null:
+		_fail("find %s" % CRATE_FULL_ATTEMPT_NAME, "not present under Crates")
+		return _finish(false)
+	_ensure_awake(large_impactor)
+	large_impactor.global_position = (rack.global_position
+			+ rack.global_transform.basis.x * IMPACT_LATERAL_OFFSET
+			+ rack.global_transform.basis.z * IMPACT_START_OFFSET_Z
+			+ Vector3.UP * IMPACT_HEIGHT)
+	large_impactor.sleeping = false
+	large_impactor.linear_velocity = -rack.global_transform.basis.z * IMPACT_SPEED
+	large_impactor.angular_velocity = Vector3.ZERO
+
+	var crates_before_large_shed := _crates().get_child_count()
+	if not await _until("the impact sheds the synthetic Large's cell %d" % CELL_SHED_LARGE_ANCHOR, func() -> bool:
+			return rack.occupied_count(CELL_SHED_LARGE_ANCHOR) == 0):
+		return _finish(false)
+	_expect_now(
+		rack.occupied_count(CELL_SHED_LARGE_PARTNER) == 0,
+		"both halves cleared together -- cell %d, not just the anchor" % CELL_SHED_LARGE_PARTNER,
+	)
+	if not await _until("the shed spent exactly ONE new body -- a Large sheds once, not twice", func() -> bool:
+			return _crates().get_child_count() == crates_before_large_shed + 1):
+		return _finish(false)
+	if not await _until("the shed Large's racked visual is gone", func() -> bool:
+			return rack.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_SHED_LARGE_ANCHOR) == null):
+		return _finish(false)
+
 	# The host's own view of everything above is already correct here --
 	# call_local applies its own broadcasts synchronously -- but the CLIENT's
-	# matching checks each depend on an RPC (the second retrieve's
-	# _cell_cleared, then the shed's own pair of them) actually reaching the
-	# wire before quit() tears the peer down. get_tree().quit() does not wait
-	# for a pending reliable send to flush, so finishing immediately after
-	# issuing one raced the packet out from under itself the first time this
-	# scenario was run to a clean pass. Real wall time, not frames, for the
-	# same reason SPAWN_SETTLE_MS in carry_session.gd is: headless runs
-	# uncapped, so a frame count buys no fixed amount of real time for the
-	# network to actually do anything.
+	# matching checks each depend on an RPC (the Large round trip and shed
+	# among them, steps 17-21) actually reaching the wire before quit() tears
+	# the peer down. get_tree().quit() does not wait for a pending reliable
+	# send to flush, so finishing immediately after issuing one raced the
+	# packet out from under itself the first time this scenario was run to a
+	# clean pass. Real wall time, not frames, for the same reason
+	# SPAWN_SETTLE_MS in carry_session.gd is: headless runs uncapped, so a
+	# frame count buys no fixed amount of real time for the network to
+	# actually do anything.
 	var settle_deadline := Time.get_ticks_msec() + EXIT_SETTLE_MS
 	while Time.get_ticks_msec() < settle_deadline:
 		await get_tree().process_frame
@@ -1283,6 +1600,17 @@ func _run_client(rack: Rack, rack2: Rack) -> void:
 		_fail("find %s" % CRATE_ROUNDTRIP_NAME, "not present under Crates")
 		return _finish(false)
 	var expected_round_record := _mutated_roundtrip_record(crate_round_baseline.record.to_dict())
+
+	# Captured NOW too, for the same reason -- but a simpler one, since
+	# nothing in this scenario ever mutates a Large's own record the way step
+	# 13 mutates crate_round's. This only has to happen before the host's own
+	# step 17 frees the body outright (request_place's queue_free()), and
+	# "captured at the top of the function" already guards against that.
+	var crate_large_side_baseline := _crate_named(CRATE_LARGE_SIDE_NAME)
+	if crate_large_side_baseline == null:
+		_fail("find %s" % CRATE_LARGE_SIDE_NAME, "not present under Crates")
+		return _finish(false)
+	var expected_large_side_record: Dictionary = crate_large_side_baseline.record.to_dict().duplicate(true)
 
 	# --- 1: wait for the host to rack crate_0, then check our own copy. ---
 	if not await _until("host racked crate_0 into cell %d" % CELL_A, func() -> bool:
@@ -1568,6 +1896,95 @@ func _run_client(rack: Rack, rack2: Rack) -> void:
 	if not await _until("client's copy of rack_island cell %d carries a real record after the snapshot" % CELL_B, func() -> bool:
 			var record := rack2.occupant_record(CELL_B)
 			return record.get("category", &"") == &"dodgy" and int(record.get("size", -1)) == CargoCatalogue.Size.SMALL):
+		return _finish(false)
+
+	# --- 17: a Large takes two cells, side by side -- confirmed on this
+	# peer's own copy too. ---
+	if not await _until("rack_island cell %d holds the Large, side by side" % CELL_LARGE_SIDE_ANCHOR, func() -> bool:
+			return rack2.occupied_count(CELL_LARGE_SIDE_ANCHOR) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack2, CELL_LARGE_SIDE_ANCHOR, 0, CargoCatalogue.Size.LARGE, CELL_LARGE_SIDE_PARTNER):
+		return _finish(false)
+	_expect_now(
+		rack2.occupied_count(CELL_LARGE_SIDE_PARTNER) == 1,
+		"client: the SIDE_BY_SIDE partner cell %d is occupied too, not just the anchor" % CELL_LARGE_SIDE_PARTNER,
+	)
+	_expect_now(
+		rack2.occupant(CELL_LARGE_SIDE_ANCHOR) == rack2.occupant(CELL_LARGE_SIDE_PARTNER),
+		"client: both halves report the SAME crate id -- one Large, not two",
+	)
+
+	# --- 18: front-to-back, into the wall rack's dead row -- the assertion
+	# that matters most, confirmed here too. ---
+	if not await _until("rack_wall's permanently unaimable cell %d is filled" % CELL_LARGE_FRONT_PARTNER, func() -> bool:
+			return rack.occupied_count(CELL_LARGE_FRONT_PARTNER) == 1):
+		return _finish(false)
+	if not await _wait_for_settle(rack, CELL_LARGE_FRONT_ANCHOR, 0, CargoCatalogue.Size.LARGE, CELL_LARGE_FRONT_PARTNER):
+		return _finish(false)
+	_expect_now(
+		rack.cell_orientation(CELL_LARGE_FRONT_ANCHOR) == StorageGrid.Orientation.FRONT_TO_BACK,
+		"client: the STORED orientation itself reads FRONT_TO_BACK -- not a hard-coded SIDE_BY_SIDE default",
+	)
+
+	# --- 19: retrieval hands back one crate, field for field, confirmed on
+	# this peer's own copy too. expected_large_side_record was captured at
+	# the top of this function, before the host ever touched crate_15. ---
+	if not await _until("rack_island cells %d and %d are empty after the retrieval" % [CELL_LARGE_SIDE_ANCHOR, CELL_LARGE_SIDE_PARTNER], func() -> bool:
+			return rack2.is_cell_empty(CELL_LARGE_SIDE_ANCHOR) and rack2.is_cell_empty(CELL_LARGE_SIDE_PARTNER)):
+		return _finish(false)
+	if not await _until("rack_island's racked visual is gone after the retrieval, on the client's own view too", func() -> bool:
+			return rack2.get_node_or_null("RackedItems/Cell%d_Item0" % CELL_LARGE_SIDE_ANCHOR) == null):
+		return _finish(false)
+	if not await _until("the retrieved Large reappears as a held body on this peer's own view", func() -> bool:
+			return _find_held_crate() != null):
+		return _finish(false)
+	var large_retrieved_client := _find_held_crate()
+	_expect_now(
+		large_retrieved_client.id != int(expected_large_side_record["id"]),
+		"client: the retrieved body is a NEW mint (id %d), not the same object that was racked (id %d) -- by design" % [large_retrieved_client.id, int(expected_large_side_record["id"])],
+	)
+	_expect_record_matches(
+		"client: retrieved Large's record matches the one captured before it was ever racked",
+		expected_large_side_record, large_retrieved_client.record.to_dict(), true,
+	)
+
+	# --- 20: the dragged Large is refused above the floor, then succeeds at
+	# floor level. The refusal itself is a host-authoritative-truth check
+	# made on the peer that attempted it (same convention step 15 already
+	# follows); this peer confirms the STRUCTURAL result -- cell A is never
+	# written to by anything else in this whole file, so it still being empty
+	# here is exactly what "refused" looks like from outside. ---
+	if not await _until("the Large is racked back into cell %d at floor level" % CELL_LARGE_SIDE_ANCHOR, func() -> bool:
+			return rack2.occupant(CELL_LARGE_SIDE_ANCHOR) != -1):
+		return _finish(false)
+	_expect_now(
+		rack2.is_cell_empty(CELL_A),
+		"client: cell %d (the refused non-floor attempt) was never actually filled" % CELL_A,
+	)
+	if not await _wait_for_settle(rack2, CELL_LARGE_SIDE_ANCHOR, 0, CargoCatalogue.Size.LARGE, CELL_LARGE_SIDE_PARTNER):
+		return _finish(false)
+
+	# --- 21: a Large sheds as one crate, confirmed on this peer's own copy. ---
+	if not await _until("the sentinel %s leaves rack_wall cell %d" % [CRATE_MEDIUM_BLOCK_NAME, CELL_TOP_A], func() -> bool:
+			return rack.is_cell_empty(CELL_TOP_A)):
+		return _finish(false)
+	if not await _until("the synthetic Large fills cells %d+%d" % [CELL_SHED_LARGE_ANCHOR, CELL_SHED_LARGE_PARTNER], func() -> bool:
+			return rack.occupied_count(CELL_SHED_LARGE_ANCHOR) == 1 and rack.occupied_count(CELL_SHED_LARGE_PARTNER) == 1):
+		return _finish(false)
+
+	# Baseline, recorded independently on this peer's own copy -- same
+	# reasoning as crates_before_shed above (steps 7/8).
+	var crates_before_large_shed_client := _crates().get_child_count()
+
+	if not await _until("the impact sheds the synthetic Large's cell %d, on the client's own view too" % CELL_SHED_LARGE_ANCHOR, func() -> bool:
+			return rack.occupied_count(CELL_SHED_LARGE_ANCHOR) == 0):
+		return _finish(false)
+	_expect_now(
+		rack.occupied_count(CELL_SHED_LARGE_PARTNER) == 0,
+		"client: both halves cleared together -- cell %d, not just the anchor" % CELL_SHED_LARGE_PARTNER,
+	)
+	if not await _until("the shed spent exactly ONE new body, on the client's own view too", func() -> bool:
+			return _crates().get_child_count() == crates_before_large_shed_client + 1):
 		return _finish(false)
 
 	_finish(true)
@@ -1936,12 +2353,28 @@ func _teleport_release(target: Vector3) -> void:
 ## [method StorageGrid.small_offset] as it did before, which silently checked
 ## a Medium against the wrong target and hung this exact wait forever the
 ## first time a Medium ever raced it, found live by this plan's own suite).
-func _wait_for_settle(rack: Rack, cell_index: int, sub_index: int, size := CargoCatalogue.Size.SMALL) -> bool:
+##
+## [param partner_index] is new (02-08): a Large's visual settles at the
+## PAIR's own midpoint ([method StorageGrid.pair_centre]), not at
+## [param cell_index]'s bare centre — [method StorageGrid.item_offset]
+## returns [constant Vector3.ZERO] for anything but a Small, which for a
+## Large would silently wait on the wrong target (the anchor cell's own
+## centre, half a cell short of where [code]Rack._spawn_large_visual[/code]
+## actually tweens to) and hang exactly the way the Medium case once did.
+## -1 (the default) preserves every existing call site unchanged. [param
+## cell_index] must still be the Large's own ANCHOR — [code]Cell%d_Item0[/code]
+## is only ever spawned there (see [method Rack._spawn_large_visual]'s own
+## doc comment), so [param sub_index] stays 0 for a Large exactly as it
+## already is for a Medium.
+func _wait_for_settle(rack: Rack, cell_index: int, sub_index: int, size := CargoCatalogue.Size.SMALL, partner_index := -1) -> bool:
 	var visual := rack.get_node_or_null("RackedItems/Cell%d_Item%d" % [cell_index, sub_index])
 	if visual == null:
 		_fail("the placed item settles exactly in its cell", "no visual node Cell%d_Item%d" % [cell_index, sub_index])
 		return false
-	var target := rack.cell_to_local_position(cell_index) + StorageGrid.item_offset(size, sub_index)
+	var target := (
+		StorageGrid.pair_centre(cell_index, partner_index) if partner_index != -1
+		else rack.cell_to_local_position(cell_index) + StorageGrid.item_offset(size, sub_index)
+	)
 	return await _until("the placed item settles exactly in its cell", func() -> bool:
 			return visual.position.is_equal_approx(target))
 
