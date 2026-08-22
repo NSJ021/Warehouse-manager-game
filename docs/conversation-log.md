@@ -4,6 +4,39 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 8 — 2026-08-21
+
+**Phase 2 planned: eleven plans in seven waves, from context to disk in one pass. The verification loop was deliberately stopped short — two blockers stand between the plans and execution.**
+
+### What was planned
+
+Session 7's design outline had already been distilled into `02-CONTEXT.md` (locked decisions, discretion areas, deferred ideas) and researched into `02-RESEARCH.md` earlier in the day; this session ran the planner over both. Output: **11 plans, 7 waves** in `.planning/phases/02-goods/` — the phase ADR and GOODS-03 wording fix first (02-01, a human checkpoint before nine plans build on it), then taxonomy + the `CargoRecord`, the day clock (inert by default), Medium/Large crates with weight deciding the hold, size-aware record-carrying rack occupancy, the STORE-07 wire path proven field-for-field on two peers, scripted days and the truck dump, both Large orientations with the rotate control, the placement ghost + cell plaques, door-down collections with lateness and the midnight tally, and the gate (02-11, "the loop closes").
+
+All three Phase 1 carry-ins landed in concrete tasks: Large orientation (02-01's ADR clause + 02-08, including proof that front-to-back fills a wall rack's dead back row without touching `Carrier._aim()`), STORE-07's data shape (02-02, 02-06, 02-08), and cell plaques (02-09, anchored to ADR 24's pallet front edge).
+
+### What planning found that the design pass didn't
+
+- **The rack's corner uprights sit inside a corner cell's footprint.** A Small minted at the cell centre clears them — which is why Phase 1 never saw it — but a Medium or Large minted there spawns inside two static bodies. ADR 24 rules out resizing the frame, so 02-05 defines `StorageGrid.mint_offset` and 02-06 forbids bare-centre minting for anything bigger than a Small.
+- **A live day clock in `test_room.tscn` would silently break both existing integration scenarios** — doors closing and trucks dumping mid-assertion. The clock ships inert until `begin_run()`, called only by `main.gd`, with a byte-identical check on the existing test session scripts.
+- **Value bands overflow ADR 20's £2000 detection ceiling on 30-day contracts** (a precious Large reaches ~£5670, past where the detection curve saturates). The assertion is bounded at 10 days and the overflow recorded as a Phase 4 finding — densities ADR 20 calibrated stay untouched.
+
+### Deliberately left undone — the two blockers
+
+NJ stopped the workflow after the planner, before the plan-checker. Both blockers are recorded in `.planning/STATE.md`'s Current Position block, and both must clear before `/gsd:execute-phase 2`:
+
+1. **The plan check has not run.** The standing audit rule applies in full: unexecuted plans are unverified until checked against `decisions/`. Re-running `/gsd:plan-phase 2` detects the plans and offers verification.
+2. **The save logic is unagreed.** The ADR 25 draft carries the locked wording "the midnight ceremony is the save point AND the v1 join window" — the join window is built across three plans; the save point is implemented by *no plan*, and no requirement asks for a save system before Phase 5. The planner flagged it rather than inventing scope. NJ decides at or before the 02-01 checkpoint: plan it, defer it, or cut the clause.
+
+### Housekeeping
+
+Roadmap updated and committed (`5d930a2` on `feat/phase-2-goods`, plans themselves repo-excluded, nothing pushed). The CRLF frontmatter trap was explicitly checked — all plan files are LF and the tool's plan index matches on-disk frontmatter, so the locally-patched bug is not biting. STATE.md and the local project brief now carry the not-cleared-for-execution status.
+
+### Next steps
+
+Run the Phase 2 plan check, settle the save-point question with NJ, then `/gsd:execute-phase 2` from a fresh context — wave 1 stops at the 02-01 checkpoint for the ADR 25 ruling either way.
+
+---
+
 ## Session 7 — 2026-08-21
 
 **Phase 1 finished — built, gated by a human across three play sessions, fixed same-day, merged. Then Phase 2 got designed in outline before a single plan exists.**
