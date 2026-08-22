@@ -64,19 +64,37 @@ const WORLD_SCENE := preload("res://scenes/levels/test_room.tscn")
 ## Deliberately neither carry_session's 27099 nor a live game's 27015.
 const TEST_PORT := 27097
 ## Raised 15000 -> 20000 by 02-06 (steps 13-15's own dense retrieve/place
-## sequence), then 20000 -> 45000 by 02-08: steps 17-21 add five more
-## placements/retrievals on top of an already-long scenario, and by that
-## point in a real run the client's own incoming RPC queue can be measured
-## running many real seconds behind the host's own send order — the exact
-## same symptom 02-06 already named ("an otherwise-clean run failing on a
-## client-side wait for a placement the host's own log shows landed
-## correctly, just not within the old budget"), now at a larger scale.
-## Confirmed by a direct diagnostic (a temporary print in
-## CarryAuthority._cell_filled, never committed): every RPC this file sends
-## arrives, in the correct order, with no drops and no duplicates — only
-## LATE, and later still the longer the scenario has already run. This is a
-## budget problem, not a correctness one; see this constant's own history for
-## why the fix is a bigger number, not a different mechanism.
+## sequence), then 20000 -> 45000 by 02-08.
+##
+## ⚠ THE 45000 RAISE WAS MADE FOR A REASON THAT HAS SINCE BEEN DISPROVEN, and
+## the number is left alone only because nothing yet shows it is harmful.
+##
+## 02-08 concluded the client's step-17 failure was a budget problem — that
+## its incoming RPC queue simply ran seconds behind the host's send order, so
+## "the fix is a bigger number, not a different mechanism." **That is wrong.**
+## Measured 2026-08-22 by the orchestrator, letting BOTH peers run to
+## completion rather than killing the host with the client:
+##
+##   * host  RESULT=PASS steps_passed=134 — it genuinely performs the
+##     placement ("racked crate_15 into rack_island cell 2"), 78% of the way
+##     through its own run
+##   * client RESULT=FAIL steps_passed=81 — never observes it
+##   * raising this constant 45000 -> 180000, a FOUR-FOLD budget, changes
+##     nothing: the client still fails at exactly step 81
+##   * capping both peers at Engine.max_fps = 60, testing whether uncapped
+##     headless was outrunning replication, also changes nothing
+##   * no engine error on either peer; the async-without-await line at
+##     _run_client fires only AFTER the wait has already given up
+##
+## A four-fold budget that changes nothing is not a budget problem. The
+## client's predicate — occupied_count(anchor) == 1 on rack_island — never
+## becomes true at all, which makes this a CORRECTNESS question about the
+## client's own apply path for a Large, not a timing one. The host applies its
+## own broadcast synchronously via call_local; the client goes over the wire,
+## and only the client's copy is wrong.
+##
+## Do not raise this number again expecting it to help. See
+## docs/test-coverage.md for the open defect and what was already ruled out.
 const STEP_TIMEOUT_MS := 45000
 const EXPECTED_PLAYERS := 2
 ## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for

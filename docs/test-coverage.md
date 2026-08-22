@@ -231,3 +231,53 @@ physically impossible, which is the entire co-op incentive ADR 19 exists to prot
 
 Both tooling changes live in the planning tool rather than this repo, so a tool update will drop
 them. They are recorded in `.planning/STATE.md` so they can be reapplied.
+
+---
+
+## OPEN DEFECT — a client never sees a Large racked into `rack_island` cell 2
+
+Found by 02-08, re-diagnosed by the orchestrator 2026-08-22. **Blocking the last assertion of
+02-08; everything else in that plan is committed and proven.**
+
+**Symptom.** In the full `storage_session` scenario the host racks a Large into `rack_island`
+cell 2 and passes — `RESULT=PASS steps_passed=134`. The client never observes it and fails on that
+wait — `RESULT=FAIL steps_passed=81`. Reproduces 5/5.
+
+**What has been ruled out, each by measurement rather than argument:**
+
+| Hypothesis | Test | Result |
+|---|---|---|
+| It is a timeout budget | Raised `STEP_TIMEOUT_MS` 45 s → **180 s**, a four-fold increase | **No change** — still fails at exactly step 81 |
+| Uncapped headless outruns replication | `Engine.max_fps = 60` on both peers | **No change** |
+| Large size specifically | A Small into the same cell, same run | Still failed |
+| Message burstiness | 80 rapid RPCs then the placement, isolated | Instant |
+| Elapsed time alone | 130 s idle then the placement | Instant |
+| Sustained movement | 130 s of real walking then the placement | Instant |
+| Sustained bidirectional traffic | 130 s of real grab/release from both peers | Instant |
+
+**The conclusion this overturns.** 02-08 recorded it as *"a budget problem, not a correctness one…
+the fix is a bigger number, not a different mechanism"* and raised the timeout twice on that basis.
+**A four-fold budget that changes nothing is not a budget problem.** The comment on
+`STEP_TIMEOUT_MS` has been corrected in place so the next reader does not inherit the wrong theory —
+that constant must not be raised again expecting it to help.
+
+**Where the evidence now points.** The client's predicate — `occupied_count(anchor) == 1` on
+`rack_island` — never becomes true, with **no engine error on either peer**. The host applies its own
+broadcast synchronously through `call_local`; the client applies it over the wire. Only the client's
+copy is wrong, and only after ~16 prior steps of racking and retrieving. That is a **correctness
+question about the client's apply path for a Large**, not a timing one.
+
+Two specific things worth trying first, neither yet done:
+
+1. **`CarryAuthority._cell_filled` silently no-ops when `_rack_for(rack_name)` returns null.** If
+   rack resolution ever fails on the client, nothing is logged and nothing fails. Instrument that
+   branch before anything else.
+2. **Compare host and client apply paths for a Large directly** — the host reaches
+   `apply_cell_filled` via `call_local`, the client over the wire with a serialised `record_data`
+   dictionary and orientation. A field that survives locally but not through serialisation would
+   produce exactly this.
+
+**Do not work around this by splitting the scenario.** That was the proposed fix and it would hide a
+reproducible client-side desync in the netcode, which is the part of this project that matters most.
+This project's own rule, written in `carry_session.gd`: *"report it rather than working around it."*
+Splitting may still be right for scenario length, but not as the answer to this.
