@@ -4,6 +4,7 @@ Append-only. Newest at the top. To change course, write a **new** ADR and mark t
 
 | Date | Decision | Status | ADR |
 |---|---|---|---|
+| 2026-08-22 | Medium and Large are 0.9 m tall, so a crate fits the shelf it is stored in | Accepted | [crate-height-clears-the-deck](2026-08-22-crate-height-clears-the-deck.md) |
 | 2026-08-22 | Run variety: procedural layout, lease tiers, modifiers, and how a run can end | Accepted | [run-variety-and-progression](2026-08-22-run-variety-and-progression.md) |
 | 2026-08-22 | Goods taxonomy, Large orientation, dates as contract properties, the day clock | Accepted | [goods-taxonomy-dates-and-the-day-clock](2026-08-22-goods-taxonomy-dates-and-the-day-clock.md) |
 | 2026-08-21 | Rack geometry ratified: pallets, buried rows, two speeds of shelf | Accepted | [rack-presentation-ratified](2026-08-21-rack-presentation-ratified.md) |

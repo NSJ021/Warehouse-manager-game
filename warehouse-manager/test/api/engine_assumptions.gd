@@ -614,6 +614,16 @@ func _check_decided_invariants() -> void:
 	# crate.gd rather than duplicating it (see crate_medium.tscn's own
 	# editor_description for why). Checked here for the same reason the Small
 	# above is: a drifted dimension is a snapping problem, not a visual one.
+	#
+	# ⚠ HEIGHT IS 0.9 m, NOT 1.0 — amended 2026-08-22 (NJ's ruling) because the
+	# original 1.0 m did not physically fit the shelf it was stored in. ADR 24's
+	# decks are 0.05 m thick and sit ON the cell boundaries, so a cell's nominal
+	# metre is 0.95 m of clear air; a 1.0 m crate minted at the cell centre
+	# interpenetrated BOTH decks by 2.5 cm and jammed on retrieval, intermittently.
+	# Footprint is untouched at 1.0 (Medium) and 2.0 x 1.0 (Large) — the cell
+	# model, capacity and the eight-Small lattice all key off the footprint, and
+	# none of them care about height. See _check_crates_fit_their_shelf, which is
+	# the assertion that caught this and now passes.
 	var medium_scene := load("res://scenes/goods/crate_medium.tscn") as PackedScene
 	if medium_scene == null:
 		_fail("the crate_medium scene will not load, so its invariants cannot be checked")
@@ -621,13 +631,13 @@ func _check_decided_invariants() -> void:
 		var medium := medium_scene.instantiate()
 		var medium_shape := medium.get_node("Collision").shape as BoxShape3D
 		_expect(
-			medium_shape != null and medium_shape.size.is_equal_approx(Vector3(1, 1, 1)),
-			"ADR 18 - a Medium is exactly 1.0 m, one whole cell (got %s)" % (medium_shape.size if medium_shape else "no shape"),
+			medium_shape != null and medium_shape.size.is_equal_approx(Vector3(1, 0.9, 1)),
+			"ADR 18 (amended) - a Medium is 1.0 m square, 0.9 m tall to clear the decks (got %s)" % (medium_shape.size if medium_shape else "no shape"),
 		)
 		var medium_mesh := (medium.get_node("BodyMesh") as MeshInstance3D).mesh as BoxMesh
 		_expect(
-			medium_mesh != null and medium_mesh.size.is_equal_approx(Vector3(1, 1, 1)),
-			"ADR 18 - a Medium's mesh matches its collision, 1.0 m (got %s)" % (medium_mesh.size if medium_mesh else "no mesh"),
+			medium_mesh != null and medium_mesh.size.is_equal_approx(Vector3(1, 0.9, 1)),
+			"ADR 18 (amended) - a Medium's mesh matches its collision, 1.0 x 0.9 x 1.0 (got %s)" % (medium_mesh.size if medium_mesh else "no mesh"),
 		)
 		_expect(medium.mass > 0.0, "a Medium's fallback mass (pre-setup()) is positive (got %s)" % medium.mass)
 		_expect(medium.collision_layer == 4, "a Medium is on the cargo layer (got %d)" % medium.collision_layer)
@@ -651,8 +661,8 @@ func _check_decided_invariants() -> void:
 		var large := large_scene.instantiate()
 		var large_shape := large.get_node("Collision").shape as BoxShape3D
 		_expect(
-			large_shape != null and large_shape.size.is_equal_approx(Vector3(2, 1, 1)),
-			"ADR 18 - a Large is exactly 2.0 x 1.0 x 1.0 m (got %s)" % (large_shape.size if large_shape else "no shape"),
+			large_shape != null and large_shape.size.is_equal_approx(Vector3(2, 0.9, 1)),
+			"ADR 18 (amended) - a Large is 2.0 x 0.9 x 1.0 m (got %s)" % (large_shape.size if large_shape else "no shape"),
 		)
 		# ADR 25 (d): the 2 m axis is local X - the convention 02-05 and 02-07
 		# both rotate against, so it earns its own assertion rather than only
@@ -663,8 +673,8 @@ func _check_decided_invariants() -> void:
 		)
 		var large_mesh := (large.get_node("BodyMesh") as MeshInstance3D).mesh as BoxMesh
 		_expect(
-			large_mesh != null and large_mesh.size.is_equal_approx(Vector3(2, 1, 1)),
-			"ADR 18 - a Large's mesh matches its collision, 2.0 x 1.0 x 1.0 (got %s)" % (large_mesh.size if large_mesh else "no mesh"),
+			large_mesh != null and large_mesh.size.is_equal_approx(Vector3(2, 0.9, 1)),
+			"ADR 18 (amended) - a Large's mesh matches its collision, 2.0 x 0.9 x 1.0 (got %s)" % (large_mesh.size if large_mesh else "no mesh"),
 		)
 		# Belt and braces on top of 02-02's own catalogue assertion: the
 		# catalogue guarantees every REAL Large record is heavy enough, and

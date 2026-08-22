@@ -3,13 +3,13 @@
 [ext_resource type="PackedScene" path="res://scenes/goods/crate.tscn" id="1_base"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_large"]
-size = Vector3(2, 1, 1)
+size = Vector3(2, 0.9, 1)
 
 [sub_resource type="BoxMesh" id="BoxMesh_large"]
-size = Vector3(2, 1, 1)
+size = Vector3(2, 0.9, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_large_sensor"]
-size = Vector3(2.12, 1.12, 1.12)
+size = Vector3(2.12, 1.02, 1.12)
 
 [node name="Crate" instance=ExtResource("1_base")]
 editor_description = "Large (ADR 18: 2.0 x 1.0 x 1.0 m, two storage cells). Inherited from crate.tscn rather than duplicated, so crate.gd's dozen exported tuning values (hold_stiffness, drag_reach, shove_force, settle_frames...) stay in sync across all three sizes automatically -- the first time they drifted by hand, a Large would feel different from a Small for no reason anyone could find. Inheritance also means the SceneReplicationConfig is authored once. Root mass below is only the pre-setup() fallback (chosen above Crate.SOLO_CARRY_MASS_LIMIT so even an un-setup() Large can never be lifted solo); Crate.setup() overwrites it per-instance from the record's own mass -- every Large exceeds the solo limit regardless of category (ADR 25 (c)). Orientation convention (load-bearing for 02-05/02-07's rack placement): the 2 m axis is local X. A Large placed side-by-side across a rack face needs no rotation; a Large placed front-to-back through the rack's depth is yawed 90 degrees."
