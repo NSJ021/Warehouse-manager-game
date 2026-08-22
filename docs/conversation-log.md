@@ -4,6 +4,40 @@ Session-by-session record of what was decided and why. Append new sessions at th
 
 ---
 
+## Session 9 — 2026-08-22
+
+**The Phase 2 plan check ran, and earned its keep: three blockers, all of them the same species. Seven waves became eight. Both pre-execution blockers are now closed.**
+
+### What the check found
+
+Session 8 stopped before verification. Running it found **three blockers, and they shared a root cause**: the wave graph was arithmetically perfect — every wave equal to `max(dependency waves) + 1`, no cycles — but it ignored what `.planning/config.json` actually does at execution time (plan-level parallelism, three concurrent agents). **Every wave holding more than one plan had a coordination hazard.**
+
+1. **The ADR checkpoint did not gate its own wave-mates.** 02-01 is the human checkpoint whose own text reads "do not begin any other Phase 2 work while this is open" — yet 02-02 and 02-03 sat in wave 1 with an empty `depends_on`. The execution workflow lets parallel agents *complete* while a checkpoint waits, so both would have written and committed GDScript against an unratified ADR 25. The empty dependency was a frontmatter error, not a design choice: both plans already cite ADR 25 ten-plus times.
+2. **One plan deliberately reds the suite while its wave-mate demanded it green.** 02-05 declares its own integration stage expected-to-fail ("that is 02-06's job"); same-wave 02-07 required green over three consecutive runs. One working tree, no isolation — structurally unreachable.
+3. **An undeclared `rack.gd` conflict.** 02-09 and 02-10 both edited it in wave 6, undeclared in 02-10's `files_modified`.
+
+### How they were fixed
+
+Dependency edges for the first two. The third was fixed **at source rather than by serialising**: the write-through API `Rack.apply_record_update()` moved into 02-05, which owns the cell-record data model — but its RPC wrapper went to 02-06 instead, because 02-05 is deliberately wire-free and `rack.gd` has **no RPCs at all**, a property 02-09's verification greps to preserve. 02-10 now touches neither file and carries an assertion that `rack.gd`'s diff is empty.
+
+Result: **11 plans, 8 waves** — 02-01 alone in wave 1, 02-11 alone in wave 8, and no plan's build content changed otherwise.
+
+### The save-point clause, settled as a routing question
+
+The check confirmed the clause is **purely declarative**: no Phase 2 plan reads or writes anything surviving a process restart, and the gate never asks for a quit-and-reload. The join-window half is genuinely built, but that is live-session catch-up, not persistence — so it never blocked execution.
+
+The real risk was narrower: 02-01 would have committed an ADR asserting a save point no code backs, while its checkpoint only asked about the door, commerce, day length and Phase 4 routing. That is now an explicit **named ruling — `plan-it` / `defer-it` / `cut-it`** — with the ADR held uncommitted until NJ answers and a bare "approved" rejected as a resume signal. 02-03 and 02-10, which had been hard-coding "the save point" as settled fact, now read the ADR's committed text instead, so no plan can contradict whichever way he rules.
+
+### Two claims checked rather than trusted
+
+The re-check reported all 11 plan files as CRLF and STATE.md's "all files LF" claim as false. A byte-level scan found **zero CR bytes in any of them** — a false positive from the checker's own grep quoting. Worth recording, because CRLF frontmatter is this project's documented checkpoint-stripping hazard, and acting on it would have been churn built on a wrong premise. The wave graph was likewise recomputed independently rather than taken from the planner's summary.
+
+### Next steps
+
+`/gsd:execute-phase 2` from a fresh context. Wave 1 stops at the 02-01 checkpoint, where NJ owes the save-point ruling by name.
+
+---
+
 ## Session 8 — 2026-08-21
 
 **Phase 2 planned: eleven plans in seven waves, from context to disk in one pass. The verification loop was deliberately stopped short — two blockers stand between the plans and execution.**

@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** The dilemma is the game — patch and hope, confess, or comp.
-**Current focus:** Phase 1 complete (gate passed 2026-08-21). Next up: Phase 2, Goods.
+**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** The save-logic call is now a named ruling NJ gives at the 02-01 checkpoint.
 
 > **Narrative history lives in `docs/conversation-log.md`, not here.** This file tracks
 > execution position only. Duplicating the story in two places guarantees one of them
@@ -13,13 +13,61 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods).
-Plan: **01-01 through 01-09 all complete** — all 9 plans, all 7 waves done.
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **planned, NOT cleared for execution.**
+Plan: Phase 2 planned 2026-08-21, revised 2026-08-22 — 11 plans (02-01 … 02-11) in **8 waves**, `.planning/phases/02-goods/`.
+Phase 1: 01-01 through 01-09 all complete — all 9 plans, all 7 waves done.
 Status: **Phase 1 closed 2026-08-21.** The gate (01-08) passed — verdict "storage feels
 deliberate," NJ, explicit, after three play sessions. Task 2's rulings are written into
 [ADR 24](../decisions/2026-08-21-rack-presentation-ratified.md) and `.planning/REQUIREMENTS.md`;
-full detail in `01-08-SUMMARY.md`. Phase 2 has not started.
-Last activity: 2026-08-21 — 01-08 executed, closing the phase: see the resolved block below for
+full detail in `01-08-SUMMARY.md`.
+
+> **✓ BOTH PRE-EXECUTION BLOCKERS RESOLVED 2026-08-22. Phase 2 is cleared for `/gsd:execute-phase 2`.**
+>
+> 1. **Plan check — DONE.** Ran plan-check → revise → re-check. The first pass found **three
+>    blockers, all the same species**: the wave graph was arithmetically sound but ignored what
+>    `.planning/config.json` actually does (`plan_level` parallelism, 3 concurrent agents), so
+>    **every multi-plan wave had a coordination hazard**. (a) 02-01, the ADR checkpoint whose own
+>    text says "do not begin any other Phase 2 work while this is open", shared wave 1 with 02-02
+>    and 02-03 — `execute-phase.md:203` lets parallel agents *complete* while a checkpoint waits,
+>    so both would have committed code against an unratified ADR. (b) 02-05 declares its own
+>    integration stage red ("that is 02-06's job") while same-wave 02-07 required a green suite
+>    over three runs — structurally unreachable in one working tree. (c) 02-09 and 02-10 both
+>    edited `rack.gd` in wave 6, undeclared in 02-10's `files_modified`. All three fixed by
+>    dependency edges and one API relocation; re-check returned **zero blockers**.
+> 2. **Save logic — ROUTED, not decided.** The re-check confirmed the clause is **purely
+>    declarative**: no Phase 2 plan reads or writes anything surviving a process restart, and
+>    02-11's gate never asks for a quit-and-reload. The join-window half is genuinely built
+>    (02-03/02-07/02-10) but that is live-session catch-up, not persistence. So nothing blocks
+>    execution. 02-01's checkpoint now forces a **named ruling — `plan-it` / `defer-it` /
+>    `cut-it`** — holds the ADR uncommitted until NJ answers, and treats a bare "approved" as not
+>    a resume signal. **NJ still owes that ruling at the 02-01 checkpoint.**
+
+> **Revision detail (2026-08-22), since `.planning/phases/` is repo-excluded and this is the durable record:**
+> Wave graph went 7 → **8 waves**: w1 `02-01` (alone) | w2 `02-02`, `02-03` | w3 `02-04` |
+> w4 `02-05` | w5 `02-06` | w6 `02-07`, `02-08` | w7 `02-09`, `02-10` | w8 `02-11` (gate, alone).
+> 02-07's new dependency on 02-06 is a **scheduling fence, not a code dependency** — a note in the
+> plan tells its agent that a red suite on arrival is a real regression to diagnose, not 02-05
+> leftovers. The `rack.gd` conflict was fixed **at source** rather than by serialising: the
+> write-through API `Rack.apply_record_update(cell, crate_id, changes)` moved into 02-05 (which
+> owns the cell-record data model), while its RPC wrapper `CarryAuthority._record_updated(...)`
+> went to 02-06 — because 02-05 is deliberately wire-free and `rack.gd` has **no RPCs at all**, a
+> property 02-09's verification greps to preserve. 02-10 now touches neither file and carries a
+> `git diff --stat …/rack.gd shows nothing` assertion. **No plan's build content changed otherwise.**
+> Verified independently: every wave == max(dep waves)+1, zero same-wave `files_modified`
+> collisions, both checkpoints alone in their waves, no cycles, all 11 files byte-scanned **pure
+> LF, zero CR** (a re-check warning claiming CRLF was a false positive from its own grep quoting).
+
+Last activity: 2026-08-22 — **Phase 2 plan-checked and revised**: three scheduling blockers found
+and fixed, re-check clean, 7 → 8 waves (see the resolved blocker block above). Before that,
+2026-08-21 — **Phase 2 planned**: 11 plans written and cross-checked
+against the tool's plan index (CRLF frontmatter trap checked — all files LF). Wave 1 blocks on a
+human checkpoint (02-01, the ADR 25 draft); the **wave 8** gate is 02-11. Three planner findings
+worth reading before executing: the rack's corner uprights sit inside corner-cell footprints, so
+Medium/Large minting needs `StorageGrid.mint_offset` (02-05/02-06); the day clock must stay inert
+in `test_room.tscn` until `begin_run()` or both existing integration scenarios break (02-03); and
+value bands overflow ADR 20's £2000 detection ceiling on 30-day contracts (assertion bounded at
+10 days, recorded as a Phase 4 finding — densities left as ADR 20 calibrated them). Roadmap
+update committed as `5d930a2` on `feat/phase-2-goods`, nothing pushed. Before that: 01-08 executed, closing the phase: see the resolved block below for
 the gate's own findings and rulings. Before that: 01-09 executed: `Crate` gained ADR 17's settle/wake state machine — a
 crate at rest for half a second freezes to real `FREEZE_MODE_STATIC` world geometry and blocks
 players client-side, wakes on a shove or a grab, proven on two real processes across four

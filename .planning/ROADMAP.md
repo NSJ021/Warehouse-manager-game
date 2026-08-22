@@ -99,7 +99,7 @@ Plans:
   3. A day runs morning → shift → close in 6–10 minutes
   4. Items have a store-until date, and being late costs something
 
-**Plans:** 11 plans in 7 waves — planned 2026-08-21, none executed.
+**Plans:** 11 plans in 8 waves — planned 2026-08-21, revised 2026-08-22, none executed.
 
 > The three items carried in from the Phase 1 gate are each answered by a plan, not by a note:
 > **Large orientation** by 02-01 (the ADR) and 02-08 (the code, both orientations, player-chosen);
@@ -111,16 +111,28 @@ Plans:
 
 Plans:
 - [ ] 02-01-PLAN.md — The Phase 2 decisions become an ADR; GOODS-03's spoilage wording is fixed *(wave 1, checkpoint)*
-- [ ] 02-02-PLAN.md — Cargo taxonomy and the round-trip crate record, test-first *(wave 1)*
-- [ ] 02-03-PLAN.md — The day clock and the dock door that is its face *(wave 1)*
-- [ ] 02-04-PLAN.md — Medium and Large cargo, with weight deciding the hold *(wave 2)*
-- [ ] 02-05-PLAN.md — The rack holds three sizes and remembers whole records *(wave 3)*
-- [ ] 02-06-PLAN.md — STORE-07: a racked crate's whole record survives the round trip *(wave 4)*
-- [ ] 02-07-PLAN.md — Scripted days: the manifest and the morning delivery *(wave 3)*
-- [ ] 02-08-PLAN.md — A Large takes two cells, and the player picks which two *(wave 5)*
-- [ ] 02-09-PLAN.md — The placement ghost and the cell plaque *(wave 6)*
-- [ ] 02-10-PLAN.md — Collections at door-down, and what being late costs *(wave 6)*
-- [ ] 02-11-PLAN.md — The gate: a human judges whether the loop closes *(wave 7, checkpoint)*
+- [ ] 02-02-PLAN.md — Cargo taxonomy and the round-trip crate record, test-first *(wave 2)*
+- [ ] 02-03-PLAN.md — The day clock and the dock door that is its face *(wave 2)*
+- [ ] 02-04-PLAN.md — Medium and Large cargo, with weight deciding the hold *(wave 3)*
+- [ ] 02-05-PLAN.md — The rack holds three sizes and remembers whole records *(wave 4)*
+- [ ] 02-06-PLAN.md — STORE-07: a racked crate's whole record survives the round trip *(wave 5)*
+- [ ] 02-07-PLAN.md — Scripted days: the manifest and the morning delivery *(wave 6)*
+- [ ] 02-08-PLAN.md — A Large takes two cells, and the player picks which two *(wave 6)*
+- [ ] 02-09-PLAN.md — The placement ghost and the cell plaque *(wave 7)*
+- [ ] 02-10-PLAN.md — Collections at door-down, and what being late costs *(wave 7)*
+- [ ] 02-11-PLAN.md — The gate: a human judges whether the loop closes *(wave 8, checkpoint)*
+
+> **Wave revision, 2026-08-22.** Three scheduling defects were fixed without changing what any
+> plan builds. **02-01's checkpoint now gates its old wave-mates** — 02-02 and 02-03 both cite
+> ADR 25 throughout but declared no dependency on the plan that writes it, so under plan-level
+> parallelism they would have committed GDScript against clauses NJ had not yet approved. It is
+> now alone in wave 1. **02-07 now waits on 02-06**, because 02-05 deliberately ends with the
+> integration suite red and 02-06 is what makes it green; 02-07's bar is a green suite three runs
+> running, which it could not have reached beside 02-05 in one working tree. That fence costs no
+> waves — the critical path runs through 02-05 either way. And **the record-mutation write-through
+> API moved into 02-05**, where the cell data shape is decided (`Rack.apply_record_update`, with
+> its broadcast in 02-06 beside the other rack RPCs), so 02-10 calls it rather than inventing one
+> — which is what stopped 02-09 and 02-10 both editing `rack.gd` in the same wave.
 
 ### Phase 3: The dilemma
 **Goal:** Damage, condition tiers, the tape gun, and the patch / confess / comp choice.
