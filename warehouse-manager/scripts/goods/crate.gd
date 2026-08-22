@@ -507,6 +507,23 @@ func _wake() -> void:
 	_settle_frames_at_rest = 0
 
 
+## Host-only. Public entry point to [method _wake] for callers outside this
+## file — today, [code]DockDoor._wake_blocking_cargo[/code] (`dock_door.gd`,
+## Phase 2), which must unfreeze a settled crate before a closing
+## [AnimatableBody3D] door tries to push it. An [AnimatableBody3D] cannot
+## displace a [constant RigidBody3D.FREEZE_MODE_STATIC] body — it drives
+## straight through instead — so a door meeting settled cargo has to wake it
+## first or it merely intersects the crate rather than shoving it clear (see
+## `test/api/engine_assumptions.gd`'s own measured assertion of both halves
+## of that behaviour). Delegates to [method _wake] rather than duplicating
+## it, and does not merely set [member sleeping] to false — 01-09 already
+## proved that alone does not unfreeze anything.
+func wake() -> void:
+	if not Net.is_host():
+		return
+	_wake()
+
+
 func _apply_hold_forces(delta: float) -> void:
 	if _hold_mode == HoldMode.DRAG:
 		_apply_drag_forces(delta)
