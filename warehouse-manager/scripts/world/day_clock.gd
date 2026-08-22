@@ -298,9 +298,23 @@ func phase_name() -> String:
 ## by ending the tidy-up early. Printed rather than push_warning'd, matching
 ## every other [code][carry][/code]-style line in this codebase: a player
 ## working out what just happened should find it in the log.
+##
+## [b]A real, previously untested bug, found and fixed by this plan's own
+## goods_session.gd (assertion 7) rather than assumed correct:[/b]
+## `if not Net.is_host(): return` alone only checks whether the EXECUTING
+## peer is the host — and `call_local`'s remote half always executes on the
+## host (every caller, host or client, targets peer 1 via `.rpc_id(1, ...)`,
+## `main.gd`'s own convention), where that check trivially passes regardless
+## of who asked. Confirmed empirically with a throwaway two-process probe
+## (never committed) before touching this file: a client's own
+## `request_call_it_a_night.rpc_id(1)` genuinely flipped the host to
+## MIDNIGHT. The missing half is [method _sender_id] — it must be the HOST
+## making the request, not merely the host machine running the code.
 @rpc("any_peer", "call_local", "reliable")
 func request_call_it_a_night() -> void:
 	if not Net.is_host():
+		return
+	if _sender_id() != 1:
 		return
 	if sync_phase != Phase.AFTER_HOURS:
 		return

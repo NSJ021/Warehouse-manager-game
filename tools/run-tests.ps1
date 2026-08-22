@@ -14,9 +14,13 @@
                    drag and its promotion back into a carry -- then a second
                    scenario for storage: place, a cell taking more than one,
                    a full cell refusing, a dragged crate refused above the
-                   floor row (ADR 19), and LIFO retrieval. This is the layer
-                   that matters, because host authority and held-item handoff
-                   are exactly what unit tests cannot reach.
+                   floor row (ADR 19), and LIFO retrieval -- then a third
+                   scenario for a day: begin_run(), a broadcast manifest,
+                   the truck dump into Goods IN, the door deriving itself
+                   open, and the host-only right to call it a night early.
+                   This is the layer that matters, because host authority
+                   and held-item handoff are exactly what unit tests cannot
+                   reach.
 
     Fails loudly and prints the failing steps plus both sides' state, so a red run
     tells you what disagreed without rerunning anything.
@@ -351,10 +355,11 @@ function Invoke-IntegrationScenario {
 }
 
 Write-Host ''
-Write-Host '[4/4] integration - 2 processes, carry / handoff / solo drag, then storage' -ForegroundColor Cyan
+Write-Host '[4/4] integration - 2 processes, carry / handoff / solo drag, storage, then a day' -ForegroundColor Cyan
 
 Invoke-IntegrationScenario -Scene 'res://test/integration/carry_session.tscn' -Label 'carry'
 Invoke-IntegrationScenario -Scene 'res://test/integration/storage_session.tscn' -Label 'storage'
+Invoke-IntegrationScenario -Scene 'res://test/integration/goods_session.tscn' -Label 'goods'
 
 # ---------------------------------------------------------------- verdict
 
