@@ -54,11 +54,12 @@ const CRATE_NAME := "crate_0"
 const EXPECTED_PLAYERS := 2
 ## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for
 ## the gate playtest protocol (2026-08-21) — two rows of six rather than one
-## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why. Every
+## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why — then to 17
+## for 02-04's mixed heavy row (HEAVY_ROW_ORIGIN, crate_12..crate_16). Every
 ## crate_0..crate_5 name and position the allocation table above depends on is
-## unchanged — the second row (crate_6..crate_11) is unclaimed by any step in
-## this file.
-const EXPECTED_CRATES := 12
+## unchanged — the second row (crate_6..crate_11) and the heavy row
+## (crate_12..crate_16) are both unclaimed by any step in this file.
+const EXPECTED_CRATES := 17
 ## Cargo rests at about y=0.25 on the floor and hangs near y=0.9 when carried, so
 ## this separates "picked up" from "sat there" with room to spare.
 const LIFT_MIN_Y := 0.55

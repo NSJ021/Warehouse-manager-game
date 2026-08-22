@@ -14,11 +14,14 @@ extends Node
 ## its own, so it is a plain script rather than a scene (ADR 12).
 ##
 ## Placing a crate does not replicate the racked item itself. The three
-## broadcasts below carry a handful of bytes — (rack, cell, crate id) — and
-## every peer derives identical local state (Rack.apply_cell_filled) from
+## broadcasts below carry a handful of bytes — (rack, cell, crate id, kind) —
+## and every peer derives identical local state (Rack.apply_cell_filled) from
 ## that alone, against the 93–115 kb/s ADR 14 measured for loose cargo.
 ## Reintroducing per-item replication for racked stock would silently reopen
-## exactly the cost grid storage exists to avoid.
+## exactly the cost grid storage exists to avoid. [member Crate.kind] rides
+## along (02-04) because it is what [method Rack.can_accept] checks on the
+## very next placement into the same cell — omitting it would silently store
+## a stale label and refuse a genuinely same-category crate.
 
 ## How close the hold point must be to grab. Generous, because the ray has
 ## already established the player is looking straight at it.
@@ -190,6 +193,7 @@ func request_place(rack_name: String, cell_index: int) -> void:
 		return
 
 	var crate_id := crate.id
+	var crate_kind := crate.kind
 	var from_position := crate.global_position
 
 	# Release every holder, not just the asker — a crate can be held by two
@@ -207,7 +211,12 @@ func request_place(rack_name: String, cell_index: int) -> void:
 	# per-crate figure ADR 14 measured, whether or not it ever moves again —
 	# do not "improve" this into pausing the body instead of freeing it.
 	crate.queue_free()
-	_cell_filled.rpc(rack_name, cell_index, crate_id, from_position)
+	# crate_kind travels alongside crate_id (02-04): once a crate's own kind
+	# became a real category (ADR 25 (a)) rather than always &"small",
+	# Rack.apply_cell_filled needed the real value on the wire rather than a
+	# hard-coded fallback, or the very next crate into this same cell would be
+	# refused against a stale label. See that method's own doc comment.
+	_cell_filled.rpc(rack_name, cell_index, crate_id, crate_kind, from_position)
 	print("[carry] peer %d racked crate_%d into %s cell %d" % [peer_id, crate_id, rack_name, cell_index])
 
 
@@ -430,10 +439,10 @@ func _hold_mode_set(mode: Crate.HoldMode) -> void:
 ## Net._sync_roster. Contains no logic beyond the null guard: the rack owns
 ## the state, this referee owns only the decision.
 @rpc("authority", "call_local", "reliable")
-func _cell_filled(rack_name: String, cell_index: int, crate_id: int, from_position: Vector3) -> void:
+func _cell_filled(rack_name: String, cell_index: int, crate_id: int, kind: StringName, from_position: Vector3) -> void:
 	var rack := _rack_for(rack_name)
 	if rack != null:
-		rack.apply_cell_filled(cell_index, crate_id, from_position)
+		rack.apply_cell_filled(cell_index, crate_id, kind, from_position)
 
 
 @rpc("authority", "call_local", "reliable")

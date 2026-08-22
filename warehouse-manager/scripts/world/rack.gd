@@ -91,10 +91,11 @@ var _last_shed_ms := -1000000
 ## stack, last in first out, so [method occupied_count] is just its size and
 ## the two can never disagree. `kind` is `&""` when the cell is empty.
 ##
-## Phase 1 has exactly one cargo size ([constant Crate.KIND_SMALL]), but the
-## shape already records a kind as well as a count so Phase 2's Medium and
-## Large can arrive without reshaping this file. Nothing here builds toward
-## them yet.
+## `kind` is a real category (ADR 25 (a)) from 02-04 onward — the shape
+## already recorded a kind as well as a count in Phase 1, so Medium and Large
+## (02-04) and real categories arrive without reshaping this file. Full
+## per-crate records (fragility, value, condition…) are still 02-05's own
+## redesign of this shape, not built here.
 var _cells: Array[Dictionary] = []
 
 @onready var _racked_items: Node3D = $RackedItems
@@ -324,12 +325,19 @@ func remove_from_cell(cell: int) -> int:
 
 ## Wraps [method add_to_cell] and grows that cell's visuals by exactly the one
 ## item that just arrived — the others, already in place, are untouched.
-## Phase 1's only kind is [constant Crate.KIND_SMALL] — fixed here rather than
-## taken as a parameter, because there is nothing else to pass yet (see the
-## class doc). [param from_position] is where the crate travelled from; see
-## [method _spawn_cell_visual] for what [constant Vector3.ZERO] means there.
-func apply_cell_filled(cell: int, crate_id: int, from_position: Vector3) -> void:
-	var sub_index := add_to_cell(cell, Crate.KIND_SMALL, crate_id)
+##
+## [param kind] travels the wire from [code]CarryAuthority._cell_filled[/code]
+## (02-04) rather than being fixed to [constant Crate.KIND_SMALL] here: once a
+## crate's own [member Crate.kind] became a real category (ADR 25 (a)) rather
+## than always [code]&"small"[/code], hard-coding it here would have stored
+## the wrong kind for every real placement and silently broken atomicity for
+## the very next crate into the same cell — found by [code]storage_session.gd[/code]'s
+## own "two crates share a cell" step, which stacks two same-category crates
+## through the real place path and needs the cell to remember what it was
+## actually given. [param from_position] is where the crate travelled from;
+## see [method _spawn_cell_visual] for what [constant Vector3.ZERO] means there.
+func apply_cell_filled(cell: int, crate_id: int, kind: StringName, from_position: Vector3) -> void:
+	var sub_index := add_to_cell(cell, kind, crate_id)
 	if sub_index == -1:
 		return
 	_spawn_cell_visual(cell, sub_index, from_position)

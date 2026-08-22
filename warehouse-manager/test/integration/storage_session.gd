@@ -60,11 +60,13 @@ const STEP_TIMEOUT_MS := 15000
 const EXPECTED_PLAYERS := 2
 ## TestRoom's own starting batch (test_room.gd's crate_count), raised to 12 for
 ## the gate playtest protocol (2026-08-21) — two rows of six rather than one
-## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why. Every
+## row of twelve; see CRATE_ROW2_ORIGIN's own doc comment for why — then to 17
+## for 02-04's mixed heavy row (HEAVY_ROW_ORIGIN, crate_12..crate_16). Every
 ## crate_0..crate_5 name and position this file already depends on is
-## unchanged — the second row (crate_6..crate_11) is unclaimed by any step
-## below, same as row 1's own untouched crate_1 slot before it.
-const EXPECTED_CRATES := 12
+## unchanged — the second row (crate_6..crate_11) and the heavy row
+## (crate_12..crate_16) are both unclaimed by any step below, same as row 1's
+## own untouched crate_1 slot before it.
+const EXPECTED_CRATES := 17
 
 ## The rack this session racks into and retrieves from. Node name is protocol
 ## (ADR 12) — must match the level's actual Racks/rack_wall exactly.
@@ -160,6 +162,13 @@ const CRATE_DRAG_ATTEMPT_NAME := "crate_3"
 ## be mistaken for, a real crate.
 const FILLER_ID_START := 9000
 const FILLER_COUNT := 8
+## _cell_filled (02-04) carries the crate's own kind so Rack.apply_cell_filled
+## can store it rather than a hard-coded fallback (see that method's own doc
+## comment) -- these fillers were never real crates, so this is a plain,
+## distinct placeholder rather than any real CargoCatalogue category. All
+## eight share it, which is what "fill one cell to capacity" means under
+## atomicity (ADR 18).
+const FILLER_KIND := &"filler"
 
 ## --- 01-07: the shed, and the stack. ---
 ##
@@ -476,7 +485,7 @@ func _run_host(rack: Rack, rack2: Rack) -> void:
 		return _finish(false)
 	var before_budget := _crates().get_child_count()
 	for i in FILLER_COUNT:
-		authority._cell_filled.rpc(rack.name, CELL_B, FILLER_ID_START + i, rack.cell_to_global_position(CELL_B))
+		authority._cell_filled.rpc(rack.name, CELL_B, FILLER_ID_START + i, FILLER_KIND, rack.cell_to_global_position(CELL_B))
 	_expect_now(
 		rack.occupied_count(CELL_B) == FILLER_COUNT,
 		"cell %d holds all %d synthetic fillers on the host" % [CELL_B, FILLER_COUNT],
