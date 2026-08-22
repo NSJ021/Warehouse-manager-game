@@ -984,9 +984,23 @@ constrain upcoming work:
 
   **The standing rule is the project's own:** a flaky suite is worse than none, because it trains
   you to ignore red. Never re-run to get past a failure. Read the log, confirm the actual error
-  lines, and check for stray processes (`Get-CimInstance Win32_Process -Filter "name like 'Godot%'"`
-  — the one whose command line contains `--editor` is NJ's editor, never kill it). If a genuine
-  leak signature returns, it is a new defect and needs its own diagnosis, not a re-run.
+  lines, and check for stray processes. If a genuine leak signature returns, it is a new defect and
+  needs its own diagnosis, not a re-run.
+
+- **⚠ How to tell a stray test process from NJ's editor — get this wrong and you kill the editor.**
+  List them with `Get-CimInstance Win32_Process -Filter "name like 'Godot%'"` and read the **full**
+  command line.
+
+  **Match on `--headless`, never on `--editor`.** Every test process is launched `--headless`; the
+  editor never is. An earlier version of this note said to spare "the one whose command line
+  contains `--editor`" — **that is wrong and dangerous**, because Godot accepts the short form `-e`,
+  and the editor commonly appears as:
+
+  `Godot_v4.6.2-stable_win64.exe --path "…/warehouse-manager" -e res://scenes/levels/test_room.tscn`
+
+  A `--editor` substring test does not match that, so an agent tidying up orphans would have killed
+  the open editor — taking the MCP bridge and the class-cache rescan with it. **Kill only processes
+  carrying `--headless`.** Everything else is left alone.
 - **A hard-coded fallback constant that happens to equal every real value today will silently stop
   matching the moment one field stops being a constant.** `Rack.apply_cell_filled` stored
   `Crate.KIND_SMALL` (`&"small"`) as a cell's kind regardless of what was actually placed — invisible
