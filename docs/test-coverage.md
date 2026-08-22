@@ -332,7 +332,12 @@ Splitting may still be right for scenario length, but not as the answer to this.
 
 ---
 
-## OPEN DEFECT — a Medium does not fit in a shelf, and this was known
+## RESOLVED 2026-08-22 — a Medium did not fit in a shelf, and this was known
+
+**Fixed by [ADR 27](../decisions/2026-08-22-crate-height-clears-the-deck.md): Medium and Large are
+now 0.9 m tall, height only, every footprint untouched. Confirmed smooth in live play by NJ.** The
+guard that never existed is now in the api layer and reads dimensions from the built scenes. Kept
+below in full, because how it hid for so long matters more than the 5 cm.
 
 Found in live play by NJ, 2026-08-22. **Root cause is arithmetic, and the arithmetic was already
 written down in a test comment months of work ago.**
