@@ -23,6 +23,7 @@ const CONTROLS: Array[String] = [
 	"WASD move   ·   Shift sprint   ·   Space jump",
 	"E  grab / drop a crate   —   one each, so drop before you take another",
 	"F  drag it along the floor instead — slow, and it never leaves the ground",
+	"R  rotate a held Large before racking it — which two cells it will take",
 	"walk into a crate to shove it",
 	"two players can hold the SAME crate — that's the two-player carry",
 	"grab the other end of a dragged crate and it lifts",

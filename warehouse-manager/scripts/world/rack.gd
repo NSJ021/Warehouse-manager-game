@@ -308,16 +308,53 @@ func mint_position(cell: int, size: int, orientation: int) -> Vector3:
 ## Moves [member _cell_highlight] onto [param cell_index] and colours it for
 ## [param state]. [constant Highlight.NONE], or an out-of-range index, hides
 ## it instead - callers do not need their own branch for "nothing to show".
-func show_highlight(cell_index: int, state: Highlight) -> void:
+##
+## [param footprint_cells] is new (02-08), interim scaffolding for a Large's
+## two-cell aim — [code]## Interim (02-08) — 02-09 replaces this with the
+## ghost preview[/code]. Empty (the default) or a single entry: behave
+## exactly as before this plan — position at [param cell_index]'s own centre,
+## scale reset to [constant Vector3.ONE] (its own implicit value before this
+## plan) — so nothing about Small or Medium placement changes. Exactly two
+## entries: position at the pair's own centre
+## ([method StorageGrid.pair_centre]) and stretch [member _cell_highlight]'s
+## NODE scale (never [member MeshInstance3D.mesh] itself, the same "scale the
+## node, not the mesh" rule [method _base_scale]'s own doc comment states for
+## racked visuals) along whichever horizontal axis the two cells differ on,
+## so the box spans the full two-cell footprint edge to edge rather than
+## floating at its midpoint the size of one cell. Scale is reset in EVERY
+## branch, not only the two-cell one — this node is reused frame to frame, so
+## a stretch left over from a Large aim would otherwise silently stick around
+## the next time this same highlight paints a single Small/Medium cell.
+func show_highlight(cell_index: int, state: Highlight, footprint_cells: Array[int] = []) -> void:
 	if state == Highlight.NONE or cell_index < 0 or cell_index >= StorageGrid.cell_count():
 		hide_highlight()
 		return
 
-	_cell_highlight.position = cell_to_local_position(cell_index)
 	var colour := highlight_actionable if state == Highlight.ACTIONABLE else highlight_blocked
 	var material := _cell_highlight.material_override as StandardMaterial3D
 	material.albedo_color = Color(colour.r, colour.g, colour.b, material.albedo_color.a)
 	material.emission = colour
+
+	if footprint_cells.size() == 2:
+		var coords_a := StorageGrid.cell_coords(footprint_cells[0])
+		var coords_b := StorageGrid.cell_coords(footprint_cells[1])
+		_cell_highlight.position = StorageGrid.pair_centre(footprint_cells[0], footprint_cells[1])
+		# The full two-cell footprint spans exactly 2 x CELL_SIZE, edge to
+		# edge, along whichever axis the pair differs on - column (world/local
+		# x) for a SIDE_BY_SIDE pair, depth (world/local z) for FRONT_TO_BACK.
+		# Read off the mesh's OWN fixed size rather than a duplicated magic
+		# number, so this never silently drifts from whatever BoxMesh_highlight
+		# is actually set to in rack.tscn.
+		var base_size: float = (_cell_highlight.mesh as BoxMesh).size.x
+		var span := 2.0 * StorageGrid.CELL_SIZE / base_size
+		if coords_a.x != coords_b.x:
+			_cell_highlight.scale = Vector3(span, 1.0, 1.0)
+		else:
+			_cell_highlight.scale = Vector3(1.0, 1.0, span)
+	else:
+		_cell_highlight.position = cell_to_local_position(cell_index)
+		_cell_highlight.scale = Vector3.ONE
+
 	_cell_highlight.visible = true
 
 
@@ -358,6 +395,18 @@ func occupant_record(cell: int) -> Dictionary:
 
 func cell_kind(cell: int) -> StringName:
 	return _cells[cell]["category"]
+
+
+## The [enum StorageGrid.Orientation] a Large stored at [param cell] was
+## actually placed with — the accessor [method CarryAuthority.request_retrieve]
+## and [method CarryAuthority.shed_top_row] need (02-08) so a retrieval or a
+## shed re-mints at the SAME orientation that was chosen at placement, rather
+## than hard-coding [constant StorageGrid.Orientation.SIDE_BY_SIDE]. Only
+## meaningful when [param cell] holds a Large — [code]0[/code]
+## ([constant StorageGrid.Orientation.SIDE_BY_SIDE]) for anything else, which
+## is also harmless: nothing reads this for a Small or a Medium.
+func cell_orientation(cell: int) -> int:
+	return int(_cells[cell].get("orientation", 0))
 
 
 func is_cell_empty(cell: int) -> bool:
