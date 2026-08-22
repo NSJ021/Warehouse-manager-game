@@ -165,6 +165,44 @@ distinction between "a map" and "a reskin" is exactly the kind of thing that ero
 ADR should define the reskin constraint above as the boundary, so the door opens by the width
 intended and no further.
 
+### The wider point: the map is the board, not the game
+
+NJ's actual position, and it is broader than reskins — **variety does not have to come from physical
+layout, and in this game most of it already does not.** The axes:
+
+| Axis | Status |
+|---|---|
+| Cargo mix — ~10 categories, weight, fragility, value | **Built** (02-02) |
+| Time of day — morning, shift, after-hours | **Built** (02-03) |
+| Crew size 1–4, with delivery caps scaling to it | **Built** |
+| Lease term — 10 or 30 days | ADR 8, decided |
+| Clients — different cargo *and* different consequence (ADR 22) | Phase 4, `CLIENT-01` |
+| Run contracts biasing a whole lease | Designed, `idea-book.md`, needs an ADR |
+| Rent pressure | Phase 4 |
+| Weather, shell, backdrop | New, cheap, purely visual |
+
+Only the last is new work. Everything else is combinatorics over systems already built or already
+funded.
+
+**And the usual objection does not apply here.** Elsewhere one would say layout is qualitatively
+different because it changes the spatial problem — but **this warehouse starts empty every lease**.
+The player decides the packing, and what arrives, what is due out, what is heavy, what is fragile and
+what two-person job blocks an aisle are all re-posed by the manifest each run. The layout is the
+**board**; the run is the game. A player who has "solved" the warehouse has not solved a
+masonry-heavy 30-day lease for a legit client, two-handed, in fog.
+
+So a second real map is **a different board — one axis among eight, not the load-bearing one.** That
+is consistent with ADR 23 already listing "more maps" as one of three Early Access growth axes rather
+than the headline, and it is the argument against spending art budget on extra maps while art is the
+schedule's long pole.
+
+**One thing a reskin genuinely cannot buy, recorded so it is not forgotten:** everything in this
+project is validated against exactly one level. Hidden single-map assumptions will exist — in door
+placement, zone lookups, the spawner, the test harness — and inspection will not find them. A
+**greybox second layout run through the integration suite** would flush them out at near-zero art
+cost, and would price a real second map before anything is committed to. That probe needs no ADR; it
+is a test.
+
 ---
 
 ## 3. The thing we are furthest behind on — and it is art, not marketing
