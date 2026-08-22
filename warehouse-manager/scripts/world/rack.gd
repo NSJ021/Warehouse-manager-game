@@ -72,10 +72,26 @@ enum Highlight { NONE, ACTIONABLE, BLOCKED }
 ## Below this you bumped it; above, you hit it — ADR 4 wants racks stable, not
 ## fragile, so this is a threshold for recklessness, not ambient noise.
 ##
-## 4.0 sits above the player's own 4.2 m/s walk speed only barely, which
-## sounds close until you note a *carried* crate trails the holder rather than
-## matching them exactly (the hold spring's own lag), so ordinary carrying
-## stays under it with real margin. What it comfortably cannot reach is a solo
+## ⚠ CORRECTED 2026-08-22 — the original reasoning here was arithmetically
+## wrong and is preserved as a warning rather than quietly deleted. It claimed
+## "4.0 sits above the player's own 4.2 m/s walk speed". It does not; 4.0 is
+## BELOW 4.2. The real argument was always about the hold spring, not the walk
+## speed: a *carried* crate trails its holder rather than matching them, so
+## ordinary carrying is expected to stay under the threshold. That claim is
+## still untested.
+##
+## ⚠ It was also silent about SPRINT_SPEED (6.4 m/s), and Crate.lag_compensation
+## is explicitly built to CANCEL steady-state lag — so a steady sprint-carry
+## should converge the crate toward its holder's speed, well over this gate.
+## Sprint-carrying a crate into a rack corner may therefore shed it. Unverified
+## either way; the gate is to measure the crate's real velocity at the sensor
+## during a sprint carry before this number moves. See docs/test-coverage.md.
+##
+## Separately: this is a pure SPEED test with no mass term. It was a momentum
+## proxy while every crate weighed 12 kg, and stopped being one when ADR 25
+## gave crates real masses (5 kg to 108 kg). Nothing asserts it at all.
+##
+## What it comfortably cannot reach is a solo
 ## drag: ADR 19's drag spring tops out near 1.7 m/s (softer stiffness, and the
 ## floor-plane-only force never gets to add a vertical throw), so a dragged
 ## crate can never shed a rack by itself, no matter how hard the corner is

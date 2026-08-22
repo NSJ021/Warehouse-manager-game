@@ -549,7 +549,30 @@ func _check_decided_invariants() -> void:
 	var sync := crate.get_node("Synchronizer") as MultiplayerSynchronizer
 	_expect(
 		sync != null and is_equal_approx(sync.replication_interval, 0.05),
-		"ADR 14 - cargo still replicates at 20 Hz (got %s)" % (sync.replication_interval if sync else "no synchronizer"),
+		"ADR 14 - cargo replicates at 20 Hz, the INTERVAL half (got %s)" % (sync.replication_interval if sync else "no synchronizer"),
+	)
+
+	# The other half, and the one that actually did the work. 1497 -> 93 kb/s
+	# came from ON_CHANGE, not from the interval; the interval only smooths what
+	# is already being sent. Until 2026-08-22 only the interval was pinned, under
+	# a label that read as covering the whole decision - so a green suite looked
+	# like it guarded ADR 14 and did not. One property reverted to ALWAYS (a
+	# copy-paste from an older crate template would do it) reopens a 16x host
+	# upload regression, and ADR 14 warns its own failure mode is SILENT in play:
+	# host traffic FALLS as crate count rises, crates lag on clients, nothing
+	# announces it. Asserted per property rather than once, because one is enough.
+	var config := sync.replication_config if sync != null else null
+	var always_mode := 0
+	var on_change_mode := 0
+	if config != null:
+		for property_path: NodePath in config.get_properties():
+			if config.property_get_replication_mode(property_path) == SceneReplicationConfig.REPLICATION_MODE_ON_CHANGE:
+				on_change_mode += 1
+			else:
+				always_mode += 1
+	_expect(
+		config != null and on_change_mode > 0 and always_mode == 0,
+		"ADR 14 - every replicated cargo property is ON_CHANGE, the half that cut 1497 kb/s to 93 (%d on-change, %d not)" % [on_change_mode, always_mode],
 	)
 
 	# Players deliberately do not share a mask with cargo. Undoing this brings
@@ -692,6 +715,33 @@ func _check_decided_invariants() -> void:
 	_expect(
 		ray != null and ray.target_position.is_equal_approx(Vector3(0.0, 0.0, -2.0)),
 		"the grab ray reaches 2.0 m, not the original 2.5 (got %s)" % (ray.target_position if ray else "no ray"),
+	)
+
+	# The comment above says GRAB_REACH and PLACE_REACH "move with this number",
+	# and until 2026-08-22 nothing made them. The ray was pinned, the two
+	# referee-side constants were not, and the relationship between them existed
+	# only in prose - while the number has already moved once (2.5 -> 2.0). Pin
+	# the DERIVATION, not the value: PLACE_REACH is the ray plus half a cell's
+	# diagonal, because a cell CENTRE can sit that much further away than the
+	# cell FACE the ray actually strikes. Pinning 3.0 as a literal would just
+	# have to be edited alongside every future retune, which is how a guard
+	# becomes a chore and then gets deleted.
+	# Read from source text, NOT by touching CarryAuthority. Referencing that
+	# class statically pulls in the Net autoload, which does not exist in a
+	# --script run - the documented trap - and the resulting compile error would
+	# fail this suite's zero-tolerance bar even while the assertions passed.
+	var half_cell_diagonal := StorageGrid.CELL_SIZE * sqrt(3.0) * 0.5
+	var grab_reach := _const_from_source("res://scripts/goods/carry_authority.gd", "GRAB_REACH")
+	var place_reach := _const_from_source("res://scripts/goods/carry_authority.gd", "PLACE_REACH")
+	_expect(
+		is_equal_approx(grab_reach, 2.0),
+		"GRAB_REACH tracks the grab ray, both 2.0 m (got %s)" % grab_reach,
+	)
+	_expect(
+		place_reach >= grab_reach + half_cell_diagonal - 0.001,
+		"PLACE_REACH still covers GRAB_REACH plus half a cell diagonal (%.3f vs needed %.3f)" % [
+			place_reach, grab_reach + half_cell_diagonal,
+		],
 	)
 	player.free()
 
@@ -853,3 +903,25 @@ func _expect_signal(object: Object, signal_name: String, arg_count: int) -> void
 			_expect(actual == arg_count, "Steam signal %s has %d args (got %d)" % [signal_name, arg_count, actual])
 			return
 	_expect(false, "Steam signal %s exists" % signal_name)
+
+
+## Reads a `const NAME := <float>` out of a script's SOURCE TEXT rather than
+## loading the class.
+##
+## Needed because several of this project's `class_name` scripts touch the
+## `Net` autoload, and an autoload does not exist in a `--script` run. Loading
+## one here raises `Compile Error: Identifier not found: Net`, which this
+## suite's zero-tolerance-on-errors bar treats as a failure even when every
+## assertion passed. Returns NAN when the constant is absent, so a rename
+## fails the assertion that uses it rather than silently reading zero.
+func _const_from_source(script_path: String, const_name: String) -> float:
+	var file := FileAccess.open(script_path, FileAccess.READ)
+	if file == null:
+		return NAN
+	var regex := RegEx.new()
+	regex.compile(r"^const\s+%s\s*:=\s*([0-9.]+)" % const_name)
+	while not file.eof_reached():
+		var found := regex.search(file.get_line())
+		if found != null:
+			return float(found.get_string(1))
+	return NAN

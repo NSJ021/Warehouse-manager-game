@@ -334,6 +334,21 @@ func _check_goods_zones() -> bool:
 		if not await _until("zone probe settled", func() -> bool:
 				return probe != null and (probe.sync_settled or probe.sleeping)):
 			return false
+
+	# The check this function's own ⚠ note above asked for, and nobody came back
+	# to add (2026-08-22). Everything above ran BEFORE the probe settled, so it
+	# only ever proved a zone sees an AWAKE crate. Goods OUT has to see stock
+	# that has sat there all day, which is the settled case and the one that was
+	# never asserted.
+	#
+	# It works because Crate ORs the world bit in on settle rather than replacing
+	# the layer, so a settled crate stays tagged as cargo and GoodsZone's mask
+	# still matches. That is one character of protection: change `|=` to `=` and
+	# Goods OUT silently stops seeing settled stock - the outbound half of the
+	# whole loop - with nothing failing. This is the guard for it.
+	if not await _until("GoodsIn STILL sees the crate now it has settled (ADR 17)", func() -> bool:
+			return goods_in.count() == 1):
+		return false
 	return true
 
 
