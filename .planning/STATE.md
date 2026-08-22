@@ -109,10 +109,11 @@ identical step counts. A real two-headless-peer run through `main.tscn` (`--day-
 the committed suite) showed the whole loop close on both peers' own logs: `day 1 -> MORNING -> SHIFT
 -> AFTER-HOURS -> MIDNIGHT -> day 2 -> MORNING`. **Two new `class_name`s needed the editor rescan**
 (`DayClock`, `DockDoor`) — same raw-WebSocket approach as 02-02, verified against
-`global_script_class_cache.cfg` before trusting a result. **The pre-existing `storage_session.gd`
-client-exit resource leak recurred twice across five runs** — confirmed unrelated (untouched files,
-and this plan's only new audio player is never played while the clock stays `IDLE`) before accepting
-it as the same flake 02-02 already found; three consecutive clean runs were still obtained. Three
+`global_script_class_cache.cfg` before trusting a result. The plan's summary reported the
+`storage_session.gd` client-exit leak recurring twice across five runs and recorded it as a standing
+flake; **that was re-checked immediately afterwards and is not reproducible — the leak was fixed in
+`2300da7` and has since passed 11 consecutive clean runs.** See the corrected note in the traps
+list below for what actually explains a red storage run. Three
 commits: `8d54e6f` (the clock), `c9fd83b` (the door), `631970c` (wiring + the HUD + the bound). Full
 detail: `02-03-SUMMARY.md`.
 
@@ -854,12 +855,32 @@ constrain upcoming work:
   fails with `Script parsing error: 43`, because the regex stops at `get_setting("x")`'s own `)`.
   Not the documented "one statement only" limit — don't wrap a nested call in `print()` over this
   bridge; verify by grepping the affected file on disk instead (02-03).
-- **The `storage_session.gd` client-exit resource leak (first flagged 01-06, "fixed" by
-  `_silence_audio()` before 02-01) is still intermittent, not resolved.** Recurred 2 of 5 full-suite
-  runs in 02-03, identical signature, confirmed unrelated to that plan's own files (same diagnostic
-  standard 02-02 already applied). Treat it as a known, standing flake when it appears alone on
-  `storage-client` with no other failure — re-run for the required three consecutive clean passes
-  rather than treating it as a regression, but do re-confirm it's not your own files each time.
+- **The `storage_session.gd` client-exit resource leak is FIXED (`2300da7`), and the instruction
+  that briefly stood here — "re-run rather than treat it as a regression" — is WITHDRAWN.**
+
+  Diagnosed 2026-08-22 by running the client with `--verbose` against the **editor** binary: the
+  last rack placement's positional thud was still in flight at `quit()`, so its
+  `AudioStreamPlaybackWAV` outlived the tree and `rack_place.wav` was still referenced at exit.
+  `_finish()` now silences audio first. An earlier attempt had concluded the detail was
+  unavailable because the *export* build carries no leaked-object names; the suite uses the editor
+  binary, which does.
+
+  **Evidence it is fixed: 11 consecutive clean runs** — 6 targeted storage-client runs, then 5 full
+  suites. At the original "roughly every other run" rate, 11 clean in a row is about a 1-in-2000
+  coincidence.
+
+  02-03's summary reported it recurring 2 of 5 runs and recorded it as a standing flake. **That is
+  not reproducible and the conclusion was wrong.** Two documented causes in this same session
+  explain a red storage run without any leak: **orphaned Godot processes squatting on port 27097**
+  (02-02 hit exactly this and had to kill them by hand), and **editing `test_room.tscn` through the
+  editor bridge while a suite is running**. Both look like an unrelated failure if you assume a
+  known flake instead of reading the log.
+
+  **The standing rule is the project's own:** a flaky suite is worse than none, because it trains
+  you to ignore red. Never re-run to get past a failure. Read the log, confirm the actual error
+  lines, and check for stray processes (`Get-CimInstance Win32_Process -Filter "name like 'Godot%'"`
+  — the one whose command line contains `--editor` is NJ's editor, never kill it). If a genuine
+  leak signature returns, it is a new defect and needs its own diagnosis, not a re-run.
 
 ## Phase 0 outcome
 
