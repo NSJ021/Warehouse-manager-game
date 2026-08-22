@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-08-17)
 
 **Core value:** The dilemma is the game — patch and hope, confess, or comp.
-**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. **02-02 is complete**: `CargoRecord` and `CargoCatalogue` (11 categories) landed, test-first, 489 checks including the design-property sweep. **02-03 is complete**: `DayClock` (host-authoritative, replicated `IDLE→MORNING→SHIFT→AFTER_HOURS→MIDNIGHT`) and `DockDoor` (an `AnimatableBody3D` roller door deriving itself from the clock) landed — inert until `main.gd` calls `begin_run()`, proven on two real headless peers, both existing integration scenarios byte-identical to before. **02-04 is complete**: Medium and Large crate scenes (inherited from `crate.tscn`) landed, `Crate.setup()` now rebuilds a full `CargoRecord` at spawn, and a mixed heavy row in `test_room.tscn` makes ADR 25 (c)'s weight deception real. Found and fixed a genuine bug along the way — `Rack.apply_cell_filled` hard-coded the stored cell kind to `&"small"`, silently correct only while every crate's kind really was that literal constant; this plan's own repurposing of `kind` into a real category broke that silently, caught before any test ran. **Wave 3 is now fully done.** **02-05 is complete**: `StorageGrid` gained ADR 25 (d)'s Large-pair geometry and ADR 24's corner-upright `mint_offset`, and `Rack`'s whole occupancy model was rebuilt around whole `CargoRecord` dictionaries and self-describing Large pairs — see the block below for the full detail, including the exact, single-line integration failure this plan hands to 02-06 by design. **Wave 4 is now done.**
+**Current focus:** Phase 2 (Goods) planned 2026-08-21, **plan-checked and revised 2026-08-22 — cleared for execution.** 02-01 is **complete**: ADR 25 ratified and committed. NJ ruled `defer-it` on the save point (Phase 5 owns it) and rejected a fixed 24-crate delivery number in favour of two exported-tunable caps (body count, cell-equivalent volume) plus per-size composition limits, tuned in play against four named feel criteria. **02-02 is complete**: `CargoRecord` and `CargoCatalogue` (11 categories) landed, test-first, 489 checks including the design-property sweep. **02-03 is complete**: `DayClock` (host-authoritative, replicated `IDLE→MORNING→SHIFT→AFTER_HOURS→MIDNIGHT`) and `DockDoor` (an `AnimatableBody3D` roller door deriving itself from the clock) landed — inert until `main.gd` calls `begin_run()`, proven on two real headless peers, both existing integration scenarios byte-identical to before. **02-04 is complete**: Medium and Large crate scenes (inherited from `crate.tscn`) landed, `Crate.setup()` now rebuilds a full `CargoRecord` at spawn, and a mixed heavy row in `test_room.tscn` makes ADR 25 (c)'s weight deception real. Found and fixed a genuine bug along the way — `Rack.apply_cell_filled` hard-coded the stored cell kind to `&"small"`, silently correct only while every crate's kind really was that literal constant; this plan's own repurposing of `kind` into a real category broke that silently, caught before any test ran. **Wave 3 is now fully done.** **02-05 is complete**: `StorageGrid` gained ADR 25 (d)'s Large-pair geometry and ADR 24's corner-upright `mint_offset`, and `Rack`'s whole occupancy model was rebuilt around whole `CargoRecord` dictionaries and self-describing Large pairs — see the block below for the full detail, including the exact, single-line integration failure this plan hands to 02-06 by design. **Wave 4 is now done.** **02-06 is complete**: STORE-07's round-trip invariant proven field-for-field on two peers, the storage integration suite green again. **Wave 5 is now done. 02-07 is complete**: `DayManifest`/`DaySchedule` (a pure, deterministic, capacity-bounded scripted-day author), `DayClock` now posts a broadcast manifest at MORNING, `TestRoom` runs a paced truck-dump ceremony into Goods IN, and a third integration scenario (`goods_session.gd`, port 27095) is the first and only thing that ever calls `DayClock.begin_run()` — proven on two real peers across all seven of the plan's own numbered assertions. Found and fixed a real, previously untested bug along the way: `request_call_it_a_night` let ANY peer's request succeed, not just the host's — see the resolved block below. **Wave 6 is now done.**
 
 > **Narrative history lives in `docs/conversation-log.md`, not here.** This file tracks
 > execution position only. Duplicating the story in two places guarantees one of them
@@ -13,15 +13,48 @@ See: .planning/PROJECT.md (updated 2026-08-17)
 
 ## Current Position
 
-Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **waves 1-5 complete (02-01 … 02-06). PAUSED after wave 5 at NJ's instruction, 2026-08-22, to consolidate.**
+Phase: 1 of 7 (Storage) — **complete.** Next: Phase 2 (Goods) — **waves 1-6 complete (02-01 … 02-07). Resumed 2026-08-22 after the post-wave-5 pause** (guards from `docs/test-coverage.md` confirmed in place — see the 02-06 block below); **02-07 executed the same session, wave 6 done.** Waves 7-8 (02-08, 02-09, 02-10, then the 02-11 gate) remain.
 
-> **⏸ Deliberate stop.** Waves 6-8 (02-07, 02-08, 02-09, 02-10, then the 02-11 gate) are planned and
-> not started. The pause is not a blocker — it is a decision to take stock before spending more, after
-> 02-06 ran ~3 hours against a 45-90 minute norm for this phase. Roughly half of that was avoidable and
-> the guards are now in place (see the 02-06 block below); the pause is to confirm they hold rather
-> than to fix anything outstanding. **Before resuming, read `docs/test-coverage.md`** — the ranked
-> coverage backlog, with ADR 14's unguarded `replication_mode` at the top, and the Route 1 plan edits
-> (adding `guards` entries to 02-07 and 02-08) still to do.
+> **02-07's own guard note for whoever plans 02-08/02-09/02-10 next:** `DockDoor._wake_blocking_cargo`
+> still has no LIVE-FIRE integration proof — only the `engine_assumptions.gd`-level mechanical check
+> (an `AnimatableBody3D` cannot displace a `FREEZE_MODE_STATIC` body without waking it first). A real
+> scenario step (settle a crate in the door's own path, close the door, assert it moved rather than
+> clipped through) is still owed. See `02-07-SUMMARY.md`'s own "Next Phase Readiness" section.
+
+**02-07 complete, 2026-08-22.** Scripted days and the morning delivery. `DayManifest`/`DaySchedule`
+(pure, deterministic, capacity-bounded) landed test-first — 1738 unit checks, including a 360
+(seed, crew, day) cap sweep proving all three delivery axes (body, cell-equivalent volume,
+per-size composition) hold separately across days 1-30. `DayClock` now builds and broadcasts a
+manifest at MORNING (`call_local` plus a targeted late-joiner catch-up), gained `census()` (every
+cargo record in the building, loose or racked) and a cached due-today count; `TestRoom` runs the
+truck-dump ceremony, paced by wall-clock time into Goods IN, derived from the zone's own collision
+shape. A third integration scenario, `goods_session.gd` (port 27095), is the first and only thing
+that ever calls `begin_run()` — all seven of the plan's own numbered assertions proven on two real
+peers, three consecutive clean full-suite runs, 177s each.
+**Two real, previously untested things were found and fixed, not merely exercised:**
+(1) `@export` cannot apply to a static variable — confirmed with a throwaway probe rather than
+assumed, so the three delivery caps live on `DayClock` (a real Node, already the home for
+`day_length_seconds`) rather than on the all-static `DaySchedule` the plan's text asked for.
+(2) `request_call_it_a_night` let ANY peer's request succeed, not just the host's own — the
+existing `if not Net.is_host(): return` guard only checks whether the *executing* peer is the
+host, and every caller (host or client) targets peer 1 via `.rpc_id(1, ...)`, so it always passed
+once the call landed on the host's machine. Confirmed empirically with a throwaway two-process
+probe (never committed) before touching the file: a client's own call genuinely flipped the host
+to `MIDNIGHT`. Fixed by also checking the actual sender (`_sender_id() != 1`), re-verified with the
+same probe, then proven permanently by the new scenario's own assertion 7.
+**One real regression found on the first full-suite run, fixed, not re-run past:** the goods-client
+process failed its own preamble (`all 17 starting crates replicated`) after a full 20s timeout, with
+day already at 2 on the host by the time it gave up — the starting batch spawns in one tight burst
+at world load and can arrive on a slower peer as a single jump past an exact count check. Fixed by
+loosening that check to `>=`, and — the more important fix — abandoning a before/after crate-name
+snapshot (unsafe once more crates can appear mid-run, which is what a truck dump is) in favour of
+identifying a delivered crate by its own `store_until_day` (always above the starting batch's fixed
+placeholder), immune to snapshot timing entirely. Three consecutive clean runs after the fix.
+**`DockDoor._wake_blocking_cargo` still has no live-fire scenario proof** — carried forward
+explicitly, see the note under Current Position above. Four commits: `59eefc1` (manifest +
+schedule, test-first), `32880b1` (the clock posts, the level dumps), `f5a233a` (the third
+scenario + the call-it-a-night fix), `df2bcbc` (the content-based delivered-crate fix). Full
+detail: `02-07-SUMMARY.md`.
 
 **02-06 complete, 2026-08-22 — finished by the orchestrator, not the executing agent.** STORE-07 is
 proven field-for-field on two peers over real ENet: 96 host steps and 81 client steps, up from 51 and
@@ -355,8 +388,8 @@ that: solo drag built and proved (ADR 19); detection and patch maths settled and
 for ADR 19 before execution
 
 Progress: [█████████░] Phase 0 complete bar one blocked item; Phase 1 complete, all 9 plans, all
-7 waves — gate passed 2026-08-21. Phase 2: waves 1-4 complete (`02-01`, `02-02`, `02-03`, `02-04`,
-`02-05` — 5 of 11 plans); waves 5-8 still to execute.
+7 waves — gate passed 2026-08-21. Phase 2: waves 1-6 complete (`02-01` … `02-07` — 7 of 11 plans);
+waves 7-8 (`02-08`, `02-09`, `02-10`, then the `02-11` gate) still to execute.
 
 > **⚠ Read before executing Phase 1.** The nine plans were written on 2026-08-17, **before**
 > solo drag existed, and **not one of them mentions it**.
@@ -900,14 +933,19 @@ constrain upcoming work:
   rack → OUT loop completed under 60 s**, with caveats (small room, perfect knowledge, no
   obstacles in the way). The assumption holds, conservatively — real play with a full warehouse
   and searching will be slower, not faster, which is the safe direction for a sim input.
-- **The day loop's frame is built** (02-03): `DayClock` and `DockDoor` land the phases, replication,
-  the klaxon/HUD warning and the host's early-close, all inert until `main.gd` calls `begin_run()`.
-  **No committed test yet exercises a peer joining mid-phase against a running clock/door** — the
-  late-joiner claim rests on the clock's continuously-broadcast replication shape and the door's
-  stateless lerp target, reasoned through rather than proven by a dedicated scenario. Whichever of
-  02-06/02-07 first calls `begin_run()` with a short day length should add this as one more
-  assertion. Feel questions (does 8 minutes read right once real content exists; does the greybox
-  door/gap read as intended) are carried to the Phase 2 gate, not answered here.
+- **The day loop's frame is built** (02-03) **and now actually driven for the first time** (02-07):
+  `goods_session.gd` calls `begin_run()` with a short day length and proves both peers agree through
+  every phase, the manifest, the delivery, and who may end the night early — the first committed
+  test to exercise any of it. **Still open: a peer joining MID-phase** (both peers in
+  `goods_session.gd` join before `begin_run()` is ever called, so the late-joiner claim for the
+  clock/door specifically — as opposed to the rack snapshot and manifest catch-up paths, which 02-05
+  and 02-07 respectively DO prove for a genuine late joiner — still rests on the clock's
+  continuously-broadcast replication shape and the door's stateless lerp target, reasoned through
+  rather than proven by a dedicated late-join-mid-phase scenario. **Also still open:**
+  `DockDoor._wake_blocking_cargo` has no live-fire scenario proof (only the mechanical
+  `engine_assumptions.gd` check) — see 02-07's own STATE block above. Feel questions (does 8 minutes
+  read right once real content exists; does the greybox door/gap read as intended) are carried to
+  the Phase 2 gate, not answered here.
 
 ### Constraints learned the hard way
 

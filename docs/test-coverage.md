@@ -123,23 +123,29 @@ One line, and it guards the loop's outbound half.
 
 ## Tier 2 — real gaps, moderate cost
 
-### 2.1 The day clock and dock door have no behavioural coverage
+### 2.1 The day clock and dock door have no behavioural coverage — PARTIALLY DONE 2026-08-22 (`f5a233a`)
 
-Nothing calls `begin_run()`. Phase transitions, all four signals, `sync_phase` replication to
-clients, and the host's early close are unverified — as is `DockDoor._wake_blocking_cargo`, which
-exists specifically to stop a closing door driving straight through settled cargo (an
-`AnimatableBody3D` otherwise passes through a frozen static body).
+**The clock half is closed.** `goods_session.gd` (02-07) is the first and only thing that ever
+calls `begin_run()` — with a short `day_length_seconds`, asserting on **both peers** that the
+phases transition in order (`MORNING → SHIFT → AFTER_HOURS → MIDNIGHT`), the day increments, and
+the door reads open (via its own slab position, not the clock — see below). It also proved a real,
+previously untested bug: the host's early-close request accepted ANY peer's call, not just the
+host's own — fixed (`_sender_id() != 1`), then proven correctly refused by a client's own attempt.
 
-**This is the system Phase 2's gate is named after.** Its only test reference is a `load()` in the
-api layer plus two static export bounds, checked on an object never placed in a tree.
+**The dock door's `_wake_blocking_cargo` half is STILL OPEN.** `goods_session.gd`'s own run never
+puts a settled crate in the door's path, so the "an `AnimatableBody3D` otherwise drives straight
+through a frozen static body" case still has only the mechanical `engine_assumptions.gd` check
+(the two bodies' interaction measured in isolation), not a live scenario proving the door actually
+wakes and displaces real settled cargo. Needs its own scenario step: settle a crate in `DockDoor`'s
+`PathSensor`, let the door start closing, assert it ends up displaced rather than clipped through.
 
-The cause is structural and was a deliberate trade: the clock stays inert in `test_room.tscn` so it
-cannot disturb the existing scenarios mid-assertion. The side effect is that nothing exercises it.
+Also still open, named but not built by 02-07: a peer joining **mid-phase** against an already-running
+clock/door (both peers in `goods_session.gd` join before `begin_run()` is ever called) — the
+late-joiner manifest catch-up itself IS proven (a targeted RPC, the same shape a rack snapshot
+uses), but the clock/door's own continuously-broadcast-replication late-join claim is still reasoned
+through rather than scenario-proven.
 
-**Proposed:** 02-07's `goods_session` scenario is already scheduled to cover this. **Verify it
-actually does** rather than assume — a scenario that starts the clock, advances it with a short
-`day_length_seconds`, and asserts on **both peers** that the phases transition in order, the day
-increments, the signals fire, and the door moves with a settled crate in its path.
+Full detail: `.planning/STATE.md`'s 02-07 block, `02-07-SUMMARY.md`.
 
 ### 2.2 A peer disconnecting mid-hold is never tested
 
