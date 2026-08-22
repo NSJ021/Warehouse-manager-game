@@ -139,6 +139,57 @@ const CRATE_LAYER_HEIGHT := 0.6
 ## Above this, the per-crate spawn log is noise rather than information.
 const CRATE_LOG_LIMIT := 12
 
+## --- 02-07: the truck dump (ADR 25 (f)) ---
+##
+## Belongs here, not in `day_clock.gd`, because [TestRoom] "owns all
+## spawning, players and cargo alike" (this file's own class doc) — the
+## clock only owns the timing, and fires [signal DayClock.day_started] so a
+## level can turn that into cargo however it likes.
+
+## Drop height above the floor, so a delivered crate visibly tumbles apart
+## from its neighbours rather than spawning interpenetrating.
+const DUMP_DROP_HEIGHT := 1.2
+## Kept clear of GoodsIn's own walls, so nothing lands already clipping the
+## zone's boundary.
+const DUMP_GRID_MARGIN := 0.4
+## Wider than a Small needs (0.5 m) so a Medium (1.0 m) mostly clears its
+## neighbour too — a Large (2.0 m along one axis) will still overlap at
+## this spacing inside GoodsIn's own modest 3x3 footprint, tolerated rather
+## than solved: nothing here asserts non-overlap, physics resolves a spawn
+## overlap the same way the stress-test grid's own tighter spacing already
+## does, and a truck yard genuinely is a tight place. Worth a look at the
+## 02-11 gate with a Large actually in a delivery.
+const DUMP_GRID_SPACING := 0.8
+const DUMP_LAYER_HEIGHT := 0.6
+## Kept clear of a standing player's own capsule (its query is horizontal
+## only, so a crate landing well above someone's head is not itself
+## flagged — [method Crate._update_settle_state] already refuses to settle
+## while a player overlaps its push sensor, which prevents the trap; this
+## constant is what stops the crate landing on someone's HEAD in the first
+## place). Not a hard guarantee — a player who walks under a falling crate
+## mid-drop is still possible — see this section's own doc comment on the
+## gate check this is meant to invite.
+const DUMP_PLAYER_AVOID_RADIUS := 0.9
+const DUMP_PLAYER_AVOID_OFFSET := Vector3(0.5, 0.0, 0.0)
+## Bounded retries before giving up on dodging a player — never spins
+## forever chasing a moving target.
+const DUMP_PLAYER_AVOID_ATTEMPTS := 4
+
+## Host-only. Individual crate record dictionaries still owed this morning,
+## expanded from the manifest's own rows by [method _on_day_started] — a
+## queue rather than a loop, because the whole point is spreading these
+## across [member DayClock.morning_seconds] rather than minting them all in
+## one frame.
+var _dump_queue: Array = []
+## Wall-clock milliseconds between two dump spawns — see [method _process]'s
+## own doc comment for why this is paced by [code]Time.get_ticks_msec()[/code]
+## rather than a frame count.
+var _dump_interval_ms := 0
+var _dump_next_at_ms := 0
+## How many crates this morning's dump has placed so far — drives
+## [method _next_dump_position]'s own grid, reset per day.
+var _dump_spawn_index := 0
+
 ## Starting cargo. Exported so the physics budget stress test can turn one knob
 ## instead of a second mechanism being invented for it. The first twelve sit in
 ## two rows of six (see CRATE_ROW_SIZE / CRATE_ROW2_ORIGIN), which is what
@@ -177,8 +228,27 @@ func _ready() -> void:
 		Net.player_ready_for_spawn.connect(_on_player_ready_for_spawn)
 		Net.player_left.connect(_on_player_left)
 		_spawn_crates()
+		# Resolved once, here, rather than lazily on every use the way
+		# DockDoor resolves DayClock — safe specifically because this script
+		# sits on the SCENE ROOT, so every descendant (DayClock included) has
+		# already had its own _ready() run by the time this line executes
+		# (Godot's tree-ready order is bottom-up); DockDoor's own caution is
+		# about a node that is itself a sibling-ish descendant, where sibling
+		# ready order is not the guarantee this file gets for free.
+		var clock := get_tree().get_first_node_in_group("day_clock") as DayClock
+		if clock != null:
+			clock.day_started.connect(_on_day_started)
 
 	Net.announce_world_ready()
+
+
+## Duck-typed entry point for anything that needs to walk every loose crate
+## without knowing this is [TestRoom] specifically — [code]DayClock.census()[/code]
+## reaches in via the existing "crate_source" group rather than a new one,
+## the same "not level-specific" contract [code]CarryAuthority._crate_source()[/code]
+## already follows for minting.
+func crate_container() -> Node3D:
+	return crates
 
 
 ## Runs on every peer with identical data, so every peer builds an identical node.
@@ -318,6 +388,184 @@ func _crate_position(index: int) -> Vector3:
 		float(layer) * CRATE_LAYER_HEIGHT,
 		float(within / CRATE_GRID_COLUMNS) * CRATE_GRID_SPACING,
 	)
+
+
+## Host-only. Paced by wall-clock time
+## ([code]Time.get_ticks_msec()[/code]), never a frame count — headless Godot
+## runs uncapped, and a fixed frame count between spawns was measured to buy
+## almost no real time in 01-04's own "let physics settle" pause, which
+## silently dropped a held item. The same trap would silently turn "spread
+## across the morning" into "spawn everything on frame one."
+func _process(_delta: float) -> void:
+	if not Net.is_host():
+		return
+	if _dump_queue.is_empty():
+		return
+	if Time.get_ticks_msec() < _dump_next_at_ms:
+		return
+	var record_data: Dictionary = _dump_queue.pop_front()
+	_spawn_delivery_crate(record_data)
+	_dump_next_at_ms = Time.get_ticks_msec() + _dump_interval_ms
+
+
+## [signal DayClock.day_started] — the one trigger for a dump (ADR 25 (f)).
+## Expands the manifest's rows into individual crate records and queues them
+## for [method _process] to spread across [member DayClock.morning_seconds].
+## Does not poll the phase, and does not re-derive the manifest itself —
+## [member DayClock.today] is the single source of truth, already broadcast
+## by the time this fires locally on this peer (see that file's own
+## [method DayClock._post_manifest] doc comment for why local-before-broadcast
+## ordering never matters here: this handler only ever runs host-side, and
+## the host set its own [member DayClock.today] before this signal could
+## possibly fire).
+func _on_day_started(_day: int) -> void:
+	if not Net.is_host():
+		return
+	var clock := get_tree().get_first_node_in_group("day_clock") as DayClock
+	if clock == null:
+		return
+	var manifest := clock.manifest()
+	if manifest == null:
+		return
+
+	var total := manifest.total_crates()
+	_dump_spawn_index = 0
+	if total <= 0:
+		_dump_queue = []
+		return
+
+	_dump_queue = _expand_rows_to_record_dicts(manifest.all_rows(), manifest.day)
+	_dump_interval_ms = maxi(1, int(1000.0 * clock.morning_seconds / float(total)))
+	_dump_next_at_ms = Time.get_ticks_msec()
+	print("[world] today's delivery: %d crates over ~%.0fs" % [total, clock.morning_seconds])
+
+
+## One [method CargoCatalogue.mint]-built record dictionary per crate a row's
+## own `count` calls for — the same "one place a record is assembled" rule
+## [code]CargoCatalogue.mint[/code]'s own doc comment states, applied here to
+## expanding a BATCH into individuals rather than building one by hand.
+func _expand_rows_to_record_dicts(rows: Array, day: int) -> Array:
+	var result: Array = []
+	for row in rows:
+		var r := row as Dictionary
+		var category: StringName = StringName(r.get("category", &""))
+		var size: int = int(r.get("size", CargoCatalogue.Size.SMALL))
+		# Guard against a row naming a size the catalogue doesn't actually
+		# offer for that category (white_goods has no Small) — skip and
+		# print() rather than silently under-deliver the day. Never
+		# push_warning(): the suite fails on any engine warning, the same
+		# reason Crate._recover() prints instead of warning.
+		if not (size in CargoCatalogue.available_sizes(category)):
+			print("[world] ERROR: manifest row names a size the catalogue doesn't offer for %s (size %d) — skipping" % [category, size])
+			continue
+		var variant: StringName = StringName(r.get("variant", &""))
+		var count: int = int(r.get("count", 0))
+		var store_until_day: int = int(r.get("store_until_day", day + 1))
+		var owner: StringName = StringName(r.get("owner", &""))
+		var contract_days := maxi(store_until_day - day, 1)
+		for _i in count:
+			var crate_id := _mint_crate_id()
+			result.append(CargoCatalogue.mint(
+				category, variant, size, store_until_day, owner, contract_days, crate_id,
+			).to_dict())
+	return result
+
+
+func _spawn_delivery_crate(record_data: Dictionary) -> void:
+	var pos := _next_dump_position()
+	crate_spawner.spawn({"record": record_data, "spawn": pos})
+
+
+## The GoodsIn zone specifically — "goods_zone" holds both kinds (01-05), so
+## this filters rather than assuming there is only ever one.
+func _goods_in_zone() -> GoodsZone:
+	for node in get_tree().get_nodes_in_group("goods_zone"):
+		var zone := node as GoodsZone
+		if zone != null and zone.kind == GoodsZone.Kind.IN:
+			return zone
+	return null
+
+
+## Derived from GoodsIn's own collision shape at runtime, never hard-coded
+## coordinates — this project has moved a fixture three times already
+## because a plan guessed a position instead (01-05's own history). Moving
+## the zone moves the dock for free.
+func _dump_area() -> Dictionary:
+	var zone := _goods_in_zone()
+	if zone == null:
+		return {}
+	var volume := zone.get_node_or_null("Volume") as CollisionShape3D
+	if volume == null:
+		return {}
+	var shape := volume.shape as BoxShape3D
+	if shape == null:
+		return {}
+	var centre: Vector3 = volume.global_transform.origin
+	var half: Vector3 = shape.size * 0.5 - Vector3(DUMP_GRID_MARGIN, 0.0, DUMP_GRID_MARGIN)
+	return {"centre": centre, "half": half}
+
+
+## The next crate's landing spot: a grid inside GoodsIn's own footprint,
+## wrapping into a layer above once the floor of that footprint is full
+## (the same "fill flat, then stack" shape [method _crate_position]'s own
+## stress-test grid already uses), then nudged clear of any standing player
+## (see [constant DUMP_PLAYER_AVOID_RADIUS]'s own doc comment).
+func _next_dump_position() -> Vector3:
+	var area := _dump_area()
+	if area.is_empty():
+		# No GoodsIn zone in this level — should never happen in practice,
+		# but a missing dock is not a reason to silently spawn nothing.
+		_dump_spawn_index += 1
+		return CRATE_ROW_ORIGIN + Vector3(0.0, 1.0, 0.0)
+
+	var centre: Vector3 = area["centre"]
+	var half: Vector3 = area["half"]
+	var columns := maxi(1, int(floor((half.x * 2.0) / DUMP_GRID_SPACING)))
+	var rows := maxi(1, int(floor((half.z * 2.0) / DUMP_GRID_SPACING)))
+	var per_layer := columns * rows
+
+	var index := _dump_spawn_index
+	_dump_spawn_index += 1
+
+	@warning_ignore("integer_division")
+	var layer := index / per_layer
+	var within := index % per_layer
+	var col := within % columns
+	@warning_ignore("integer_division")
+	var row := within / columns
+
+	var origin := centre - Vector3(half.x, 0.0, half.z) + Vector3(DUMP_GRID_SPACING * 0.5, 0.0, DUMP_GRID_SPACING * 0.5)
+	var pos := origin + Vector3(
+		float(col) * DUMP_GRID_SPACING,
+		DUMP_DROP_HEIGHT + float(layer) * DUMP_LAYER_HEIGHT,
+		float(row) * DUMP_GRID_SPACING,
+	)
+	return _avoid_player_overlap(pos)
+
+
+## Nudges a drop point sideways, a bounded number of times, if it is
+## currently over a standing player's own capsule — checked in the
+## horizontal plane only, since the drop height is well above head level
+## regardless. Does not guarantee a player can never walk under a falling
+## crate mid-drop; see this file's own "the truck dump" section doc comment
+## for the gate check this invites instead.
+func _avoid_player_overlap(pos: Vector3) -> Vector3:
+	var adjusted := pos
+	for _attempt in DUMP_PLAYER_AVOID_ATTEMPTS:
+		var blocked := false
+		for child in players.get_children():
+			var body := child as Node3D
+			if body == null:
+				continue
+			var flat_a := Vector2(adjusted.x, adjusted.z)
+			var flat_b := Vector2(body.global_position.x, body.global_position.z)
+			if flat_a.distance_to(flat_b) < DUMP_PLAYER_AVOID_RADIUS:
+				blocked = true
+				break
+		if not blocked:
+			return adjusted
+		adjusted += DUMP_PLAYER_AVOID_OFFSET
+	return adjusted
 
 
 func _on_player_ready_for_spawn(peer_id: int, player_name: String) -> void:

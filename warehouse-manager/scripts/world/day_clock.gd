@@ -68,6 +68,26 @@ enum Phase { IDLE, MORNING, SHIFT, AFTER_HOURS, MIDNIGHT }
 ## point this export stops being read at all.
 @export var ceremony_seconds := 5.0
 
+## Lets a hand-test or an integration scenario pin the day (ADR 25 (f) — the
+## host generates the manifest; determinism is what makes a test repeatable,
+## not what keeps two real peers agreeing — see [method _post_manifest]'s own
+## doc comment for that distinction).
+@export var run_seed := 0
+## The morning delivery's three capacity axes (ADR 25 (f)). `@export` vars
+## HERE, not on [DaySchedule] itself, even though the plan this file was
+## built from asks for the reverse — confirmed, not assumed, with a
+## throwaway probe script: `@export` cannot be applied to a static variable,
+## and [DaySchedule] is deliberately all-static. See that file's own class
+## doc for the full reasoning; the short version is that this is also the
+## one place in the scene a future Phase 4 event (a second truck) could reach
+## in and widen a day's budget at runtime, which a `const` would foreclose
+## for nothing. Untuned starting guesses, exactly [member day_length_seconds]'s
+## own standing — settled in play at the 02-11 gate, not decided here.
+@export var body_cap_per_player := DaySchedule.DEFAULT_BODY_CAP_PER_PLAYER
+@export var cell_equivalent_cap_per_player := DaySchedule.DEFAULT_CELL_EQUIVALENT_CAP_PER_PLAYER
+@export var large_cap_per_player := DaySchedule.DEFAULT_LARGE_CAP_PER_PLAYER
+@export var medium_cap_per_player := DaySchedule.DEFAULT_MEDIUM_CAP_PER_PLAYER
+
 ## Replicated state, written only by the host. A [MultiplayerSynchronizer]
 ## rather than a targeted RPC — see the class doc's own note on why this is
 ## the opposite shape from a rack's occupancy broadcast: a clock is a
@@ -86,6 +106,30 @@ var _last_known_phase: Phase = Phase.IDLE
 ## reset in [method _enter_phase] (host) and in [method _watch_client]
 ## (client), one flag per peer's own instance.
 var _warned_this_phase := false
+
+## This peer's own copy of today's manifest (ADR 25 (e)/(f)). Populated only
+## by [method _manifest_posted], never built independently on a client — the
+## host decides, no vote (ADR 21), and two independently-seeded generators
+## would be exactly the failure determinism alone cannot catch, since it
+## only proves a bug reproduces, not that two peers agree. Null until the
+## first MORNING this run reaches, or until a late joiner's own catch-up
+## (see [method _on_player_ready_for_spawn]) lands.
+var today: DayManifest = null
+
+## Written only by 02-10, at door-down, for whatever a missed collection
+## owes tomorrow (ADR 25 (e): "redelivery's cost is a locked row on
+## tomorrow's manifest"). This file only READS it, in [method _post_manifest].
+## Left inert here on purpose — 02-10 adds a behaviour to an existing schema
+## rather than needing to invent one.
+var _carried_locked_rows: Array = []
+
+## Cached the moment [member today] is set (see [method census]'s own doc
+## comment for why a per-frame re-scan would buy nothing this phase) —
+## correct for the WHOLE day, not just the moment it was computed, because
+## nothing in Phase 2 removes a delivered crate mid-day (Goods OUT only
+## detects; GoodsZone's own class doc says nothing economic happens to a
+## crate there until Phase 4).
+var _due_today_count := 0
 
 ## Past tense, per house style. What 02-06 and 02-09 hook, so neither needs
 ## to poll this file's state.
@@ -107,11 +151,13 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
-	# Found by group, not by path or an exported NodePath — 02-06's truck dump
+	# Found by group, not by path or an exported NodePath — 02-07's truck dump
 	# and 02-09's collection check both need to reach this without knowing
 	# where in a level's tree it lives, the same reason CarryAuthority and
 	# Rack are both group-found rather than wired by hand.
 	add_to_group("day_clock")
+	if Net.is_host():
+		Net.player_ready_for_spawn.connect(_on_player_ready_for_spawn)
 
 
 ## Runs on every peer. The host branch is the only one that ever mutates
@@ -147,6 +193,74 @@ func current_day() -> int:
 
 func phase() -> Phase:
 	return sync_phase
+
+
+## This peer's own copy of today's manifest — see [member today]'s own doc
+## comment. Null before the first MORNING.
+func manifest() -> DayManifest:
+	return today
+
+
+## How many crates today's manifest called for, in total — the HUD's `in:`
+## line (`main.gd`).
+func delivered_today_count() -> int:
+	if today == null:
+		return 0
+	return today.total_crates()
+
+
+## How many crates currently in the building are due out today or earlier —
+## the HUD's `out:` line. Cached once per day; see [member _due_today_count]'s
+## own doc comment for why that is both cheap and correct here.
+func due_today_count() -> int:
+	return _due_today_count
+
+
+## Every cargo record currently in the building, as wire-safe Dictionaries
+## ([method CargoRecord.to_dict]'s own shape) — loose crates, walked through
+## the level's own crate container, and racked records, walked through every
+## rack's own [method Rack.occupancy_snapshot]. 02-10 needs this for the
+## door-down check; this file needs it for [member _due_today_count].
+##
+## Resolved via the existing "crate_source" group, duck-typed exactly the
+## way [code]CarryAuthority._crate_source()[/code] already is — this class is
+## not level-specific, and must not name [TestRoom] or any other level
+## script directly.
+##
+## [b]A zone's own contents are not summed a second time here.[/b] Goods
+## IN/OUT only ever observe loose crates that the crate-container walk below
+## already visits — [GoodsZone]'s own class doc: "a zone cannot see racked
+## stock," and it mints nothing of its own — so adding a zone's [method
+## GoodsZone.contents] on top would double-count whatever it currently holds.
+##
+## Callable on any peer, not gated to the host, because it only reads state
+## every peer already has replicated (loose crates via [MultiplayerSpawner],
+## racked records via the same broadcast a late joiner's own rack snapshot
+## uses) — the same "derive it locally, don't ask the host" shape
+## [GoodsZone] itself already relies on. 02-10's own use of this, to decide
+## whether the door may close, is what actually needs to run host-side; that
+## is a property of WHERE it is called from, not of this function.
+func census() -> Array:
+	var records: Array = []
+
+	var source := get_tree().get_first_node_in_group("crate_source")
+	if source != null and source.has_method("crate_container"):
+		var container: Node = source.crate_container()
+		if container != null:
+			for child in container.get_children():
+				var crate := child as Crate
+				if crate != null and crate.record != null:
+					records.append(crate.record.to_dict())
+
+	for node in get_tree().get_nodes_in_group("racks"):
+		var rack := node as Rack
+		if rack == null:
+			continue
+		for cell in rack.occupancy_snapshot():
+			for item in (cell as Dictionary).get("items", []):
+				records.append((item as Dictionary).duplicate(true))
+
+	return records
 
 
 func seconds_left_in_phase() -> float:
@@ -278,8 +392,59 @@ func _enter_phase(new_phase: Phase) -> void:
 	# style line in this codebase: a player working out what day it is should
 	# find the answer in the log, not just on a HUD they might not be looking at.
 	print("[day] day %d -> %s" % [sync_day, phase_name()])
+	if new_phase == Phase.MORNING:
+		_post_manifest()
 	_emit_phase_entry_signal(new_phase)
 	phase_changed.emit(new_phase, sync_day)
+
+
+## Host-only (only ever called from [method _enter_phase], which only the
+## host's own [method _advance_host] / [method begin_run] / [method
+## advance_to_next_day] reach). Builds the day's manifest and broadcasts it —
+## clients never generate their own; ADR 21's "the host decides, no vote"
+## precedent, applied to the day rather than the checkout split. `call_local`
+## means this peer's own [member today] is set by the exact same code path
+## every other peer's is — the same shape [code]Net._sync_roster[/code] and
+## [code]CarryAuthority._cell_filled[/code] both already use, so there is no
+## separate "the host's own copy" special case to keep in sync.
+##
+## Determinism ([DaySchedule]'s own [param seed_value]/[param day] seeding)
+## is NOT what keeps two real peers agreeing here — it only makes a test
+## repeatable and a bug reproducible. What keeps two peers agreeing is this
+## broadcast: the host generates exactly once, and every peer's [member
+## today] is a copy of that one result, never a second independent roll.
+func _post_manifest() -> void:
+	var crew_size := Net.players.size()
+	var built := DaySchedule.manifest_for(
+		sync_day, _carried_locked_rows, run_seed, crew_size,
+		body_cap_per_player, cell_equivalent_cap_per_player,
+		large_cap_per_player, medium_cap_per_player,
+	)
+	_manifest_posted.rpc(built.to_dict())
+
+
+## Broadcast only — see [method _post_manifest]'s own doc comment. Also sent
+## as a targeted late-joiner catch-up by [method _on_player_ready_for_spawn].
+@rpc("authority", "call_local", "reliable")
+func _manifest_posted(data: Dictionary) -> void:
+	today = DayManifest.from_dict(data)
+	_due_today_count = DayManifest.due_today(census(), sync_day).size()
+
+
+## A late joiner needs today's manifest too. [member sync_day]/[member
+## sync_phase]/[member sync_elapsed] cover themselves via the continuously
+## broadcast [MultiplayerSynchronizer] — the very next tick corrects a peer
+## that missed the last one, including a late joiner, at no extra code (see
+## this file's own class doc). A manifest cannot use that trick: it is event
+## state decided once, not a scalar recomputed every tick, so a peer that
+## was not there for [method _post_manifest]'s own broadcast needs an
+## explicit catch-up — the same reason [code]CarryAuthority._on_player_ready_for_spawn[/code]
+## sends a late joiner its own rack snapshot instead of trusting the
+## synchronizer to eventually cover it.
+func _on_player_ready_for_spawn(peer_id: int, _player_name: String) -> void:
+	if peer_id == 1 or today == null:
+		return
+	_manifest_posted.rpc_id(peer_id, today.to_dict())
 
 
 ## Fires [signal doors_closing] once per SHIFT, the moment the countdown

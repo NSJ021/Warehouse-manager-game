@@ -181,6 +181,9 @@ func _refresh_hud() -> void:
 	var day_line := _day_line()
 	if not day_line.is_empty():
 		lines.append(day_line)
+	var delivery_line := _delivery_line()
+	if not delivery_line.is_empty():
+		lines.append(delivery_line)
 	lines.append(_carry_line())
 	lines.append("")
 	lines.append_array(CONTROLS)
@@ -205,6 +208,24 @@ func _day_line() -> String:
 	if clock.phase() == DayClock.Phase.SHIFT and left <= clock.klaxon_warning_seconds:
 		return "Day %d  ·  %s  ·  DOORS CLOSING IN %s" % [clock.current_day(), clock.phase_name(), countdown]
 	return "Day %d  ·  %s  ·  %s left" % [clock.current_day(), clock.phase_name(), countdown]
+
+
+## 02-07's own line — not decoration. ADR 25 (f) fixes information asymmetry
+## must live on the screen, never only in audio, and "what is due out today"
+## is exactly the information a player needs and has no other way to see in
+## Phase 2 (no phone, no offer sheet yet — those are Phase 4). Blank before
+## the first delivery, same as [method _day_line]'s own guard.
+##
+## [b]Deviation from this plan's own `files_modified` list, worth recording:[/b]
+## the plan's own Task 2 text asks for exactly this HUD line in `main.gd`,
+## but `main.gd` is not named in the plan's frontmatter — an omission, not a
+## scope choice; fixed here rather than left for a later plan to rediscover
+## the same gap.
+func _delivery_line() -> String:
+	var clock := _day_clock()
+	if clock == null or clock.manifest() == null:
+		return ""
+	return "in: %d  ·  out: %d" % [clock.delivered_today_count(), clock.due_today_count()]
 
 
 ## Reads the local player's hands via a group, so the HUD needs to know nothing
