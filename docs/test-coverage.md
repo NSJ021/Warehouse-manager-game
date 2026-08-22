@@ -329,3 +329,68 @@ where nothing would ever meet it again.
 reproducible client-side desync in the netcode, which is the part of this project that matters most.
 This project's own rule, written in `carry_session.gd`: *"report it rather than working around it."*
 Splitting may still be right for scenario length, but not as the answer to this.
+
+---
+
+## OPEN DEFECT — a Medium does not fit in a shelf, and this was known
+
+Found in live play by NJ, 2026-08-22. **Root cause is arithmetic, and the arithmetic was already
+written down in a test comment months of work ago.**
+
+```
+DeckBottom  y=0, 0.05 thick  ->  occupies  -0.025 ... +0.025
+DeckMid     y=1, 0.05 thick  ->  occupies   0.975 ...  1.025
+                        clear opening      = 0.95 m
+A Medium (ADR 18)                          = 1.00 m
+```
+
+**A Medium is 5 cm taller than the gap it has to come out of.** Retrieved, it mints at the cell
+centre and interpenetrates *both* decks by 2.5 cm. Whether the solver squeezes it free or jams it
+decides whether that retrieval works — which is why NJ reports "sometimes they pull fine, others
+they snag".
+
+It explains the whole size pattern exactly: a **Small** is 0.5 m with 0.45 m to spare and is
+reported fine; a **Medium** is marginal; a **Large** is the same height but twice as long, so any
+rotation has twice the leverage to bind — reported worst.
+
+**Why it stayed hidden:** the racked *visual* is inset to 78%, so a shelved crate sits at 0.78 m and
+looks entirely comfortable. Only the real body is full size, and that only exists during a
+retrieval.
+
+### The part that matters more than the bug
+
+**This was already found, measured, and worked around rather than reported.** From
+`storage_session.gd`'s own comment, written by 02-06:
+
+> Retrieving a Medium (1.0 m) from CELL_ROUNDTRIP's own floor level once wedged it directly against
+> DeckMid from below: the carry spring pulled it up, the deck blocked it from above, and the two
+> forces reached a dead stop within centimetres of the deck's own underside — found live, not
+> reasoned about in advance (a diagnostic loop watching its own position for 2000+ frames measured a
+> drift of 0.0024 m; that is a body pinned in a contact deadlock, not one merely moving slowly).
+
+The diagnosis was correct and the measurement was excellent. Then **the test was moved to cell 7,
+"deliberately NOT a floor-level cell"**, the suite went green, and the defect stayed in the game
+until a human played it.
+
+This project's own rule, written in `carry_session.gd`: *"report it rather than working around it."*
+A green suite that was routed around a known contact deadlock is worse than a red one, because it
+converts a live defect into a documented convenience.
+
+### What the fix costs
+
+Two ratified decisions meet here and neither is wrong alone:
+- **ADR 18** fixes a Medium at 1.0 m and a cell at 1.0 m.
+- **ADR 24** puts 0.05 m decks *on the cell boundaries*, taking 5 cm out of every cell's height.
+
+Options, all of which touch something decided:
+1. **Shrink Medium and Large below the cell height** — cleanest physically, amends ADR 18's
+   dimensions, and ADR 18 is the ADR everything else keys off.
+2. **Move the decks out of the cell envelope** — make the rack taller so each cell keeps a true
+   1.0 m of clear air. Amends ADR 24's frame geometry; changes how a rack reads visually.
+3. **Keep the sizes and give retrieval a controlled exit** — mint below the cell and let the crate
+   clear the deck before the hold spring engages. Fixes the symptom without touching either ADR,
+   but adds a special case to a path that is currently uniform across sizes.
+
+**It needs a ruling at the gate, not a tweak.** And whatever is chosen, it wants the assertion that
+never existed: **a crate of each size must physically fit the clear opening of the cell it is stored
+in.** Nothing checks that today, which is how a 1.0 m crate ended up specified into a 0.95 m gap.
