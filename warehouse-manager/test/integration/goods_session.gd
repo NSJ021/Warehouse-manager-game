@@ -157,8 +157,22 @@ func _run() -> void:
 	if not await _until("both peers in roster", func() -> bool:
 			return Net.players.size() == EXPECTED_PLAYERS):
 		return _finish(false)
-	if not await _until("all %d starting crates replicated" % EXPECTED_STARTING_CRATES, func() -> bool:
-			return _crates() != null and _crates().get_child_count() == EXPECTED_STARTING_CRATES):
+	# >=, not == : the host's own preamble only checks ITS OWN view (roster
+	# size, its own crate count, both cheap and instant at world-load), so it
+	# can reach _run_host and call begin_run() before a SLOWER client has
+	# finished replicating all 17 starting crates. Once that happens, this
+	# scenario's own truck dump can start adding MORE crates while the
+	# client is still catching up on the original batch — an exact-match
+	# count could then be skipped over entirely in one frame (several spawns
+	# landing together) and never be observed, spinning this wait out to its
+	# own timeout while the host's clock keeps advancing regardless (found
+	# live: the client's own report printed crates=29 day=2 — a WHOLE day
+	# had elapsed on the host while this wait was still stuck on 17 exactly).
+	# carry_session.gd and storage_session.gd can use == safely because
+	# nothing in either ever mints more than the starting batch this early;
+	# this is the first scenario where that stops being true by design.
+	if not await _until("at least %d starting crates replicated" % EXPECTED_STARTING_CRATES, func() -> bool:
+			return _crates() != null and _crates().get_child_count() >= EXPECTED_STARTING_CRATES):
 		return _finish(false)
 	if not await _until("own body spawned", func() -> bool: return _me() != null):
 		return _finish(false)
@@ -178,7 +192,6 @@ func _run() -> void:
 
 func _run_host(clock: DayClock) -> void:
 	# --- 2: begin the run. Both peers reach MORNING, day 1. ---
-	var before_dump_crate_names := _crate_name_set()
 	clock.begin_run()
 	if not await _until("host: phase is MORNING", func() -> bool:
 			return clock.phase() == DayClock.Phase.MORNING):
@@ -205,7 +218,7 @@ func _run_host(clock: DayClock) -> void:
 			return _crates().get_child_count() == EXPECTED_STARTING_CRATES + total):
 		return _finish(false)
 	_expect_now(
-		_group_rows(clock.manifest().all_rows()) == _group_delivered_crates(before_dump_crate_names),
+		_group_rows(clock.manifest().all_rows()) == _group_crates(_delivered_crates()),
 		"host: delivered crates match the manifest's rows (category, size, store_until_day, count)",
 	)
 
@@ -250,8 +263,6 @@ func _run_host(clock: DayClock) -> void:
 # ------------------------------------------------------------- client role
 
 func _run_client(clock: DayClock) -> void:
-	var before_dump_crate_names := _crate_name_set()
-
 	# --- 2: both peers reach MORNING, day 1 - derived from replicated state,
 	# never generated locally (the client never calls begin_run() itself). ---
 	if not await _until("client: phase is MORNING", func() -> bool:
@@ -283,7 +294,7 @@ func _run_client(clock: DayClock) -> void:
 			return _crates().get_child_count() == EXPECTED_STARTING_CRATES + total):
 		return _finish(false)
 	_expect_now(
-		_group_rows(clock.manifest().all_rows()) == _group_delivered_crates(before_dump_crate_names),
+		_group_rows(clock.manifest().all_rows()) == _group_crates(_delivered_crates()),
 		"client: delivered crates match the manifest's rows (category, size, store_until_day, count) - on the CLIENT's own copies",
 	)
 
@@ -370,27 +381,45 @@ func _group_rows(rows: Array) -> Dictionary:
 	return grouped
 
 
-## Every crate currently in the container whose NAME was not present in
-## [param before_names] — the truck dump's own arrivals, identified by what
-## changed rather than by any assumed id.
-func _group_delivered_crates(before_names: Dictionary) -> Dictionary:
-	var grouped: Dictionary = {}
+## `test_room.gd`'s own starting batch is always minted with this exact
+## `store_until_day` (`STARTING_STORE_UNTIL_DAY`) — a fixed placeholder,
+## never touched by anything else. Every [DaySchedule]-authored row lands at
+## least [constant DaySchedule.MIN_STORE_OFFSET] days out, so on day 1 that
+## is always `>= 3` — comfortably clear of this constant, on any day this
+## scenario's own short run ever reaches.
+const STARTING_BATCH_STORE_UNTIL_DAY := 1
+
+
+## Every crate the truck actually delivered, identified by CONTENT
+## (`store_until_day` above the starting batch's own fixed placeholder) —
+## deliberately not a before/after name snapshot. A snapshot was tried first
+## and found unsafe: `test_room.gd`'s starting batch spawns in one tight
+## loop at world load and can arrive on a slower peer as a single burst,
+## which can skip an exact crate-count check straight past its target in one
+## frame — found live, not reasoned about in advance (see the preamble's own
+## comment on [constant EXPECTED_STARTING_CRATES] for the actual incident:
+## the client spun on that check for its full 20s budget while the host
+## finished an entire day in the meantime). Filtering by content is immune
+## to whichever crates happened to exist at whatever moment a snapshot would
+## have been taken.
+func _delivered_crates() -> Array:
+	var found: Array = []
 	for child in _crates().get_children():
-		if before_names.has(child.name):
-			continue
 		var crate := child as Crate
-		if crate == null or crate.record == null:
+		if crate != null and crate.record != null and crate.record.store_until_day > STARTING_BATCH_STORE_UNTIL_DAY:
+			found.append(crate)
+	return found
+
+
+func _group_crates(crates: Array) -> Dictionary:
+	var grouped: Dictionary = {}
+	for crate in crates:
+		var c := crate as Crate
+		if c == null or c.record == null:
 			continue
-		var key := _row_shape_key(crate.record.category, crate.record.size, crate.record.store_until_day)
+		var key := _row_shape_key(c.record.category, c.record.size, c.record.store_until_day)
 		grouped[key] = int(grouped.get(key, 0)) + 1
 	return grouped
-
-
-func _crate_name_set() -> Dictionary:
-	var names: Dictionary = {}
-	for child in _crates().get_children():
-		names[child.name] = true
-	return names
 
 
 # --------------------------------------------------------------------- helpers
