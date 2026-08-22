@@ -58,7 +58,7 @@
 
 - [ ] **CLIENT-01**: A named roster of 4–6 clients, each with a personality — including dodgy ones whose cargo everybody can see through, played entirely through trust and suspicion with no contraband system
 - [ ] **CLIENT-02**: Trust, which gates contract quality and volume
-- [ ] **CLIENT-03**: Suspicion, which is raised permanently by being caught
+- [ ] **CLIENT-03**: Suspicion, which is raised by being caught and never fades with time — only confessing walks it back (ADR 20) — and which is scoped to the lease rather than crossing into the next run (ADR 21)
 
 ### Economy (ECON)
 

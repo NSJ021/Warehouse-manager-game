@@ -240,7 +240,7 @@ At handover, for any item below Pristine, the player holding it chooses:
 
 | Choice | Cash | Reputation | Risk |
 |---|---|---|---|
-| **Patch & ship** | Full | None *if undetected* | Detection → no pay, heavy rep hit, client suspicion permanently raised |
+| **Patch & ship** | Full | None *if undetected* | Detection → no pay, heavy rep hit, that client's suspicion raised for the rest of the lease |
 | **Confess** | 40% / 28% / 15% by tier | Small gain | Thin margins, rent still due. Scaled so being careful is worth something even when you intend to own up (ADR 20, amended) |
 | **Comp a replacement** | Negative | Large gain | The replacement belonged to **another client**. The problem moves; it doesn't vanish. **Like-for-like only** (ADR 22), so comping is conditional on what the building actually contains |
 
@@ -248,7 +248,7 @@ At handover, for any item below Pristine, the player holding it chooses:
 
 **Detection is a weighted roll**, not a menu outcome — driven by patch quality, item value, and that client's accumulated suspicion. That's what makes it a gamble instead of a decision tree.
 
-**The maths is settled (ADR 20).** Detection rises steeply with how many tiers you're hiding — 15% / 45% / 80% for one, two and three — plus up to 25 points for a valuable item and up to 30 for a suspicious client, never below 2% or above 95%. Getting caught raises that client's suspicion **permanently** by 0.25; confessing walks it back by 0.08, which makes owning up on something cheap a real tactic for buying back room to gamble later.
+**The maths is settled (ADR 20).** Detection rises steeply with how many tiers you're hiding — 15% / 45% / 80% for one, two and three — plus up to 25 points for a valuable item and up to 30 for a suspicious client, never below 2% or above 95%. Getting caught raises that client's suspicion by 0.25, and **it never fades with time** — only confessing walks it back, by 0.08, which makes owning up on something cheap a real tactic for buying back room to gamble later. It is scoped to the lease and does not follow you into the next one (ADR 21); a suspicion that crossed runs would put a lasting price on being caught, which is exactly what collapses the late-lease flip.
 
 > **The mechanism that makes the fork a real decision:** reputation is priced in cash at **£90 per point per day of lease remaining**. It only pays out by gating future contracts, so it's worth a lot on day 1 of a 30-day term and nothing on the last night of a 10-day one. Early in a lease, comping is the strongest play. At the end, reputation is worthless and the right move is to tape it up and gamble. **Same item, same damage, opposite answer** — that's what stops the pillar becoming a decision tree with one correct branch.
 >
